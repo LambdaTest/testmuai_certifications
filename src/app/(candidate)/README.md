@@ -6,13 +6,13 @@
 Scope: everything about the candidate's *own* participation. If a screen shows data about
 other people or edits the product itself, it belongs in `admin/`.
 
-Pages: `/book/[certificationSlug]`, `/dashboard`, `/dashboard/bookings/[bookingId]`,
+Pages: `/book`, `/dashboard`, `/dashboard/bookings/[bookingId]`,
 `/dashboard/attempts/[attemptId]`, `/dashboard/credentials/[credentialId]`, `/account`.
 
-`/book/[certificationSlug]` is the **entry point from the main TestMu AI site** — candidates
-choose the certification there, then land here to pick a slot. Arriving unauthenticated must
-redirect to login and come *back here*, not to the dashboard. Slugs are an external contract:
-changing one breaks inbound links.
+`/book` is the **entry point from the main TestMu AI site** — its catalog cards land candidates
+here. It takes no path parameter: candidates pick the exam from a selector, then a slot from a
+calendar. Arriving unauthenticated must redirect to login and come *back here*, not to the
+dashboard. See [`book/README.md`](book/README.md).
 
 Slot booking must not double-book the last seat. Enforce capacity inside a transaction that
 locks the slot row — never a read-then-write in application code.

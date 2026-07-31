@@ -17,7 +17,7 @@ Groups in `(parentheses)` **do not appear in the URL** — they exist purely to 
 
 | Group | URL prefix | Auth guard | Layout |
 |---|---|---|---|
-| `(candidate)` | `/book/*`, `/dashboard/*`, `/account` | session required | Candidate nav |
+| `(candidate)` | `/book`, `/dashboard/*`, `/account` | session required | Candidate nav |
 | `(exam)` | `/exam/[attemptId]/*` | session + must own the attempt | **None — no nav, no links out** |
 | `admin` | `/admin/*` | session + admin role | Admin sidebar |
 | `verify` | `/verify/[credentialId]` | none | Minimal public, indexable |
@@ -28,17 +28,26 @@ session cookie at all) so unauthenticated requests never reach a function that h
 
 ## Page inventory
 
-### Out of scope: catalog and exam selection
+### Out of scope: the catalog
 
-Browsing certifications and choosing one **already exists on the main TestMu AI site** and is
-not rebuilt here. There is no `(marketing)` group in this repo.
+Browsing certifications **already exists on the main TestMu AI site** and is not rebuilt here.
+There is no `(marketing)` group in this repo.
 
-This app is entered by deep link from that site into `/book/[certificationSlug]`. Two consequences:
+Its catalog cards ("Enroll Now") land the candidate on `/book`. The exam they clicked is
+deliberately **not** carried into our routing — `/book` has no path parameter and the candidate
+chooses from a selector. Their catalog is single-select, which is not flexible enough once
+someone changes their mind or arrives by bookmark.
 
-- The slug in that URL is a **contract with an external system**. Changing slugs breaks inbound
-  links; treat them as stable identifiers, not display strings.
-- An unauthenticated visitor arriving at `/book/...` must be sent to login and returned to the
-  booking page afterwards, not dumped on the dashboard. Preserve the return URL.
+Two consequences:
+
+- **No URL contract with the main site.** Slugs stay internal; they can restructure their catalog
+  without breaking us.
+- **Authentication is the only integration between the two systems.** No entitlement sync, no
+  registration webhook, no catalog API. Booking *is* enrolment — see
+  [`src/app/(candidate)/book/README.md`](../src/app/(candidate)/book/README.md).
+
+An unauthenticated visitor arriving at `/book` must be sent to login and returned **there**, not
+dumped on the dashboard. Preserve the return path.
 
 ### Out of scope: login
 
@@ -55,7 +64,7 @@ Full contract: [`auth.md`](auth.md).
 
 | Route | Purpose |
 |---|---|
-| `/book/[certificationSlug]` | **Entry point from the main site.** Choose a slot for this certification. |
+| `/book` | **Entry point from the main site.** "Choose an exam" selector, then a slot calendar. No path parameter. |
 | `/dashboard` | Upcoming booked slots, in-progress attempts, earned credentials |
 | `/dashboard/bookings` | My bookings |
 | `/dashboard/bookings/[bookingId]` | Booking detail — join link when the slot opens, cancel/reschedule |

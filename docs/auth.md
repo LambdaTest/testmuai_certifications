@@ -6,18 +6,28 @@ TestMu AI login. Do not add a sign-in, sign-up, or forgot-password page to this 
 ## The flow
 
 ```
-1. Candidate hits  /book/selenium-advanced        (unauthenticated)
+1. Candidate hits  /book                          (unauthenticated)
 2. We redirect to  <MAIN_SITE_LOGIN>?redirect_uri=<our callback>&state=<signed return path>
 3. Candidate signs in on the company's existing login screen
 4. Main site redirects to  /api/auth/callback?code=<short-lived>&state=<...>
 5. We exchange the code server-to-server for the user's identity
 6. We upsert a local user row, mint OUR session cookie
-7. We redirect to the original destination — /book/selenium-advanced
+7. We redirect to the original destination — /book
 ```
 
-Step 7 matters: a candidate who deep-linked to a specific certification must land back on that
-booking page, not on the dashboard. The intended path travels in `state`, and `state` must be
-signed or server-stored — never a raw URL from the query string, or it becomes an open redirect.
+Step 7 matters: land the candidate where they were going, not on the dashboard. The intended
+path travels in `state`, and `state` must be signed or server-stored — never a raw URL from the
+query string, or it becomes an open redirect.
+
+**The chosen certification is not part of this exchange.** The main site's redirect may carry an
+exam identifier today; we ignore it. Candidates choose their exam from a selector on `/book`, so
+identity and exam choice stay separate concerns. Do not read a certification from the auth
+response, and do not let one appear in a session claim.
+
+**Authentication is the only integration between the two systems.** There is no entitlement sync,
+registration webhook, or catalog API — booking in this app *is* enrolment. If a future change
+requires reading registrations from the main site, that is a new integration to spec, not an
+extension of this one.
 
 ## What we need from the main site team
 
@@ -65,6 +75,29 @@ against their public key. Note the trade-off explicitly if we go that way.
 
 Guarding happens in each route group's `layout.tsx` (see `docs/routes.md`), with middleware
 doing a coarse cookie check first so unauthenticated requests never reach the database.
+
+## Integration is deferred — build against a stub
+
+**Decision:** we build the whole product first and integrate with the main site's login at the
+end. Nothing in this app should wait on that.
+
+This is workable, but auth is the one piece that cannot be exercised until they wire up, so
+surprises surface late. Three rules keep that cheap:
+
+1. **All auth behind one adapter** — `src/lib/auth.ts`. Route handlers and components ask that
+   module who the user is; they never know how identity arrived. Swapping the stub for the real
+   handoff is then one file, not a refactor. Auth assumptions leaking across the codebase during
+   a months-long build is the expensive failure here.
+2. **`users.external_id` is an opaque string.** Never parse it, never assume numeric, never assume
+   it is an email. We do not yet know its shape, and a team that assumed integers for six weeks
+   is a costly correction.
+3. **`certifications.external_ref` is nullable and unused for now** — see
+   `src/core/certifications/README.md`. It absorbs whatever identifier they eventually send.
+
+**Get the integration spec early even though the implementation lands late.** Asking internal
+teams or Eklavya for documentation is not a change request and costs the main-site team nothing.
+It is the difference between building against a known contract and discovering at the end that
+their handoff works nothing like we assumed.
 
 ## Local development
 
