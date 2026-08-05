@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { format, startOfDay, startOfMonth } from "date-fns";
+import { addDays, format, startOfDay, startOfMonth } from "date-fns";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { Clock } from "lucide-react";
 
@@ -111,6 +111,8 @@ export function DateTimePicker({
   const tz = timezone ?? browserTimezone();
   const now = new Date();
   const today = startOfDay(now);
+  // Same-day booking is not allowed — the earliest pickable day is tomorrow.
+  const earliestDay = addDays(today, 1);
 
   const [day, setDay] = React.useState<Date | undefined>(undefined);
   const [time, setTime] = React.useState<Time>({ h: 9, m: 0 });
@@ -135,7 +137,7 @@ export function DateTimePicker({
         onMonthChange={setMonth}
         startMonth={startOfMonth(today)}
         endMonth={browseLimit(today)}
-        disabled={{ before: today, after: browseLimit(today) }}
+        disabled={{ before: earliestDay, after: browseLimit(today) }}
         className="rounded-2xl border bg-card p-3 shadow-sm [--cell-size:--spacing(9)] sm:[--cell-size:--spacing(10)]"
       />
 
