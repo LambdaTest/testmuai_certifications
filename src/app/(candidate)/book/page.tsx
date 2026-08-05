@@ -251,7 +251,7 @@ function BookPageInner() {
               <p className="text-sm text-muted-foreground">{describe(selectedAt)}</p>
             </div>
             <Button size="lg" onClick={() => setConfirmOpen(true)}>
-              Book this slot <ArrowRight className="size-4" aria-hidden />
+              Confirm booking <ArrowRight className="size-4" aria-hidden />
             </Button>
           </CardContent>
         </Card>
@@ -262,7 +262,7 @@ function BookPageInner() {
           <CardContent className="flex items-start gap-3">
             <CheckCircle2 className="mt-0.5 size-5 text-green-600" aria-hidden />
             <div>
-              <p className="font-medium">Slot booked (preview)</p>
+              <p className="font-medium">Booking confirmed (preview)</p>
               <p className="text-sm text-muted-foreground">
                 {exam.name} — {describe(bookedAt)}. Once the backend exists this
                 will create a real booking and appear in your dashboard.
@@ -275,10 +275,10 @@ function BookPageInner() {
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirm your slot</DialogTitle>
+            <DialogTitle>Confirm your booking</DialogTitle>
             <DialogDescription>
               {exam?.name} — {selectedAt ? describe(selectedAt) : ""}.
-              Double-check the time and timezone: missing an exam slot cannot be
+              Double-check the time and timezone: missing your exam cannot be
               undone.
             </DialogDescription>
           </DialogHeader>
