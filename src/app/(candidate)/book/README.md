@@ -1,71 +1,62 @@
-# book — slot booking
+# book — exam booking
 
-`/book` is the **entry point into this app** from the main TestMu AI site. The candidate picks a
-certification from a selector, then picks a slot from a calendar.
+`/book` is the **entry point into this app** from the main TestMu AI site. The candidate chooses a
+certification from a selector, then picks their own date and time.
 
-## No path parameter, by design
+## Self-scheduled
 
-The main site's catalog cards ("Enroll Now") land the candidate here. Whatever exam they clicked
-is **not** part of our URL and **not** read from the auth handoff.
+**There are no pre-defined slots.** The candidate picks any date and time within the allowed
+range. No capacity, no seats, no waitlist, no registration deadline.
 
-Why: single-select on their side isn't flexible enough. A candidate who changes their mind, or
-who arrives by bookmark, must be able to choose here. So the page opens with a **"Choose an exam"**
-selector listing bookable certifications, and the calendar renders once one is chosen.
+## No path parameter
 
-Consequences worth knowing:
+The main site's catalog cards land the candidate here. Whatever exam they clicked is **not** part
+of our routing and **not** read from the auth handoff — they choose from the selector.
 
-- **There is no URL contract with the main site.** Slugs are internal. They can restructure their
-  catalog freely without breaking us.
-- **The only integration with the main site is authentication.** No entitlement sync, no
-  registration webhook, no catalog API. See [`docs/auth.md`](../../../../docs/auth.md).
-- **Booking is enrolment.** There is no prior entitlement record. "Enroll Now" on their side is a
-  marketing CTA; enrolment state is created here when a slot is booked.
+- **No URL contract with the main site.** Slugs stay internal; they can restructure their catalog
+  without breaking us.
+- **Authentication is the only integration between the two systems.** No entitlement sync, no
+  registration webhook, no catalog API.
+- **Booking is enrolment.** There is no prior entitlement record.
 
 ### Optional: prefill from a query hint
 
-Recommended but not required. If the main site can pass the chosen exam as `?exam=<slug>`, use it
-to **prefill** the selector — the candidate who just clicked "Enroll Now" on Selenium 101 should
-not have to say it twice. The selector stays fully changeable.
-
-Rules if implemented: it is a *hint*, not identity. A missing, unknown, or stale value falls back
-silently to "Choose an exam" — never a 404, never an error. Keep it a query param, not a path
-segment, so it can always be ignored.
-
-*(Nobody has confirmed how the current portal passes the exam. This is not blocking — the page
-works without it.)*
+The main site currently redirects with a numeric exam id (`?id=2934`, TestMu AI's own course id).
+We ignore it today. If you later want it to preselect the dropdown, map it via
+`certifications.external_ref` and treat it strictly as a *hint* — a missing, unknown, or stale
+value falls back silently to "Choose an exam", never a 404.
 
 ## The exam selector
 
-Not a list of every certification. An option the candidate cannot book is a support ticket.
-Show only certifications that are:
+Not a list of every certification. An option the candidate cannot book is a support ticket. Show
+only certifications that are published and that this candidate is eligible for — not in a
+post-failure cooldown, hasn't already passed it, prerequisites met.
 
-- published, and have at least one slot with open registration and remaining capacity
-- eligible for **this** candidate — not in a post-failure cooldown, hasn't already passed it,
-  prerequisites met
+That is a `src/core/certifications` query, not a `SELECT *` in the page. Render at least the name
+and level (Beginner / Advanced).
 
-That is a `src/core/certifications` query, not a `SELECT *` in the page. Render at minimum the
-name and level (Beginner / Advanced) to match how the main site presents them.
+## Choosing a time
 
-## The slot calendar
+Handled by [`DateTimePicker`](../../../../components/booking/README.md). Constraints today:
 
-- **Display in the candidate's local timezone, store UTC.** Getting this wrong makes people miss
-  exams. Show the timezone explicitly next to each slot.
-- Show remaining capacity, or at least a "filling up" / "full" state. Do not let someone select a
-  slot that has no seats.
-- Changing the selected exam resets the calendar — slots belong to a specific exam version.
+- **No same-day booking** — earliest selectable day is tomorrow
+- **3-month horizon**
+- Displayed in the candidate's chosen timezone with the offset labelled; stored UTC
 
-## Booking a slot
+**These are UI guards only.** The same rules must be enforced in `core/attempts`, or the API can
+be called directly to bypass them.
 
-- **Capacity must be enforced inside a transaction that locks the slot row.** A read-then-write in
-  application code double-books the last seat when two candidates click at once.
-- `UNIQUE(slot_id, candidate_id)` as a database constraint, not a check in code.
-- Booking must be **idempotent** — candidates double-click, and clients retry.
+## Booking
 
-## Open decisions affecting this page
+- **Idempotent** — candidates double-click and clients retry.
+- One open booking per exam per candidate, as a database constraint.
+- Store both the UTC instant and the IANA timezone the candidate booked in.
 
-- **Payment.** If there is one, it now happens *here* rather than on the main site, because
-  booking is enrolment. It sits between slot selection and confirmation, and a failed payment
-  must not hold a seat.
-- **Cancel / reschedule window** — how close to the slot can a candidate change their mind?
-- **Waitlist** when a slot is full, or just show it unavailable?
+## Open decisions
+
+- **Payment.** If there is one, it sits between time selection and confirmation, and a failed
+  payment must not create a booking.
+- **Minimum lead time in hours** — the day-based rule still allows 11pm → 00:15.
+- **Availability window** — 24/7, or restricted hours?
+- **Cancel / reschedule** — allowed up to how long before the booked time?
 - **Retake cooldown** — feeds the eligibility filter above.
