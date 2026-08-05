@@ -7,9 +7,10 @@
 
 import * as React from "react";
 import { formatInTimeZone } from "date-fns-tz";
-import { ArrowRight, CheckCircle2, ChevronDown } from "lucide-react";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
 
 import { DateTimePicker, EXAMS } from "@/components/booking";
+import { detectTimezone, gmtLabel } from "@/components/booking/timezones";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -29,72 +30,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-
-/** "+05:30" → 330, "-04:00" → -240. For sorting zones east to west. */
-function offsetMinutes(offset: string): number {
-  const [h = "0", m = "0"] = offset.slice(1).split(":");
-  const total = Number(h) * 60 + Number(m);
-  return offset.startsWith("-") ? -total : total;
-}
-
-/**
- * One well-known place per UTC offset — a standard picker list, not the full
- * 400+ IANA city set. Offsets are computed live so DST stays correct.
- */
-const STANDARD_TIMEZONES = [
-  "Pacific/Pago_Pago",
-  "Pacific/Honolulu",
-  "America/Anchorage",
-  "America/Los_Angeles",
-  "America/Denver",
-  "America/Chicago",
-  "America/New_York",
-  "America/Halifax",
-  "America/St_Johns",
-  "America/Sao_Paulo",
-  "Atlantic/South_Georgia",
-  "Atlantic/Azores",
-  "UTC",
-  "Europe/London",
-  "Europe/Berlin",
-  "Europe/Athens",
-  "Europe/Moscow",
-  "Asia/Tehran",
-  "Asia/Dubai",
-  "Asia/Kabul",
-  "Asia/Karachi",
-  "Asia/Kolkata",
-  "Asia/Kathmandu",
-  "Asia/Dhaka",
-  "Asia/Yangon",
-  "Asia/Bangkok",
-  "Asia/Singapore",
-  "Asia/Tokyo",
-  "Australia/Darwin",
-  "Australia/Sydney",
-  "Pacific/Guadalcanal",
-  "Pacific/Auckland",
-  "Pacific/Tongatapu",
-];
-
-/** Browsers may report legacy names; map them onto the standard list. */
-const TZ_ALIASES: Record<string, string> = {
-  "Asia/Calcutta": "Asia/Kolkata",
-  "Asia/Katmandu": "Asia/Kathmandu",
-  "Asia/Rangoon": "Asia/Yangon",
-};
-
-function standardTimezones() {
-  const now = new Date();
-  return STANDARD_TIMEZONES.map((tz) => {
-    const offset = formatInTimeZone(now, tz, "xxx");
-    return {
-      value: tz,
-      label: `(UTC${offset}) ${tz.replace(/_/g, " ")}`,
-      minutes: offsetMinutes(offset),
-    };
-  }).sort((a, b) => a.minutes - b.minutes || a.value.localeCompare(b.value));
-}
 
 const emptySubscribe = () => () => {};
 
@@ -118,30 +53,13 @@ export default function BookPage() {
 }
 
 function BookPageInner() {
-  const rawBrowserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const browserTz = TZ_ALIASES[rawBrowserTz] ?? rawBrowserTz;
-  const timezones = React.useMemo(() => {
-    const all = standardTimezones();
-    // The detected zone should always be pickable, even when it isn't one of
-    // the standard entries (e.g. Asia/Manila).
-    if (!all.some((t) => t.value === browserTz)) {
-      const offset = formatInTimeZone(new Date(), browserTz, "xxx");
-      all.unshift({
-        value: browserTz,
-        label: `(UTC${offset}) ${browserTz.replace(/_/g, " ")}`,
-        minutes: offsetMinutes(offset),
-      });
-    }
-    return all;
-  }, [browserTz]);
-
   const [examSlug, setExamSlug] = React.useState<string | null>(() => {
     // Optional prefill hint from the main site (?exam=<slug>) — see book/README.
     // A missing or unknown value silently falls back to "choose an exam".
     const hint = new URLSearchParams(window.location.search).get("exam");
     return EXAMS.some((e) => e.slug === hint) ? hint : null;
   });
-  const [timezone, setTimezone] = React.useState(browserTz);
+  const [timezone, setTimezone] = React.useState(detectTimezone);
   const [selectedAt, setSelectedAt] = React.useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [bookedAt, setBookedAt] = React.useState<string | null>(null);
@@ -150,10 +68,9 @@ function BookPageInner() {
   const examItems = EXAMS.map((e) => ({ label: e.name, value: e.slug }));
 
   const describe = (isoUtc: string) =>
-    `${formatInTimeZone(isoUtc, timezone, "EEEE, MMMM d · HH:mm")} ${formatInTimeZone(
-      isoUtc,
+    `${formatInTimeZone(isoUtc, timezone, "EEEE, MMMM d · HH:mm")} ${gmtLabel(
       timezone,
-      "zzz"
+      new Date(isoUtc)
     )}`;
 
   return (
@@ -166,7 +83,7 @@ function BookPageInner() {
 
       <Card>
         <CardContent className="flex flex-col gap-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
             <Select
               items={examItems}
               value={examSlug}
@@ -202,37 +119,19 @@ function BookPageInner() {
                 ))}
               </SelectContent>
             </Select>
-
-            {/* Native select on purpose — the OS list popup matches the
-                main site's picker. */}
-            <div className="relative w-full sm:ml-auto sm:w-72">
-              <select
-                aria-label="Display timezone"
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                className="h-8 w-full appearance-none truncate rounded-lg border border-input bg-transparent pr-8 pl-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-              >
-                {timezones.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                className="pointer-events-none absolute top-1/2 right-2 size-4 -translate-y-1/2 text-muted-foreground"
-                aria-hidden
-              />
-            </div>
           </div>
 
           {exam ? (
             <>
               <Separator />
+              {/* Keyed on the exam only. Including the timezone here would
+                  remount on every zone change and wipe the chosen date. */}
               <DateTimePicker
-                key={`${exam.slug}:${timezone}`}
+                key={exam.slug}
                 selectedAt={selectedAt}
                 onSelect={setSelectedAt}
                 timezone={timezone}
+                onTimezoneChange={setTimezone}
               />
             </>
           ) : (

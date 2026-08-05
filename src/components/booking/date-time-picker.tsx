@@ -3,7 +3,9 @@
 import * as React from "react";
 import { addDays, format, startOfDay, startOfMonth } from "date-fns";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
-import { Clock } from "lucide-react";
+import { ChevronDown, Clock } from "lucide-react";
+
+import { gmtLabel, timezoneOptions, zoneName } from "./timezones";
 
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
@@ -14,6 +16,11 @@ export type DateTimePickerProps = {
   onSelect: (isoUtc: string | null) => void;
   /** IANA timezone name; defaults to the browser's. */
   timezone?: string;
+  /**
+   * When provided, the offset shown beside the time becomes a picker. Omit to
+   * render it as static text.
+   */
+  onTimezoneChange?: (timezone: string) => void;
 };
 
 type Time = { h: number; m: number };
@@ -107,6 +114,7 @@ export function DateTimePicker({
   selectedAt,
   onSelect,
   timezone,
+  onTimezoneChange,
 }: DateTimePickerProps) {
   const tz = timezone ?? browserTimezone();
   const now = new Date();
@@ -122,7 +130,8 @@ export function DateTimePicker({
     onSelect(d ? composeUtcIso(format(d, "yyyy-MM-dd"), t.h, t.m, tz) : null);
   };
 
-  const zone = formatInTimeZone(now, tz, "zzz");
+  const zone = gmtLabel(tz, now);
+  const tzOptions = timezoneOptions(tz);
 
   return (
     <div className="flex flex-col gap-6 md:flex-row md:items-start">
@@ -146,9 +155,6 @@ export function DateTimePicker({
           <h3 className="text-base font-semibold tracking-tight">
             {day ? format(day, "EEEE, MMMM d") : "Pick a date"}
           </h3>
-          <span className="text-xs text-muted-foreground">
-            Times in {zone} ({tz.replace(/_/g, " ")})
-          </span>
         </div>
 
         <div
@@ -161,7 +167,7 @@ export function DateTimePicker({
             <Clock className="size-4 text-muted-foreground" aria-hidden />
             Choose your time
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-start gap-2">
             <TimeCombobox
               value={time}
               onCommit={(t) => {
@@ -169,7 +175,59 @@ export function DateTimePicker({
                 emit(day, t);
               }}
             />
-            <span className="text-sm text-muted-foreground">{zone}</span>
+
+            {onTimezoneChange ? (
+              <div className="min-w-0">
+                {/* A real <select> for keyboard and screen-reader behaviour,
+                    laid transparently over the trigger so the closed state can
+                    show just the offset while the list stays readable. */}
+                <div className="relative inline-flex">
+                  <select
+                    aria-label="Timezone"
+                    value={tz}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      onTimezoneChange(next);
+                      // Keep the wall-clock the candidate chose and re-resolve
+                      // it in the new zone, the way calendar apps do — picking
+                      // a zone means "I meant 4:30 *there*", not "shift my time".
+                      if (day) {
+                        onSelect(
+                          composeUtcIso(
+                            format(day, "yyyy-MM-dd"),
+                            time.h,
+                            time.m,
+                            next
+                          )
+                        );
+                      }
+                    }}
+                    className="peer absolute inset-0 w-full cursor-pointer opacity-0"
+                  >
+                    {tzOptions.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label} · {t.place}
+                      </option>
+                    ))}
+                  </select>
+                  <span
+                    aria-hidden
+                    className="pointer-events-none inline-flex h-9 items-center gap-1 rounded-md border border-input px-2 text-sm whitespace-nowrap peer-focus-visible:border-ring peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50 dark:bg-input/30"
+                  >
+                    {zone}
+                    <ChevronDown
+                      className="size-3.5 text-muted-foreground"
+                      aria-hidden
+                    />
+                  </span>
+                </div>
+                <p className="mt-1 truncate pl-0.5 text-xs text-muted-foreground">
+                  {zoneName(tz)}
+                </p>
+              </div>
+            ) : (
+              <span className="mt-2 text-sm text-muted-foreground">{zone}</span>
+            )}
           </div>
 
           {day && selectedAt && (
