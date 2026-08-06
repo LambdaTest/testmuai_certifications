@@ -1,0 +1,12 @@
+Django>=5.1,<6.0
+psycopg[binary]>=3.2
+dj-database-url>=2.3
+python-dotenv>=1.0
+
+# Background jobs — not wired up yet, see docs/
+# celery>=5.4
+# redis>=5.2
+
+# Development
+# pytest>=8.3
+# pytest-django>=4.9
