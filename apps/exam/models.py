@@ -44,6 +44,10 @@ class Question(models.Model):
     question_tags = models.TextField(blank=True)
     marks = models.PositiveIntegerField(default=1)
 
+    class Meta:
+        db_table = "questions"
+        ordering = ["-created_at"]
+
 class AnswerOptions(models.Model):
     """
     Options that will be provided in objective questions.
@@ -86,12 +90,18 @@ class Subject(models.Model):
     """
     A subject is a subject of study for which a candidate can take an exam.
     """
+    class Level(models.TextChoices):
+        BEGINNER = "beginner", "Beginner"
+        INTERMEDIATE = "intermediate", "Intermediate"
+        ADVANCED = "advanced", "Advanced"
+
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True)
     description = models.TextField(blank=True) 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="subjects")
+    subject_level = models.CharField(max_length=16, choices=Level.choices, default=Level.BEGINNER)
 
     class Meta:
         db_table = "subjects"
@@ -102,38 +112,30 @@ class Subject(models.Model):
 
 class Exam(models.Model):
     """
-    The product a candidate earns. This app is the source of truth — the main
-    TestMu AI site holds only marketing pages on top.
-
-    Exam versions, sections and the question bank come later; this is the
-    minimum the booking page needs.
+    An exam entity that can be taken by a candidate.
     """
-
-    class Level(models.TextChoices):
-        BEGINNER = "beginner", "Beginner"
-        ADVANCED = "advanced", "Advanced"
-
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
         PUBLISHED = "published", "Published"
 
+    class Type(models.TextChoices):
+        OBJECTIVE = "objective", "Objective"
+        SUBJECTIVE = "subjective", "Subjective"
     #: Duration is determined by the exam type. Single source of truth — the
     #: CheckConstraint in Meta mirrors these values, so change both together.
     DURATION_BY_TYPE = {
         Type.OBJECTIVE: 45,
-        Type.SUBJECTIVE: 36 * 60,
+        Type.SUBJECTIVE: 90,
     }
-
-    name = models.CharField(max_length=255)
-
+    subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name="exams")
+    exam_name = models.CharField(max_length=255, default=subject.name + " Certification Exam")
+    candidate_name = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="exams")
     #: Mirrors the slug the main site already uses in its catalog URLs
     #: (testmuai.com/certifications/<slug>/). Internal, but keeping them aligned
     #: gives both systems one vocabulary.
     slug = models.SlugField(max_length=255, unique=True)
-
-    level = models.CharField(max_length=16, choices=Level.choices)
+    level = models.CharField(max_length=16, choices=subject.level)
     description = models.TextField(blank=True)
-    icon_url = models.URLField(blank=True)
     marketing_url = models.URLField(blank=True)
 
     #: TestMu AI's own numeric course id, as passed by the current redirect
@@ -143,7 +145,7 @@ class Exam(models.Model):
 
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
 
-    type = models.CharField(max_length=16, choices=Type.choices, default=Type.OBJECTIVE)
+    exam_type = models.CharField(max_length=16, choices=Type.choices, default=Type.OBJECTIVE)
 
     #: Minutes, per repo convention that durations state their unit. Set from
     #: `type` — leave it blank and save() fills it in.
@@ -153,10 +155,11 @@ class Exam(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    scheduled_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         db_table = "exams"
-        ordering = ["name"]
+        ordering = ["scheduled_at"]
         constraints = [
             # The database refuses a mismatched pair no matter how the row is
             # written — admin, shell, bulk_create, or raw SQL. clean() and
@@ -196,11 +199,6 @@ class Exam(models.Model):
         if not self.duration_minutes:
             self.duration_minutes = self.DURATION_BY_TYPE[self.type]
         super().save(*args, **kwargs)
-
-    @property
-    def is_bookable(self) -> bool:
-        # Once exam versions exist this also requires a published version.
-        return self.status == self.Status.PUBLISHED
 
 
 class Booking(models.Model):
