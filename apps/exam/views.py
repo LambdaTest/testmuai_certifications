@@ -13,7 +13,7 @@ from django.shortcuts import render
 
 from . import timezones
 from .forms import BookingForm
-from .models import Certification
+from .models import Exam
 
 
 def _exam_payload():
@@ -25,7 +25,7 @@ def _exam_payload():
             "level": c.get_level_display(),
             "description": c.description,
         }
-        for c in Certification.objects.filter(status=Certification.Status.PUBLISHED)
+        for c in Exam.objects.filter(status=Exam.Status.PUBLISHED)
     ]
 
 
@@ -37,7 +37,7 @@ def book(request):
     hint = request.GET.get("exam") or request.GET.get("id")
     preselected = ""
     if hint:
-        published = Certification.objects.filter(status=Certification.Status.PUBLISHED)
+        published = Exam.objects.filter(status=Exam.Status.PUBLISHED)
         match = (
             published.filter(slug=hint).first()
             or published.filter(external_ref=hint).first()

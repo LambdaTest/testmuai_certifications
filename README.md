@@ -17,6 +17,22 @@ grading, and credential issuance. Replaces our current external vendor.
 
 ## Running it
 
+**Postgres first** — there is no SQLite fallback. Either:
+
+```bash
+# Docker
+docker run -d --name testmuai-pg -p 5432:5432 \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=testmuai_certifications \
+  postgres:17
+
+# or Homebrew
+brew install postgresql@17 && brew services start postgresql@17
+createdb testmuai_certifications
+```
+
+Then:
+
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
@@ -36,9 +52,11 @@ that's our `USERNAME_FIELD`:
 .venv/bin/python manage.py createsuperuser --external_id admin
 ```
 
-**Database:** SQLite by default so the project runs with no setup. Postgres is the target for
-staging and production — set `DATABASE_URL` to use it, and do so before relying on any
-database-level constraint behaviour.
+**Database: Postgres everywhere, including local development.** There is deliberately no SQLite
+fallback. SQLite differs on JSONB (which the question bank will lean on for polymorphic question
+payloads and answer keys), on `timestamptz`, on constraint enforcement, and on concurrency. A
+silent fallback means code that passes locally can behave differently in production — so if the
+connection fails, start Postgres rather than working around it.
 
 **Tailwind** currently loads from a CDN so there's no build step. Before production, build with
 the standalone CLI (no Node needed) and swap the script tag in `templates/base.html`:

@@ -14,10 +14,71 @@ re-exported from ``models/__init__.py`` — not into another app.
 """
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
+class Question(models.Model):
+    """
+    A question is a single question in an exam.
+    """
+    class Difficulty(models.TextChoices):
+        EASY = "easy", "Easy"
+        MEDIUM = "medium", "Medium"
+        HARD = "hard", "Hard"
 
-class Certification(models.Model):
+    class Type(models.TextChoices):
+        OBJECTIVE = "objective", "Objective"
+        SUBJECTIVE = "subjective", "Subjective"
+
+    question_text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="questions")
+    question_type = models.CharField(max_length=16, choices=Type.choices, default=Type.OBJECTIVE)
+    question_difficulty = models.CharField(max_length=16, choices=Difficulty.choices, default=Difficulty.EASY)
+    question_subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name="questions")
+    associated_image = models.ForeignKey(Image, on_delete=models.PROTECT, related_name="questions")
+    associated_audio = models.ForeignKey(Audio, on_delete=models.PROTECT, related_name="questions")
+    associated_video = models.ForeignKey(Video, on_delete=models.PROTECT, related_name="questions")
+    question_keywords = models.TextField(blank=True)
+    question_tags = models.TextField(blank=True)
+
+class AnswerOptions(models.Model):
+    """
+    Options that will be provided in objective questions.
+    """
+    answer_option_text = models.TextField()
+    is_correct = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="answers")
+    question = models.ForeignKey(Question, on_delete=models.PROTECT, related_name="answers")
+    
+
+class Subject(models.Model):
+    """
+    A subject is a category of exams.
+    """
+    class Type(models.TextChoices):
+        OBJECTIVE = "objective", "Objective"
+        SUBJECTIVE = "subjective", "Subjective"
+
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255, unique=True)
+    description = models.TextField(blank=True) 
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="subjects")
+    subject_type = models.CharField(max_length=16, choices=Type.choices, default=Type.OBJECTIVE)
+
+    class Meta:
+        db_table = "subjects"
+        ordering = ["name"]
+    
+    def __str__(self):
+        return self.name
+
+class Exam(models.Model):
     """
     The product a candidate earns. This app is the source of truth — the main
     TestMu AI site holds only marketing pages on top.
@@ -33,6 +94,13 @@ class Certification(models.Model):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
         PUBLISHED = "published", "Published"
+
+    #: Duration is determined by the exam type. Single source of truth — the
+    #: CheckConstraint in Meta mirrors these values, so change both together.
+    DURATION_BY_TYPE = {
+        Type.OBJECTIVE: 45,
+        Type.SUBJECTIVE: 36 * 60,
+    }
 
     name = models.CharField(max_length=255)
 
@@ -53,15 +121,59 @@ class Certification(models.Model):
 
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
 
+    type = models.CharField(max_length=16, choices=Type.choices, default=Type.OBJECTIVE)
+
+    #: Minutes, per repo convention that durations state their unit. Set from
+    #: `type` — leave it blank and save() fills it in.
+    duration_minutes = models.PositiveIntegerField(
+        help_text="Determined by the exam type: 45 for objective, 2160 (36h) for subjective."
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = "certifications"
+        db_table = "exams"
         ordering = ["name"]
+        constraints = [
+            # The database refuses a mismatched pair no matter how the row is
+            # written — admin, shell, bulk_create, or raw SQL. clean() and
+            # save() are conveniences; this is the guarantee.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(type="objective", duration_minutes=45)
+                    | models.Q(type="subjective", duration_minutes=36 * 60)
+                ),
+                name="exam_duration_matches_type",
+            ),
+        ]
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        """Form-level validation — gives a readable error instead of IntegrityError."""
+        super().clean()
+        expected = self.DURATION_BY_TYPE.get(self.type)
+        if expected is None:
+            raise ValidationError({"type": "Unknown exam type."})
+        if not self.duration_minutes:
+            self.duration_minutes = expected
+        elif self.duration_minutes != expected:
+            raise ValidationError(
+                {
+                    "duration_minutes": (
+                        f"{self.get_type_display()} exams must be {expected} minutes."
+                    )
+                }
+            )
+
+    def save(self, *args, **kwargs):
+        # Fill in the duration for callers that skip full_clean() — the shell,
+        # scripts, the seed command.
+        if not self.duration_minutes:
+            self.duration_minutes = self.DURATION_BY_TYPE[self.type]
+        super().save(*args, **kwargs)
 
     @property
     def is_bookable(self) -> bool:
@@ -93,9 +205,7 @@ class Booking(models.Model):
         blank=True,
     )
 
-    certification = models.ForeignKey(
-        Certification, on_delete=models.PROTECT, related_name="bookings"
-    )
+    exam = models.ForeignKey(Exam, on_delete=models.PROTECT, related_name="bookings")
 
     #: Stored UTC. Always.
     scheduled_at = models.DateTimeField()
@@ -114,17 +224,17 @@ class Booking(models.Model):
         db_table = "bookings"
         ordering = ["-scheduled_at"]
         constraints = [
-            # One open booking per certification per candidate. Partial, so a
+            # One open booking per exam per candidate. Partial, so a
             # cancelled booking doesn't block rebooking.
             models.UniqueConstraint(
-                fields=["candidate", "certification"],
+                fields=["candidate", "exam"],
                 condition=models.Q(status="booked"),
-                name="one_open_booking_per_certification",
+                name="one_open_booking_per_exam",
             ),
         ]
 
     def __str__(self):
-        return f"{self.certification} @ {self.scheduled_at:%Y-%m-%d %H:%M} UTC"
+        return f"{self.exam} @ {self.scheduled_at:%Y-%m-%d %H:%M} UTC"
 
     @property
     def local_scheduled_at(self):

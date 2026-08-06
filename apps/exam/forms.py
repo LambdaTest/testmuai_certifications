@@ -13,12 +13,12 @@ from django.conf import settings
 from django.utils import timezone as dj_timezone
 
 from . import timezones
-from .models import Booking, Certification
+from .models import Booking, Exam
 
 
 class BookingForm(forms.Form):
-    certification = forms.ModelChoiceField(
-        queryset=Certification.objects.filter(status=Certification.Status.PUBLISHED),
+    exam = forms.ModelChoiceField(
+        queryset=Exam.objects.filter(status=Exam.Status.PUBLISHED),
         to_field_name="slug",
     )
     date = forms.DateField()
@@ -65,7 +65,7 @@ class BookingForm(forms.Form):
     def save(self, candidate=None) -> Booking:
         return Booking.objects.create(
             candidate=candidate,
-            certification=self.cleaned_data["certification"],
+            exam=self.cleaned_data["exam"],
             scheduled_at=self.cleaned_data["scheduled_at"],
             booked_timezone=self.cleaned_data["timezone"],
         )

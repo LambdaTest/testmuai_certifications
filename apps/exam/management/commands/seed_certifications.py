@@ -9,10 +9,10 @@ works for staging and fresh local databases, and is never wasted work.
 
 from django.core.management.base import BaseCommand
 
-from apps.exam.models import Certification
+from apps.exam.models import Exam
 
-B = Certification.Level.BEGINNER
-A = Certification.Level.ADVANCED
+B = Exam.Level.BEGINNER
+A = Exam.Level.ADVANCED
 
 CERTIFICATIONS = [
     ("selenium-101", "Selenium 101", B),
@@ -46,12 +46,12 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         created = updated = 0
         for slug, name, level in CERTIFICATIONS:
-            _, was_created = Certification.objects.update_or_create(
+            _, was_created = Exam.objects.update_or_create(
                 slug=slug,
                 defaults={
                     "name": name,
                     "level": level,
-                    "status": Certification.Status.PUBLISHED,
+                    "status": Exam.Status.PUBLISHED,
                     "marketing_url": f"https://www.testmuai.com/certifications/{slug}/",
                 },
             )

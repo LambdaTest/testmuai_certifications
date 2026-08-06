@@ -1,0 +1,43 @@
+# Local development services.
+#
+#   docker compose up -d          start
+#   docker compose down           stop (data survives)
+#   docker compose down -v        stop and wipe the database
+#
+# Postgres version is pinned to match RDS. Keep them the same — this project
+# relies on JSONB behaviour, partial unique indexes, and timestamptz, and a
+# version mismatch surfaces at the worst possible time.
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: testmuai-pg
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: testmuai_certifications
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d testmuai_certifications"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Not used yet. Celery will need it for background jobs — expiring abandoned
+  # attempts, releasing results, sending email.
+  redis:
+    image: redis:7-alpine
+    container_name: testmuai-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

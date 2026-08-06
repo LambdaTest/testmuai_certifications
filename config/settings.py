@@ -65,11 +65,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# Postgres is the target for staging and production. Locally we fall back to
-# SQLite so the project runs with no setup — set DATABASE_URL to use Postgres.
+# Postgres everywhere, including local development.
+#
+# No SQLite fallback on purpose. SQLite differs on JSONB (question payloads and
+# answer keys), timestamptz, constraint enforcement, and concurrency — a silent
+# fallback means code that passes locally can behave differently in production.
+# If this connection fails, start Postgres; don't work around it.
 DATABASES = {
     "default": dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        default="postgres://postgres:postgres@localhost:5432/testmuai_certifications",
         conn_max_age=600,
     )
 }

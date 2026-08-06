@@ -22,7 +22,7 @@
     <div class="mb-6 rounded-xl border border-green-600/40 bg-white p-5">
       <p class="font-medium text-green-700">Booking confirmed</p>
       <p class="mt-1 text-sm text-zinc-600">
-        {{ booked.certification.name }} —
+        {{ booked.exam.name }} —
         {{ booked.local_scheduled_at|date:"l, F j · H:i" }}
         ({{ booked.booked_timezone }})
       </p>
@@ -42,7 +42,7 @@
 
   <form method="post" action="{% url 'exam:book' %}">
     {% csrf_token %}
-    <input type="hidden" name="certification" :value="examSlug">
+    <input type="hidden" name="exam" :value="examSlug">
     <input type="hidden" name="date" :value="dateValue">
     <input type="hidden" name="hour" :value="time.h">
     <input type="hidden" name="minute" :value="time.m">
