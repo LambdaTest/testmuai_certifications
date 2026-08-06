@@ -37,11 +37,12 @@ class Question(models.Model):
     question_type = models.CharField(max_length=16, choices=Type.choices, default=Type.OBJECTIVE)
     question_difficulty = models.CharField(max_length=16, choices=Difficulty.choices, default=Difficulty.EASY)
     question_subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name="questions")
-    associated_image = models.ForeignKey(Image, on_delete=models.PROTECT, related_name="questions")
-    associated_audio = models.ForeignKey(Audio, on_delete=models.PROTECT, related_name="questions")
-    associated_video = models.ForeignKey(Video, on_delete=models.PROTECT, related_name="questions")
+    associated_image = models.ForeignKey(Image, on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
+    associated_audio = models.ForeignKey(Audio, on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
+    associated_video = models.ForeignKey(Video, on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
     question_keywords = models.TextField(blank=True)
     question_tags = models.TextField(blank=True)
+    marks = models.PositiveIntegerField(default=1)
 
 class AnswerOptions(models.Model):
     """
@@ -53,23 +54,44 @@ class AnswerOptions(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="answers")
     question = models.ForeignKey(Question, on_delete=models.PROTECT, related_name="answers")
-    
+
+class Audio(models.Model):
+    """
+    An audio file is a file that contains audio. It is associated with a question.
+    """
+    audio_file = models.FileField(upload_to="audio/")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="audios")
+
+class Image(models.Model):
+    """
+    An image file is a file that contains an image. It is associated with a question.
+    """
+    image_file = models.FileField(upload_to="image/")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="images")
+
+class Video(models.Model):
+    """
+    A video file is a file that contains video. It is associated with a question.
+    """
+    video_file = models.FileField(upload_to="video/")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="videos")
 
 class Subject(models.Model):
     """
-    A subject is a category of exams.
+    A subject is a subject of study for which a candidate can take an exam.
     """
-    class Type(models.TextChoices):
-        OBJECTIVE = "objective", "Objective"
-        SUBJECTIVE = "subjective", "Subjective"
-
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True)
     description = models.TextField(blank=True) 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="subjects")
-    subject_type = models.CharField(max_length=16, choices=Type.choices, default=Type.OBJECTIVE)
 
     class Meta:
         db_table = "subjects"
