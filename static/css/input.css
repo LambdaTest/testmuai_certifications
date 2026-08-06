@@ -1,0 +1,21 @@
+/*
+ * Production Tailwind entry point.
+ *
+ * base.html currently loads the Tailwind browser build from a CDN so the
+ * project runs with no build step. Before production, build this file with the
+ * standalone CLI (no Node required) and swap the CDN script for the output:
+ *
+ *   tailwindcss -i static/css/input.css -o static/css/output.css --minify
+ */
+
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #6b5ce7;
+  --color-surface: #f4f5fb;
+  --color-highlight: #e7e6df;
+}
+
+[x-cloak] {
+  display: none !important;
+}

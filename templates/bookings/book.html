@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Book your exam · TestMu AI Certifications{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl px-4 py-10"
+     x-data="bookingPage({
+       exams: {{ exams_json }},
+       timezones: {{ timezone_options_json }},
+       defaultTimezone: '{{ default_timezone }}',
+       preselected: '{{ preselected }}',
+       minDaysAhead: {{ min_days_ahead }},
+       maxMonthsAhead: {{ max_months_ahead }}
+     })">
+
+  <header class="mb-8">
+    <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">Book your exam</h1>
+  </header>
+
+  {% if booked %}
+    <div class="mb-6 rounded-xl border border-green-600/40 bg-white p-5">
+      <p class="font-medium text-green-700">Booking confirmed</p>
+      <p class="mt-1 text-sm text-zinc-600">
+        {{ booked.certification.name }} —
+        {{ booked.local_scheduled_at|date:"l, F j · H:i" }}
+        ({{ booked.booked_timezone }})
+      </p>
+    </div>
+  {% endif %}
+
+  {% if form.errors %}
+    <div class="mb-6 rounded-xl border border-red-500/40 bg-white p-5">
+      <p class="font-medium text-red-700">That booking couldn't be made</p>
+      <ul class="mt-1 list-disc pl-5 text-sm text-zinc-600">
+        {% for field, errors in form.errors.items %}
+          {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <form method="post" action="{% url 'bookings:book' %}">
+    {% csrf_token %}
+    <input type="hidden" name="certification" :value="examSlug">
+    <input type="hidden" name="date" :value="dateValue">
+    <input type="hidden" name="hour" :value="time.h">
+    <input type="hidden" name="minute" :value="time.m">
+    <input type="hidden" name="timezone" :value="timezone">
+
+    <div class="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+
+      {# ---- Choose an exam ---- #}
+      <div class="mb-1 text-lg font-semibold tracking-tight">Choose an exam</div>
+      <p class="mb-4 text-sm text-zinc-500">
+        Only published certifications are listed.
+      </p>
+
+      <div class="flex justify-center">
+        <div class="relative w-full sm:w-[26rem]">
+          <select x-model="examSlug" @change="reset()"
+                  aria-label="Certification exam"
+                  class="h-11 w-full appearance-none rounded-lg border border-zinc-300 bg-white px-3 pr-9 text-sm outline-none focus-visible:border-[--color-brand] focus-visible:ring-3 focus-visible:ring-[--color-brand]/30">
+            <option value="">Choose an exam</option>
+            <template x-for="e in exams" :key="e.slug">
+              <option :value="e.slug" x-text="e.name + ' · ' + e.level"></option>
+            </template>
+          </select>
+          <svg class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-zinc-400"
+               viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/>
+          </svg>
+        </div>
+      </div>
+
+      {# ---- Calendar + time ---- #}
+      <template x-if="exam">
+        <div>
+          <hr class="my-6 border-zinc-200">
+          <div class="flex flex-col gap-6 md:flex-row md:items-start">
+
+            {# Calendar #}
+            <div class="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+              <div class="mb-2 flex items-center justify-between px-1">
+                <button type="button" @click="prevMonth()" :disabled="!canGoBack"
+                        class="rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 disabled:opacity-30"
+                        aria-label="Previous month">
+                  <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 0 1-.02 1.06L8.832 10l3.938 3.71a.75.75 0 1 1-1.04 1.08l-4.5-4.25a.75.75 0 0 1 0-1.08l4.5-4.25a.75.75 0 0 1 1.06.02Z" clip-rule="evenodd"/></svg>
+                </button>
+                <div class="text-sm font-semibold" x-text="monthLabel"></div>
+                <button type="button" @click="nextMonth()" :disabled="!canGoForward"
+                        class="rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 disabled:opacity-30"
+                        aria-label="Next month">
+                  <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clip-rule="evenodd"/></svg>
+                </button>
+              </div>
+
+              <div class="grid grid-cols-7 gap-0.5 px-1 pb-1 text-center text-xs text-zinc-500">
+                <template x-for="d in ['Su','Mo','Tu','We','Th','Fr','Sa']" :key="d">
+                  <div x-text="d"></div>
+                </template>
+              </div>
+
+              <div class="grid grid-cols-7 gap-0.5">
+                <template x-for="cell in monthGrid" :key="cell.key">
+                  <button type="button"
+                          @click="cell.selectable && selectDay(cell.iso)"
+                          :disabled="!cell.selectable"
+                          :aria-current="cell.iso === dateValue ? 'date' : null"
+                          :class="[
+                            'size-10 rounded-lg text-sm',
+                            !cell.inMonth && 'text-zinc-300',
+                            cell.selectable
+                              ? 'hover:bg-zinc-100 cursor-pointer'
+                              : 'text-zinc-300 cursor-not-allowed',
+                            cell.iso === dateValue && 'bg-zinc-900 text-white hover:bg-zinc-900'
+                          ]"
+                          x-text="cell.day"></button>
+                </template>
+              </div>
+            </div>
+
+            {# Time panel #}
+            <div class="min-w-0 flex-1">
+              <div class="mb-3">
+                <h3 class="text-base font-semibold tracking-tight"
+                    x-text="dateValue ? longDate : 'Pick a date'"></h3>
+              </div>
+
+              <div class="rounded-xl border border-zinc-200 bg-white p-4"
+                   :class="!dateValue && 'pointer-events-none opacity-50'">
+                <p class="mb-3 flex items-center gap-1.5 text-sm font-medium">
+                  <svg class="size-4 text-zinc-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .28.16.54.4.67l3 1.5a.75.75 0 1 0 .7-1.34l-2.6-1.3V5Z" clip-rule="evenodd"/></svg>
+                  Choose your time
+                </p>
+
+                <div class="flex items-start gap-2">
+                  {# Time combobox #}
+                  <div class="relative" @click.outside="timeOpen = false">
+                    <input type="text" x-model="timeText"
+                           @focus="timeOpen = true"
+                           @input="timeOpen = true"
+                           @change="commitTime()"
+                           @keydown.enter.prevent="commitTime(); timeOpen = false"
+                           @keydown.escape="timeOpen = false"
+                           aria-label="Time"
+                           class="h-9 w-24 rounded-md border border-zinc-300 px-2 text-sm outline-none focus-visible:border-[--color-brand] focus-visible:ring-3 focus-visible:ring-[--color-brand]/30">
+                    <div x-show="timeOpen" x-cloak
+                         class="absolute z-50 mt-1 max-h-56 w-28 overflow-y-auto rounded-lg border border-zinc-200 bg-white py-1 shadow-md">
+                      <template x-for="s in timeSuggestions" :key="s">
+                        <button type="button"
+                                @click="timeText = s; commitTime(); timeOpen = false"
+                                :class="['block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-100',
+                                         s === timeText && 'bg-zinc-100']"
+                                x-text="s"></button>
+                      </template>
+                    </div>
+                  </div>
+
+                  {# Timezone: compact offset on the trigger, place underneath #}
+                  <div class="min-w-0">
+                    <div class="relative inline-flex">
+                      <select x-model="timezone" @change="emit()"
+                              aria-label="Timezone"
+                              class="peer absolute inset-0 w-full cursor-pointer opacity-0">
+                        <template x-for="t in timezones" :key="t.value">
+                          <option :value="t.value" x-text="t.label + ' · ' + t.place"></option>
+                        </template>
+                      </select>
+                      <span aria-hidden="true"
+                            class="pointer-events-none inline-flex h-9 items-center gap-1 rounded-md border border-zinc-300 px-2 text-sm whitespace-nowrap peer-focus-visible:border-[--color-brand] peer-focus-visible:ring-3 peer-focus-visible:ring-[--color-brand]/30">
+                        <span x-text="gmtLabel"></span>
+                        <svg class="size-3.5 text-zinc-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/></svg>
+                      </span>
+                    </div>
+                    <p class="mt-1 truncate pl-0.5 text-xs text-zinc-500" x-text="placeLabel"></p>
+                  </div>
+                </div>
+
+                <template x-if="dateValue">
+                  <p class="mt-4 rounded-lg bg-[--color-highlight] px-3 py-2 text-sm font-medium">
+                    <span x-text="summary"></span>
+                    <span class="font-normal text-zinc-500" x-text="gmtLabel"></span>
+                  </p>
+                </template>
+              </div>
+
+              <p x-show="!dateValue" class="mt-3 text-xs text-zinc-500">
+                Select a date on the calendar first, then set the exact time that suits you.
+              </p>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="!exam">
+        <p class="mt-6 rounded-lg border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500">
+          Choose an exam above to see the calendar.
+        </p>
+      </template>
+    </div>
+
+    {# ---- Confirm bar ---- #}
+    <template x-if="exam && dateValue">
+      <div class="mt-6 rounded-2xl border border-[--color-brand]/40 bg-white p-5">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="font-medium" x-text="exam.name"></p>
+            <p class="text-sm text-zinc-500">
+              <span x-text="summary"></span> <span x-text="gmtLabel"></span>
+            </p>
+          </div>
+          <button type="submit"
+                  class="inline-flex h-11 items-center gap-2 rounded-lg bg-zinc-900 px-5 text-sm font-medium text-white hover:bg-zinc-800">
+            Confirm booking
+            <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clip-rule="evenodd"/></svg>
+          </button>
+        </div>
+        <p class="mt-3 text-xs text-zinc-500">
+          Double-check the time and timezone: missing your exam cannot be undone.
+        </p>
+      </div>
+    </template>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/booking.js' %}"></script>
+{% endblock %}
