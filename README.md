@@ -70,6 +70,44 @@ what isn't part of that — accounts, and the candidate dashboard once it exists
 When `exam/models.py` outgrows a single file, split it into a `models/` package — not into
 another app. App boundaries are baked into migrations and are expensive to move.
 
+## Management commands
+
+Custom `manage.py` subcommands live in `apps/<app>/management/commands/`. Any file there with a
+`Command` class becomes a subcommand named after the file — both `__init__.py` files are required
+or Django silently won't find it.
+
+### `seed_certifications`
+
+Creates or updates the 22-certification catalog. Matched on **slug**, which is the identity.
+
+```bash
+.venv/bin/python manage.py seed_certifications
+```
+
+| | Fields |
+|---|---|
+| **Written on every run** | `name` · `level` · `status` (always `published`) · `marketing_url` (derived from the slug) |
+| **Left alone** | `description` · `icon_url` · `external_ref` |
+
+Three things to know:
+
+- **Idempotent.** Uses `update_or_create`, so re-running updates rather than duplicating.
+- **It overwrites admin edits to the fields it owns.** Rename a certification through the Django
+  admin and the next run reverts it. That's intentional — the seed is the source of truth for
+  those four fields — so anything that should be admin-editable must come *out* of `defaults`.
+- **It never deletes.** Removing an entry from `CERTIFICATIONS` leaves the row in place.
+  Deleting a certification that has bookings or issued credentials against it must never be a
+  side effect of running a seed script.
+
+> **Everything it seeds is `published`, so everything is bookable.** Fine for a demo, wrong for
+> real: a certification shouldn't be bookable until it has a published exam version with
+> questions behind it. `Certification.is_bookable` currently checks only status and needs the
+> version check once exam versions exist.
+
+Seed scripts are preferred over hand-entry through the admin — repeatable for fresh local
+databases, staging, and CI, and they show up in a diff. Recurring work (expiring abandoned
+attempts, releasing results) becomes a Celery task instead, not a command someone has to cron.
+
 ## Two rules to know before writing anything
 
 **1. Timezone conversion happens in one place.** `apps/exam/timezones.py` owns every
