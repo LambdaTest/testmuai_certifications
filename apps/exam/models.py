@@ -201,7 +201,7 @@ class Exam(models.Model):
         super().save(*args, **kwargs)
 
 
-class Booking(models.Model):
+class ExamBooking(models.Model):
     """
     Self-scheduled, not slot-based: candidates pick their own date and time.
     There are no pre-defined slots and no capacity, so there is no seat
@@ -224,7 +224,7 @@ class Booking(models.Model):
         null=True,
         blank=True,
     )
-
+    booking_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
     exam = models.ForeignKey(Exam, on_delete=models.PROTECT, related_name="bookings")
 
     #: Stored UTC. Always.
