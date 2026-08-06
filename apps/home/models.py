@@ -1,13 +1,12 @@
 """
-Candidate and staff accounts.
+Cross-cutting models — currently just the user.
 
-This app never authenticates anyone directly. Identity comes from TestMu AI's
-existing login over OIDC — see archived/docs/auth.md. There is no sign-in form
-and no usable password.
+``home`` holds what isn't part of the assessment domain: accounts, the candidate
+dashboard, account settings. Everything about certifications, booking, sitting an
+exam, grading, and credentials lives in ``apps.exam``.
 
-AUTH_USER_MODEL is baked into Django's migration graph, so this model had to be
-right before the first migration. Changing it later means starting the migration
-history over.
+Dependencies point one way: ``home`` may import from ``exam``; ``exam`` reaches
+the user only through ``settings.AUTH_USER_MODEL``.
 """
 
 from django.contrib.auth.models import AbstractUser, BaseUserManager
@@ -42,19 +41,28 @@ class UserManager(BaseUserManager):
             **extra,
         )
         # The only accounts with a real password are local superusers, so the
-        # Django admin remains reachable before OIDC is wired up.
+        # Django admin stays reachable before OIDC is wired up.
         user.set_password(password)
         user.save(using=self._db)
         return user
 
 
 class User(AbstractUser):
+    """
+    This app never authenticates anyone directly. Identity comes from TestMu AI's
+    existing login over OIDC — see archived/docs/auth.md. No sign-in form, no
+    usable password.
+
+    AUTH_USER_MODEL is baked into Django's migration graph, so this had to be
+    right before the first migration.
+    """
+
     class Role(models.TextChoices):
         CANDIDATE = "candidate", "Candidate"
         GRADER = "grader", "Grader"
         ADMIN = "admin", "Admin"
 
-    # Replaced by external_id.
+    # Replaced by external_id / display_name.
     username = None
     first_name = None
     last_name = None
@@ -63,21 +71,19 @@ class User(AbstractUser):
     #: parsed, never assumed numeric, never assumed to be an email.
     external_id = models.CharField(max_length=255, unique=True)
 
-    #: Refreshed from the identity provider on every login. A contact
-    #: attribute, never an identity — people change email addresses.
+    #: Refreshed from the provider on every login. A contact attribute, never an
+    #: identity — people change email addresses.
     email = models.EmailField(blank=True)
 
-    #: Single field on purpose. Name structures vary too much across cultures
-    #: for first/last to be safe, and this string ends up on a credential.
+    #: Single field on purpose. Name structures vary too much across cultures for
+    #: first/last to be safe, and this string ends up on a credential.
     display_name = models.CharField(max_length=255, blank=True)
 
     contact_number = models.CharField(max_length=32, blank=True)
 
     #: Held locally. The identity provider establishes who you are; it must not
     #: be able to grant permissions here.
-    role = models.CharField(
-        max_length=16, choices=Role.choices, default=Role.CANDIDATE
-    )
+    role = models.CharField(max_length=16, choices=Role.choices, default=Role.CANDIDATE)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

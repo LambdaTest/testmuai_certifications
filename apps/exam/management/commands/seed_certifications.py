@@ -9,7 +9,7 @@ works for staging and fresh local databases, and is never wasted work.
 
 from django.core.management.base import BaseCommand
 
-from apps.certifications.models import Certification
+from apps.exam.models import Certification
 
 B = Certification.Level.BEGINNER
 A = Certification.Level.ADVANCED
@@ -58,6 +58,4 @@ class Command(BaseCommand):
             created += was_created
             updated += not was_created
 
-        self.stdout.write(
-            self.style.SUCCESS(f"{created} created, {updated} updated.")
-        )
+        self.stdout.write(self.style.SUCCESS(f"{created} created, {updated} updated."))

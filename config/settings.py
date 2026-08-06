@@ -31,9 +31,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "apps.accounts",
-    "apps.certifications",
-    "apps.bookings",
+    "apps.home",
+    "apps.exam",
 ]
 
 MIDDLEWARE = [
@@ -76,8 +75,8 @@ DATABASES = {
 }
 
 # Must be set before the first migration. Changing it afterwards means starting
-# the migration history over — see apps/accounts/models.py.
-AUTH_USER_MODEL = "accounts.User"
+# the migration history over — see apps/home/models.py.
+AUTH_USER_MODEL = "home.User"
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},

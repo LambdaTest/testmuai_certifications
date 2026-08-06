@@ -11,10 +11,9 @@ import json
 from django.conf import settings
 from django.shortcuts import render
 
-from apps.certifications.models import Certification
-
 from . import timezones
 from .forms import BookingForm
+from .models import Certification
 
 
 def _exam_payload():
@@ -34,15 +33,15 @@ def book(request):
     # Optional prefill hint from the main site. Its redirect carries TestMu AI's
     # own numeric course id (?id=2934); ?exam=<slug> is also accepted. A missing,
     # unknown or stale value falls back silently to "Choose an exam" — never an
-    # error. See archived/docs — nothing depends on this working.
+    # error. Nothing depends on this working.
     hint = request.GET.get("exam") or request.GET.get("id")
     preselected = ""
     if hint:
-        match = Certification.objects.filter(
-            status=Certification.Status.PUBLISHED
-        ).filter(slug=hint).first() or Certification.objects.filter(
-            status=Certification.Status.PUBLISHED, external_ref=hint
-        ).first()
+        published = Certification.objects.filter(status=Certification.Status.PUBLISHED)
+        match = (
+            published.filter(slug=hint).first()
+            or published.filter(external_ref=hint).first()
+        )
         if match:
             preselected = match.slug
 
@@ -53,18 +52,17 @@ def book(request):
         # Candidate is None until the OIDC integration lands.
         booked = form.save(candidate=None)
 
-    browser_tz = timezones.DEFAULT_TIMEZONE
+    exams = _exam_payload()
+    tz_options = timezones.timezone_options(timezones.DEFAULT_TIMEZONE)
 
     context = {
-        "exams": _exam_payload(),
-        "exams_json": json.dumps(_exam_payload()),
-        "timezone_options": timezones.timezone_options(browser_tz),
-        "timezone_options_json": json.dumps(timezones.timezone_options(browser_tz)),
-        "default_timezone": browser_tz,
+        "exams_json": json.dumps(exams),
+        "timezone_options_json": json.dumps(tz_options),
+        "default_timezone": timezones.DEFAULT_TIMEZONE,
         "preselected": preselected,
         "min_days_ahead": settings.BOOKING_MIN_DAYS_AHEAD,
         "max_months_ahead": settings.BOOKING_MAX_MONTHS_AHEAD,
         "form": form,
         "booked": booked,
     }
-    return render(request, "bookings/book.html", context)
+    return render(request, "exam/book.html", context)

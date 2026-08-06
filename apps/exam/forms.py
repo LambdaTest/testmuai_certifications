@@ -12,10 +12,8 @@ from django import forms
 from django.conf import settings
 from django.utils import timezone as dj_timezone
 
-from apps.certifications.models import Certification
-
 from . import timezones
-from .models import Booking
+from .models import Booking, Certification
 
 
 class BookingForm(forms.Form):

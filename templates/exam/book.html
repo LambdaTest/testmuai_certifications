@@ -40,7 +40,7 @@
     </div>
   {% endif %}
 
-  <form method="post" action="{% url 'bookings:book' %}">
+  <form method="post" action="{% url 'exam:book' %}">
     {% csrf_token %}
     <input type="hidden" name="certification" :value="examSlug">
     <input type="hidden" name="date" :value="dateValue">

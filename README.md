@@ -50,19 +50,29 @@ tailwindcss -i static/css/input.css -o static/css/output.css --minify
 ## Layout
 
 ```
-config/                 settings, root URLconf, wsgi/asgi
+config/         settings, root URLconf, wsgi/asgi
 apps/
-  accounts/             User model — keyed on the OIDC `sub`, no passwords
-  certifications/       Certification catalog + seed command
-  bookings/             Booking model, form, view, timezone helpers
-templates/              base.html + per-app templates
-static/                 css/input.css, js/booking.js
-archived/               the previous Next.js implementation — see below
+  home/         accounts and cross-cutting — User model, dashboard (later)
+  exam/         the assessment domain — certifications, bookings, and to come:
+                exam versions, questions, attempts, grading, credentials
+templates/      base.html + per-app templates
+static/         css/input.css, js/booking.js
+archived/       the previous Next.js implementation — see below
 ```
+
+**Two apps, deliberately.** `exam` is one cohesive domain: certifications, exam versions,
+questions, bookings, attempts, grading, and credentials all constrain one another. `home` holds
+what isn't part of that — accounts, and the candidate dashboard once it exists.
+
+**Dependencies point one way.** `exam` reaches the user only through `settings.AUTH_USER_MODEL`
+(a string, so no import); `home` may import from `exam`, never the reverse.
+
+When `exam/models.py` outgrows a single file, split it into a `models/` package — not into
+another app. App boundaries are baked into migrations and are expensive to move.
 
 ## Two rules to know before writing anything
 
-**1. Timezone conversion happens in one place.** `apps/bookings/timezones.py` owns every
+**1. Timezone conversion happens in one place.** `apps/exam/timezones.py` owns every
 conversion between a candidate's wall-clock choice and the stored UTC instant. Times are stored
 UTC and displayed in the zone the candidate booked in, always with the offset labelled. A
 candidate who misreads their booking time misses their exam, and it is unrecoverable.

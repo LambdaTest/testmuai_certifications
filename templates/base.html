@@ -5,9 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}TestMu AI Certifications{% endblock %}</title>
 
-  {# Dev only. Before production, build with the Tailwind standalone CLI:
-     tailwindcss -i static/css/input.css -o static/css/output.css --minify
-     and swap this for {% static 'css/output.css' %}. #}
+  {% comment %}
+    Dev only. Before production, build with the Tailwind standalone CLI:
+      tailwindcss -i static/css/input.css -o static/css/output.css --minify
+    then replace this script with a stylesheet link to static/css/output.css.
+
+    Note: {# #} is single-line only in Django — a multi-line one renders as
+    visible text on the page.
+  {% endcomment %}
   <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
 
   <script defer src="https://unpkg.com/alpinejs@3/dist/cdn.min.js"></script>
@@ -19,12 +24,21 @@
       --color-highlight: #e7e6df;
     }
   </style>
+
+  {% comment %}
+    Alpine's x-cloak needs a rule to do anything. It lives in input.css for the
+    production build, but that file isn't loaded while we're on the CDN — without
+    this the time-suggestion list flashes open before Alpine initialises.
+  {% endcomment %}
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
 </head>
 
 <body class="flex min-h-full flex-col bg-[--color-surface] text-zinc-900 antialiased">
   <header class="border-b border-zinc-200 bg-white">
     <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
-      <a href="{% url 'bookings:book' %}" class="flex items-baseline gap-2">
+      <a href="{% url 'exam:book' %}" class="flex items-baseline gap-2">
         <span class="text-lg font-bold tracking-tight">TestMu AI</span>
         <span class="text-sm text-zinc-500">Certifications</span>
       </a>
