@@ -5,108 +5,121 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}TestMu AI Certifications{% endblock %}</title>
 
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
   {% comment %}
     Dev only. Before production, build with the Tailwind standalone CLI:
       tailwindcss -i static/css/input.css -o static/css/output.css --minify
     then replace this script with a stylesheet link to static/css/output.css.
-
-    Note: {# #} is single-line only in Django — a multi-line one renders as
-    visible text on the page.
   {% endcomment %}
   <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
   <script defer src="https://unpkg.com/alpinejs@3/dist/cdn.min.js"></script>
 
+  {% comment %}
+    Tokens from testmu-design-system.md — keep these in sync with
+    static/css/input.css so the production build matches.
+  {% endcomment %}
   <style type="text/tailwindcss">
     @theme {
-      --color-brand: #2563eb;
-      --color-surface: #ffffff;
-      --color-highlight: #eff6ff;
+      --font-sans: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+      --color-brand: #2C86EE;
+      --color-brand-dark: #1A6FD4;
+      --color-brand-tint: #EAF2FD;
+      --color-ink: #101010;
+      --color-body: #333333;
+      --color-muted: #666666;
+      --color-faint: #98A0AB;
+      --color-line: #E8E8E8;
+      --color-surface: #F8F9FB;
+      --color-dark: #0E0F13;
+      --color-ok: #0E8A45;
+      --color-ok-tint: #EAF7EF;
+      --color-warn: #B97F10;
+      --color-warn-tint: #FDF2E7;
+      --color-danger: #C2402A;
+      --color-danger-tint: #FBEBEB;
     }
   </style>
-
-  {% comment %}
-    x-cloak needs a rule to do anything. It lives in input.css for the
-    production build, but that file isn't loaded while we're on the CDN.
-  {% endcomment %}
   <style>
     [x-cloak] { display: none !important; }
   </style>
 </head>
 
-<body class="flex min-h-full flex-col bg-white text-zinc-900 antialiased">
+<body class="flex min-h-full flex-col bg-white font-sans text-ink antialiased">
 
-  <header class="border-b border-zinc-200 bg-white">
-    <div class="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:gap-8">
+  {% block conf_strip %}
+    <div class="bg-dark px-4 py-2.5 text-center text-[13px] text-white">
+      Don't miss TestMu Conf '26 · Aug 19–21 — the Certification Marathon is live.
+      <a href="https://www.testmuai.com/testmuconf-2026/" target="_blank" rel="noreferrer"
+         class="font-semibold text-[#8FC1FF] hover:underline">Register free →</a>
+    </div>
+  {% endblock %}
 
-      {# Logo #}
-      <a href="{% url 'exam:book' %}" class="flex shrink-0 items-center gap-2.5">
-        <span class="grid size-9 place-items-center rounded-xl bg-zinc-900 text-lg leading-none font-semibold text-white">
-          μ
-        </span>
-        <span class="text-xl font-bold tracking-tight whitespace-nowrap">
-          TestMu <span class="text-blue-600">AI</span>
+  <header class="sticky top-0 z-50 border-b border-line bg-white/96 backdrop-blur">
+    <div class="mx-auto flex h-16 max-w-[1200px] items-center gap-6 px-4 sm:px-6">
+
+      <a href="https://www.testmuai.com/" target="_blank" rel="noreferrer"
+         class="flex shrink-0 items-center gap-2.5 text-ink">
+        <span class="grid size-[30px] place-items-center rounded-lg bg-dark text-base font-extrabold text-white">µ</span>
+        <span class="text-[17px] font-extrabold tracking-[-0.2px] whitespace-nowrap">
+          TestMu <span class="text-brand">AI</span>
         </span>
       </a>
 
       {% comment %}
-        The first three point at the main TestMu AI site — confirm the real
-        paths before this ships. Only Certifications lives in this app.
+        The first four point at the main TestMu AI site; only Certifications
+        lives in this app.
       {% endcomment %}
-      <nav class="hidden items-center gap-1 md:flex">
-        <a href="https://www.testmuai.com/platform/"
-           class="rounded-lg px-3 py-2 text-[15px] font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900">Platform</a>
-        <a href="https://www.testmuai.com/ai-agents/"
-           class="rounded-lg px-3 py-2 text-[15px] font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900">AI Agents</a>
-        <a href="https://www.testmuai.com/resources/"
-           class="rounded-lg px-3 py-2 text-[15px] font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-900">Resources</a>
+      <nav class="hidden items-center gap-0.5 md:flex">
+        <a href="https://www.testmuai.com/feature/" target="_blank" rel="noreferrer"
+           class="rounded-lg px-3 py-2 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Platform</a>
+        <a href="https://www.testmuai.com/agents/" target="_blank" rel="noreferrer"
+           class="rounded-lg px-3 py-2 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">AI Agents</a>
+        <a href="https://www.testmuai.com/learning-hub/" target="_blank" rel="noreferrer"
+           class="rounded-lg px-3 py-2 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Resources</a>
+        <a href="https://www.testmuai.com/pricing/" target="_blank" rel="noreferrer"
+           class="rounded-lg px-3 py-2 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Pricing</a>
         <a href="{% url 'exam:book' %}" aria-current="page"
-           class="rounded-lg bg-blue-50 px-4 py-2 text-[15px] font-semibold text-blue-600">Certifications</a>
+           class="rounded-lg bg-brand-tint px-3 py-2 text-[14.5px] font-semibold text-brand-dark">Certifications</a>
       </nav>
 
-      {# Account #}
       <div class="ml-auto flex shrink-0 items-center">
         {% if user.is_authenticated %}
           <div class="relative" x-data="{ open: false }" @click.outside="open = false">
             <button type="button" @click="open = !open" :aria-expanded="open"
-                    class="flex items-center gap-2.5 rounded-full py-1 pr-2 pl-1 transition-colors hover:bg-zinc-100">
-              <span class="grid size-10 place-items-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+                    class="flex items-center gap-2 rounded-full px-2 py-1.5 hover:bg-[#F3F5F8]">
+              <span class="grid size-[34px] place-items-center rounded-full bg-brand text-[13px] font-bold text-white">
                 {{ user.display_name|default:user.email|initials }}
               </span>
-              <span class="hidden text-[15px] font-semibold whitespace-nowrap sm:block">
-                {{ user.display_name|default:user.email }}
-              </span>
-              <svg class="size-4 text-zinc-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/>
-              </svg>
+              <span class="hidden text-sm font-semibold sm:block">{{ user.display_name|default:user.email }}</span>
+              <span class="text-[10px] text-muted">▾</span>
             </button>
 
             <div x-show="open" x-cloak x-transition.opacity
-                 class="absolute right-0 z-50 mt-2 w-52 rounded-xl border border-zinc-200 bg-white py-1 shadow-lg">
-              <p class="truncate px-3 py-2 text-xs text-zinc-500">{{ user.email }}</p>
-              <a href="{% url 'exam:book' %}" class="block px-3 py-2 text-sm hover:bg-zinc-50">Book an exam</a>
+                 class="absolute right-0 z-50 mt-2 w-62 rounded-2xl border border-line bg-white p-2 shadow-[0_16px_40px_rgba(14,15,19,.14)]">
+              <div class="mb-1.5 border-b border-[#F0F1F3] px-3 py-2.5">
+                <div class="text-sm font-bold">{{ user.display_name|default:"—" }}</div>
+                <div class="mt-0.5 truncate text-[12.5px] text-muted">{{ user.email }}</div>
+              </div>
+              <a href="{% url 'exam:book' %}" class="block rounded-lg px-3 py-2.5 text-[13.5px] text-body hover:bg-[#F3F5F8] hover:text-ink">Book an exam</a>
+              <a href="https://www.testmuai.com/certifications/verify/" target="_blank" rel="noreferrer"
+                 class="block rounded-lg px-3 py-2.5 text-[13.5px] text-body hover:bg-[#F3F5F8] hover:text-ink">Verify a certificate</a>
+              <div class="my-1.5 border-t border-[#F0F1F3]"></div>
               {% comment %}
-                Points at the admin logout until the OIDC integration lands, at
-                which point this clears our session and redirects to the main
-                site's logout — see archived/docs/auth.md.
+                Admin logout until OIDC lands, at which point this clears our
+                session and redirects to the main site's logout.
               {% endcomment %}
               <form method="post" action="{% url 'admin:logout' %}">
                 {% csrf_token %}
-                <button type="submit" class="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50">
-                  Sign out
-                </button>
+                <button type="submit" class="block w-full rounded-lg px-3 py-2.5 text-left text-[13.5px] font-medium text-danger hover:bg-danger-tint">Sign out</button>
               </form>
             </div>
           </div>
         {% else %}
-          {% comment %}
-            No sign-in page in this app — identity comes from the existing
-            TestMu AI login. Until that's wired up, log in via /admin/ and this
-            becomes the account menu.
-          {% endcomment %}
           <a href="{% url 'admin:login' %}?next={{ request.path }}"
-             class="rounded-lg px-4 py-2 text-[15px] font-semibold text-blue-600 hover:bg-blue-50">
-            Sign in
-          </a>
+             class="rounded-lg px-4 py-2 text-[14.5px] font-semibold text-brand hover:bg-brand-tint">Sign in</a>
         {% endif %}
       </div>
     </div>
@@ -116,9 +129,12 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="border-t border-zinc-200 bg-white">
-    <div class="mx-auto max-w-7xl px-4 py-5 text-xs text-zinc-500 sm:px-6">
-      TestMu AI Certifications
+  <footer class="mx-auto mt-12 flex w-full max-w-[1200px] flex-wrap justify-between gap-3 border-t border-line px-4 pt-6 pb-10 text-[13px] text-muted sm:px-6">
+    <div>© 2026 TestMu AI (Formerly LambdaTest). All rights reserved.</div>
+    <div class="flex gap-[18px]">
+      <a href="https://www.testmuai.com/legal/terms-of-service/" target="_blank" rel="noreferrer" class="text-muted hover:text-ink">Terms</a>
+      <a href="https://www.testmuai.com/legal/privacy/" target="_blank" rel="noreferrer" class="text-muted hover:text-ink">Privacy</a>
+      <a href="https://www.testmuai.com/trust/" target="_blank" rel="noreferrer" class="text-muted hover:text-ink">Trust</a>
     </div>
   </footer>
 
