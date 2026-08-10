@@ -14,15 +14,13 @@
 
 {% block content %}
 <div class="mx-auto max-w-[1200px] px-4 sm:px-6">
-
-  {# ---------- Welcome ---------- #}
   <div class="flex flex-wrap items-end justify-between gap-4 pt-8 sm:pt-10">
     <div>
       <div class="mb-2 text-[11.5px] font-bold tracking-[1.6px] text-brand uppercase">
         TestMu AI Certifications
       </div>
       {# welcome_title #}
-      <h1 class="text-[clamp(24px,3.4vw,34px)] font-bold tracking-[-0.5px]">Welcome back, Imad</h1>
+      <h1 class="text-[clamp(24px,3.4vw,34px)] font-bold tracking-[-0.5px]">Welcome back, {{ user_name }} </h1>
       <p class="mt-1.5 text-[15px] text-muted">
         Track your exams, assessments, and badges — all in one place.
       </p>
