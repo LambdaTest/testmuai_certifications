@@ -59,7 +59,7 @@ class User(AbstractUser):
 
     class Role(models.TextChoices):
         CANDIDATE = "candidate", "Candidate"
-        GRADER = "grader", "Grader"
+        EXAMINER = "examiner", "Examiner"
         ADMIN = "admin", "Admin"
 
     # Replaced by external_id / display_name.
