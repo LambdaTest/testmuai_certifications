@@ -13,6 +13,8 @@ If this file grows past a few hundred lines, split it into a ``models/`` package
 re-exported from ``models/__init__.py`` — not into another app.
 """
 
+import uuid
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -36,10 +38,10 @@ class Question(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="questions")
     question_type = models.CharField(max_length=16, choices=Type.choices, default=Type.OBJECTIVE)
     question_difficulty = models.CharField(max_length=16, choices=Difficulty.choices, default=Difficulty.EASY)
-    question_subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name="questions")
-    associated_image = models.ForeignKey(Image, on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
-    associated_audio = models.ForeignKey(Audio, on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
-    associated_video = models.ForeignKey(Video, on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
+    question_subject = models.ForeignKey("Subject", on_delete=models.PROTECT, related_name="questions")
+    associated_image = models.ForeignKey("Image", on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
+    associated_audio = models.ForeignKey("Audio", on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
+    associated_video = models.ForeignKey("Video", on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
     question_keywords = models.TextField(blank=True)
     question_tags = models.TextField(blank=True)
     marks = models.PositiveIntegerField(default=1)
@@ -125,16 +127,19 @@ class Exam(models.Model):
     #: CheckConstraint in Meta mirrors these values, so change both together.
     DURATION_BY_TYPE = {
         Type.OBJECTIVE: 45,
-        Type.SUBJECTIVE: 90,
+        Type.SUBJECTIVE: 36 * 60,  # 36 hours
     }
     subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name="exams")
-    exam_name = models.CharField(max_length=255, default=subject.name + " Certification Exam")
+    exam_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Defaults to '<subject> Certification Exam' when left blank.",
+    )
     candidate_name = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="exams")
     #: Mirrors the slug the main site already uses in its catalog URLs
     #: (testmuai.com/certifications/<slug>/). Internal, but keeping them aligned
     #: gives both systems one vocabulary.
     slug = models.SlugField(max_length=255, unique=True)
-    level = models.CharField(max_length=16, choices=subject.level)
     description = models.TextField(blank=True)
     marketing_url = models.URLField(blank=True)
 
@@ -166,20 +171,28 @@ class Exam(models.Model):
             # save() are conveniences; this is the guarantee.
             models.CheckConstraint(
                 condition=(
-                    models.Q(type="objective", duration_minutes=45)
-                    | models.Q(type="subjective", duration_minutes=36 * 60)
+                    models.Q(exam_type="objective", duration_minutes=45)
+                    | models.Q(exam_type="subjective", duration_minutes=36 * 60)
                 ),
                 name="exam_duration_matches_type",
             ),
         ]
 
     def __str__(self):
-        return self.name
+        return self.exam_name
+
+    @property
+    def level(self):
+        """Level comes from the subject — one source of truth."""
+        return self.subject.subject_level
+
+    def get_level_display(self):
+        return self.subject.get_subject_level_display()
 
     def clean(self):
         """Form-level validation — gives a readable error instead of IntegrityError."""
         super().clean()
-        expected = self.DURATION_BY_TYPE.get(self.type)
+        expected = self.DURATION_BY_TYPE.get(self.exam_type)
         if expected is None:
             raise ValidationError({"type": "Unknown exam type."})
         if not self.duration_minutes:
@@ -188,16 +201,18 @@ class Exam(models.Model):
             raise ValidationError(
                 {
                     "duration_minutes": (
-                        f"{self.get_type_display()} exams must be {expected} minutes."
+                        f"{self.get_exam_type_display()} exams must be {expected} minutes."
                     )
                 }
             )
 
     def save(self, *args, **kwargs):
-        # Fill in the duration for callers that skip full_clean() — the shell,
+        # Fill in derived values for callers that skip full_clean() — the shell,
         # scripts, the seed command.
+        if not self.exam_name and self.subject_id:
+            self.exam_name = f"{self.subject.name} Certification Exam"
         if not self.duration_minutes:
-            self.duration_minutes = self.DURATION_BY_TYPE[self.type]
+            self.duration_minutes = self.DURATION_BY_TYPE[self.exam_type]
         super().save(*args, **kwargs)
 
 

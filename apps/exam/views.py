@@ -21,7 +21,7 @@ def _exam_payload():
     return [
         {
             "slug": c.slug,
-            "name": c.name,
+            "name": c.exam_name,
             "level": c.get_level_display(),
             "description": c.description,
         }

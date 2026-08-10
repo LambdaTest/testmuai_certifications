@@ -13,7 +13,7 @@ from django.conf import settings
 from django.utils import timezone as dj_timezone
 
 from . import timezones
-from .models import Booking, Exam
+from .models import Exam, ExamBooking
 
 
 class BookingForm(forms.Form):
@@ -62,8 +62,8 @@ class BookingForm(forms.Form):
         cleaned["scheduled_at"] = scheduled_at
         return cleaned
 
-    def save(self, candidate=None) -> Booking:
-        return Booking.objects.create(
+    def save(self, candidate=None) -> ExamBooking:
+        return ExamBooking.objects.create(
             candidate=candidate,
             exam=self.cleaned_data["exam"],
             scheduled_at=self.cleaned_data["scheduled_at"],
