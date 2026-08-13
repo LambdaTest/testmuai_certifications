@@ -76,7 +76,8 @@ def event_window(booking):
 
 
 def _summary(booking):
-    return booking.exam.exam_name
+    """The event title as it appears in the candidate's calendar."""
+    return f"TestMu AI Certification Exam - {booking.exam.subject.name}"
 
 
 def _description(booking):

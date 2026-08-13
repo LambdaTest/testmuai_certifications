@@ -51,7 +51,7 @@ def _next_booking(user):
             status=ExamBooking.Status.BOOKED,
             scheduled_at__gte=timezone.now(),
         )
-        .select_related("exam")
+        .select_related("exam__subject")
         .order_by("scheduled_at")
         .first()
     )

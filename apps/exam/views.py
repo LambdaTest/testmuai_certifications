@@ -82,7 +82,7 @@ def booking_ics(request, booking_id):
     booking exists to someone who has no business knowing.
     """
     booking = get_object_or_404(
-        ExamBooking.objects.select_related("exam"),
+        ExamBooking.objects.select_related("exam__subject"),
         booking_id=booking_id,
         candidate=request.user,
     )
