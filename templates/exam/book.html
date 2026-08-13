@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load tz %}
 {% load static %}
 
 {% block title %}Book Your Exam · TestMu AI Certifications{% endblock %}
@@ -23,7 +24,7 @@
       <p class="font-medium text-green-700">Booking confirmed</p>
       <p class="mt-1 text-sm text-zinc-600">
         {{ booked.exam.exam_name }} —
-        {{ booked.local_scheduled_at|date:"l, F j · H:i" }}
+        {% timezone booked.booked_timezone %}{{ booked.scheduled_at|date:"l, F j · H:i" }}{% endtimezone %}
         ({{ booked.booked_timezone }})
       </p>
     </div>
