@@ -9,11 +9,15 @@ picks their own date and time.
 import json
 
 from django.conf import settings
-from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 
 from . import timezones
+from .calendar import build_ics
 from .forms import BookingForm
-from .models import Exam
+from .models import Exam, ExamBooking
 
 
 def _exam_payload():
@@ -66,3 +70,25 @@ def book(request):
         "booked": booked,
     }
     return render(request, "exam/book.html", context)
+
+
+@login_required
+def booking_ics(request, booking_id):
+    """
+    Downloads the calendar invite for one booking.
+
+    The ownership check lives inside the lookup rather than after it, so
+    another candidate's UUID returns 404 rather than 403 — we don't confirm a
+    booking exists to someone who has no business knowing.
+    """
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam"),
+        booking_id=booking_id,
+        candidate=request.user,
+    )
+    body = build_ics(booking, url=request.build_absolute_uri(reverse("home:dashboard")))
+
+    response = HttpResponse(body, content_type="text/calendar; charset=utf-8")
+    # Without this the browser renders the text instead of saving a file.
+    response["Content-Disposition"] = f'attachment; filename="exam-{booking.booking_id}.ics"'
+    return response

@@ -71,7 +71,23 @@
             <button type="button" class="flex-auto rounded-lg border border-white/30 px-5 py-3 text-[14.5px] font-semibold text-white hover:border-white/65">Reschedule</button>
           </div>
           <div class="flex flex-wrap items-center gap-[18px]">
-            <button type="button" class="text-[13.5px] font-semibold text-[#8FC1FF] hover:text-[#B4D5FF]">Add to calendar ▾</button>
+            <div class="relative" x-data="{ open: false }" @click.outside="open = false">
+              <button type="button" @click="open = !open" :aria-expanded="open"
+                      class="text-[13.5px] font-semibold text-[#8FC1FF] hover:text-[#B4D5FF]">
+                Add to calendar ▾
+              </button>
+              <div x-show="open" x-cloak x-transition.opacity
+                   class="absolute left-0 z-50 mt-2 w-56 rounded-xl border border-line bg-white p-1.5 shadow-[0_16px_40px_rgba(14,15,19,.18)]">
+                <a href="{{ gcal_url }}" target="_blank" rel="noreferrer" @click="open = false"
+                   class="block rounded-lg px-3 py-2.5 text-[13.5px] text-body hover:bg-[#F3F5F8] hover:text-ink">
+                  Google Calendar
+                </a>
+                <a href="{% url 'exam:booking_ics' upcoming_booking.booking_id %}" @click="open = false"
+                   class="block rounded-lg px-3 py-2.5 text-[13.5px] text-body hover:bg-[#F3F5F8] hover:text-ink">
+                  Download Invite
+                </a>
+              </div>
+            </div>
             <button type="button" class="text-[13.5px] font-semibold text-[#FF9D93] hover:text-[#FFC0B9]">Cancel booking</button>
           </div>
         {% else %}

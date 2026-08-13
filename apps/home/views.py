@@ -10,6 +10,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.utils import timezone
 
+from apps.exam.calendar import google_calendar_url
 from apps.exam.models import ExamBooking
 
 
@@ -81,6 +82,9 @@ def dashboard(request):
                 "upcoming_booking": booking,
                 "exam_name": booking.exam.exam_name if booking else None,
                 "exam_countdown": _countdown(booking.scheduled_at) if booking else None,
+                # Google can only create an event — no UID in the URL — so the
+                # .ics download is the one that can move or cancel it later.
+                "gcal_url": google_calendar_url(booking) if booking else None,
             },
         )
     else:
