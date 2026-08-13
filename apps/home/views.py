@@ -8,6 +8,52 @@ credentials belongs in ``apps.exam``.
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
+from django.utils import timezone
+
+from apps.exam.models import ExamBooking
+
+
+def _countdown(scheduled_at, now=None):
+    """
+    How far away a booking is, phrased for the dashboard card.
+
+        under 60 minutes   ->  "In 45 minutes"
+        up to 20 hours     ->  "In 6 hours"
+        over 20 hours      ->  "In 2 days"
+
+    Both arguments are timezone-aware UTC; the wording is the same whatever
+    timezone the candidate booked in.
+    """
+    now = now or timezone.now()
+    minutes = (scheduled_at - now).total_seconds() / 60
+
+    if minutes <= 0:
+        return "Now"
+
+    if minutes < 60:
+        value, unit = max(1, round(minutes)), "minute"
+    elif minutes <= 20 * 60:
+        value, unit = max(1, round(minutes / 60)), "hour"
+    else:
+        value, unit = max(1, round(minutes / (60 * 24))), "day"
+
+    return f"In {value} {unit}{'' if value == 1 else 's'}"
+
+
+def _next_booking(user):
+    """The candidate's soonest upcoming booking, or None."""
+    # ExamBooking orders newest-first by default, so ask for the other
+    # direction explicitly — we want the nearest one, not the furthest.
+    return (
+        ExamBooking.objects.filter(
+            candidate=user,
+            status=ExamBooking.Status.BOOKED,
+            scheduled_at__gte=timezone.now(),
+        )
+        .select_related("exam")
+        .order_by("scheduled_at")
+        .first()
+    )
 
 @login_required
 def dashboard(request):
@@ -23,7 +69,20 @@ def dashboard(request):
     if user_role == "admin" or user_role == "examiner":
         return render(request, "home/dashboard_admin.html", {"user_name": user_name, "user_role": user_role})
     elif user_role == "candidate":
-        return render(request, "home/dashboard_candidate.html", {"user_name": user_name, "user_role": user_role})
+        booking = _next_booking(request.user)
+        return render(
+            request,
+            "home/dashboard_candidate.html",
+            {
+                "user_name": user_name,
+                "user_role": user_role,
+                # None when nothing is booked — the template shows the
+                # "No exam scheduled yet" state instead.
+                "upcoming_booking": booking,
+                "exam_name": booking.exam.exam_name if booking else None,
+                "exam_countdown": _countdown(booking.scheduled_at) if booking else None,
+            },
+        )
     else:
         # Raising is what actually produces a 404 — Django then renders
         # templates/404.html with a 404 status. Rendering that template
