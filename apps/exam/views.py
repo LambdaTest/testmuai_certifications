@@ -162,3 +162,22 @@ def my_assessments(request, status):
             "status_display": ExamBooking.Status(status).label,
         },
     )
+
+@login_required
+def explore_assessment(request, booking_id):
+    """
+    Shows the candidate's booking details for one assessment.
+    """
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam__subject"),
+        booking_id=booking_id,
+        candidate=request.user,
+    )
+
+    return render(
+        request,
+        "exam/explore_assessment.html",
+        {
+            "booking": booking,
+        },
+    )
