@@ -147,9 +147,6 @@ def my_assessments(request, status):
     """
     Shows the candidate's bookings, filtered by status.
     """
-    if status not in ExamBooking.Status.values:
-        status = "all"
-
     bookings = (
         ExamBooking.objects.filter(candidate=request.user, status=status)
         .select_related("exam__subject")
