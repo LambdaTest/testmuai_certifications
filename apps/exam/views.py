@@ -11,12 +11,12 @@ import json
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from . import timezones
 from .calendar import build_ics
-from .forms import BookingForm
+from .forms import BookingForm, RescheduleForm
 from .models import Exam, ExamBooking
 
 
@@ -30,7 +30,7 @@ def _exam_payload():
             "description": c.description,
         }
         for c in Exam.objects.filter(status=Exam.Status.PUBLISHED)
-    ]
+]
 
 
 def book(request):
@@ -92,3 +92,76 @@ def booking_ics(request, booking_id):
     # Without this the browser renders the text instead of saving a file.
     response["Content-Disposition"] = f'attachment; filename="exam-{booking.booking_id}.ics"'
     return response
+
+@login_required
+def reschedule(request, booking_id):
+    """
+    Moves an existing booking to a new slot.
+    Same ownership pattern as the .ics download: the candidate filter is part
+    of the lookup, so someone else's UUID is a 404 rather than a 403. Only an
+    open booking can be moved — a cancelled or attended one is not reschedulable.
+    """
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam__subject"),
+        booking_id=booking_id,
+        candidate=request.user,
+        status=ExamBooking.Status.BOOKED,
+    )
+
+    form = RescheduleForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        form.apply(booking)
+        return redirect("home:dashboard")
+
+    exam = booking.exam
+    return render(
+        request,
+        "exam/reschedule.html",
+        {
+            "booking": booking,
+            # The picker is the same component /book uses, which expects a list
+            # of exams. Here the exam is fixed, so it gets a list of one.
+            "exam_json": json.dumps(
+                [
+                    {
+                        "slug": exam.slug,
+                        "name": exam.exam_name,
+                        "level": exam.get_level_display(),
+                        "description": exam.description,
+                    }
+                ]
+            ),
+            "timezone_options_json": json.dumps(
+                timezones.timezone_options(booking.booked_timezone)
+            ),
+            # Open in the zone they booked in, not the browser's.
+            "default_timezone": booking.booked_timezone,
+            "min_days_ahead": settings.BOOKING_MIN_DAYS_AHEAD,
+            "max_months_ahead": settings.BOOKING_MAX_MONTHS_AHEAD,
+            "form": form,
+        },
+    )
+
+@login_required
+def my_assessments(request, status):
+    """
+    Shows the candidate's bookings, filtered by status.
+    """
+    if status not in ExamBooking.Status.values:
+        status = "all"
+
+    bookings = (
+        ExamBooking.objects.filter(candidate=request.user, status=status)
+        .select_related("exam__subject")
+        .order_by("-scheduled_at")
+    )
+
+    return render(
+        request,
+        "exam/my_assessments.html",
+        {
+            "bookings": bookings,
+            "status": status,
+            "status_display": ExamBooking.Status(status).label,
+        },
+    )

@@ -71,7 +71,8 @@
         {% if upcoming_booking %}
           <div class="flex w-full flex-wrap gap-2.5">
             <button type="button" class="flex-auto rounded-lg bg-white px-[22px] py-3 text-[14.5px] font-bold text-dark hover:bg-[#E4E9F0]">Join exam →</button>
-            <button type="button" class="flex-auto rounded-lg border border-white/30 px-5 py-3 text-[14.5px] font-semibold text-white hover:border-white/65">Reschedule</button>
+            <a href="{% url 'exam:reschedule' upcoming_booking.booking_id %}"
+               class="flex-auto rounded-lg border border-white/30 px-5 py-3 text-center text-[14.5px] font-semibold text-white hover:border-white/65">Reschedule</a>
           </div>
           <div class="flex flex-wrap items-center gap-[18px]">
             <div class="relative" x-data="{ open: false }" @click.outside="open = false">

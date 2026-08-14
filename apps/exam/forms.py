@@ -1,9 +1,13 @@
 """
-Booking form.
+Booking and rescheduling forms.
 
 The scheduling rules live here, not only in the UI. The date picker disables
 past days and caps the horizon, but a form post can be made directly — so the
 same rules are enforced server-side.
+
+Booking and rescheduling share those rules through ``ScheduleForm``. Two copies
+would drift, and a drifted rule means one route accepts a slot the other
+rejects.
 """
 
 from datetime import timedelta
@@ -16,11 +20,9 @@ from . import timezones
 from .models import Exam, ExamBooking
 
 
-class BookingForm(forms.Form):
-    exam = forms.ModelChoiceField(
-        queryset=Exam.objects.filter(status=Exam.Status.PUBLISHED),
-        to_field_name="slug",
-    )
+class ScheduleForm(forms.Form):
+    """Picks a moment in time and validates it against the booking window."""
+
     date = forms.DateField()
     hour = forms.IntegerField(min_value=0, max_value=23)
     minute = forms.IntegerField(min_value=0, max_value=59)
@@ -62,6 +64,13 @@ class BookingForm(forms.Form):
         cleaned["scheduled_at"] = scheduled_at
         return cleaned
 
+
+class BookingForm(ScheduleForm):
+    exam = forms.ModelChoiceField(
+        queryset=Exam.objects.filter(status=Exam.Status.PUBLISHED),
+        to_field_name="slug",
+    )
+
     def save(self, candidate=None) -> ExamBooking:
         return ExamBooking.objects.create(
             candidate=candidate,
@@ -69,3 +78,13 @@ class BookingForm(forms.Form):
             scheduled_at=self.cleaned_data["scheduled_at"],
             booked_timezone=self.cleaned_data["timezone"],
         )
+
+
+class RescheduleForm(ScheduleForm):
+    """Moves an existing booking. The exam never changes — only the slot."""
+
+    def apply(self, booking: ExamBooking) -> ExamBooking:
+        booking.scheduled_at = self.cleaned_data["scheduled_at"]
+        booking.booked_timezone = self.cleaned_data["timezone"]
+        booking.save(update_fields=["scheduled_at", "booked_timezone", "updated_at"])
+        return booking
