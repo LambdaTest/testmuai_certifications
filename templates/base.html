@@ -71,8 +71,13 @@
            class="rounded-lg px-3 py-2 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">AI Agents</a>
         <a href="https://www.testmuai.com/learning-hub/" target="_blank" rel="noreferrer"
            class="rounded-lg px-3 py-2 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Resources</a>
-        <a href="https://www.testmuai.com/pricing/" target="_blank" rel="noreferrer"
-           class="rounded-lg px-3 py-2 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Pricing</a>
+        {% if user.is_authenticated %}
+        <a href="{% url 'home:dashboard' %}"
+           class="rounded-lg px-3 py-2 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Dashboard</a>
+        {% else %}
+        <a href="{% url 'home:dashboard' %}"
+           class="rounded-lg px-3 py-2 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Home</a>
+        {% endif %}
         <a href="{% url 'exam:book' %}" aria-current="page"
            class="rounded-lg bg-brand-tint px-3 py-2 text-[14.5px] font-semibold text-brand-dark">Certifications</a>
       </nav>
