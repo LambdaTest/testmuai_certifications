@@ -31,7 +31,7 @@
       <select aria-label="Filter by status"
               onchange="window.location.href = this.value"
               class="h-11 w-full appearance-none rounded-lg border border-zinc-300 bg-white px-3 pr-9 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
-        <option value="{% url 'exam:myassessment' 'booked' %}"    {% if status == 'booked' %}selected{% endif %}>Booked</option>
+        <option value="{% url 'exam:myassessment' 'booked' %}"    {% if status == 'booked' %}selected{% endif %}>Upcoming</option>
         <option value="{% url 'exam:myassessment' 'attended' %}"  {% if status == 'attended' %}selected{% endif %}>Attended</option>
         <option value="{% url 'exam:myassessment' 'cancelled' %}" {% if status == 'cancelled' %}selected{% endif %}>Cancelled</option>
         <option value="{% url 'exam:myassessment' 'no_show' %}"   {% if status == 'no_show' %}selected{% endif %}>No show</option>
@@ -60,7 +60,7 @@
       </div>
     {% empty %}
       <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
-        No {{ status_display|lower }} assessments.
+        No {% if status == 'booked' %}upcoming{% else %}{{ status_display|lower }}{% endif %} assessments.
       </p>
     {% endfor %}
   </div>
