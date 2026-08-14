@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% load tz %}
+
+{% comment %}
+  One assessment in detail.
+
+  Context from apps.exam.views.explore_assessment:
+    booking – the ExamBooking, with exam and subject already selected
+
+  Google Calendar isn't offered here because the view doesn't pass `gcal_url`.
+  Add `google_calendar_url(booking)` from apps.exam.calendar to the context and
+  the second dropdown row can go in — the .ics link only needs the booking id,
+  so it works already.
+{% endcomment %}
+
+{% block title %}{{ booking.exam.exam_name }} · TestMu AI Certifications{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-3xl px-4 py-10">
+
+  <a href="{% url 'exam:myassessment' 'booked' %}"
+     class="text-[13.5px] font-semibold text-brand hover:text-brand-dark">← My Assessments</a>
+
+  <header class="mt-4 mb-6">
+    <div class="mb-2 text-[11.5px] font-bold tracking-[1.6px] text-brand uppercase">
+      {{ booking.exam.subject.name }}
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+      <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">{{ booking.exam.exam_name }}</h1>
+      {% if booking.status == 'booked' %}
+        <span class="rounded-full bg-brand-tint px-3 py-1 text-xs font-bold text-brand-dark">Upcoming</span>
+      {% elif booking.status == 'attended' %}
+        <span class="rounded-full bg-ok-tint px-3 py-1 text-xs font-bold text-ok">Attended</span>
+      {% elif booking.status == 'cancelled' %}
+        <span class="rounded-full bg-danger-tint px-3 py-1 text-xs font-bold text-danger">Cancelled</span>
+      {% else %}
+        <span class="rounded-full bg-warn-tint px-3 py-1 text-xs font-bold text-warn">No show</span>
+      {% endif %}
+    </div>
+  </header>
+
+  {# ---- When ---- #}
+  <div class="rounded-2xl border border-line bg-white p-6">
+    <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Scheduled for</div>
+    {% comment %}
+      scheduled_at is stored UTC. Rendering inside {% timezone %} shows it in the
+      zone the candidate booked in — without this Django converts to
+      settings.TIME_ZONE and silently displays UTC.
+    {% endcomment %}
+    {% timezone booking.booked_timezone %}
+      <p class="mt-2 text-2xl font-bold tracking-tight">{{ booking.scheduled_at|date:"g:i A" }}</p>
+      <p class="mt-1 text-[15px] text-muted">
+        {{ booking.scheduled_at|date:"l, F j, Y" }} · {{ booking.booked_timezone }}
+      </p>
+    {% endtimezone %}
+  </div>
+
+  {# ---- Format ---- #}
+  <div class="mt-4 grid gap-4 sm:grid-cols-3">
+    <div class="rounded-2xl border border-line bg-white p-5">
+      <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Format</div>
+      <p class="mt-1.5 font-semibold">{{ booking.exam.get_exam_type_display }}</p>
+    </div>
+    <div class="rounded-2xl border border-line bg-white p-5">
+      <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Duration</div>
+      <p class="mt-1.5 font-semibold">{{ booking.exam.duration_minutes }} min</p>
+    </div>
+    <div class="rounded-2xl border border-line bg-white p-5">
+      <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Level</div>
+      <p class="mt-1.5 font-semibold">{{ booking.exam.get_level_display }}</p>
+    </div>
+  </div>
+
+  {% if booking.exam.description %}
+    <div class="mt-4 rounded-2xl border border-line bg-white p-6">
+      <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">About this exam</div>
+      <p class="mt-2 text-[15px] leading-[1.6] text-muted">{{ booking.exam.description }}</p>
+    </div>
+  {% endif %}
+
+  {# ---- Actions — only an open booking can be acted on ---- #}
+  {% if booking.status == 'booked' %}
+    <div class="mt-6 flex flex-wrap items-center gap-3">
+      <a href="{% url 'exam:reschedule' booking.booking_id %}"
+         class="inline-flex h-11 items-center rounded-lg border border-line px-5 text-sm font-semibold text-body hover:border-[#B9BFC9]">
+        Reschedule
+      </a>
+
+      <div class="relative" x-data="{ open: false }" @click.outside="open = false">
+        <button type="button" @click="open = !open" :aria-expanded="open"
+                class="inline-flex h-11 items-center rounded-lg border border-line px-5 text-sm font-semibold text-body hover:border-[#B9BFC9]">
+          Add to calendar ▾
+        </button>
+        <div x-show="open" x-cloak x-transition.opacity
+             class="absolute left-0 z-50 mt-2 w-56 rounded-xl border border-line bg-white p-1.5 shadow-[0_16px_40px_rgba(14,15,19,.18)]">
+          <a href="{% url 'exam:booking_ics' booking.booking_id %}" @click="open = false"
+             class="block rounded-lg px-3 py-2.5 text-[13.5px] text-body hover:bg-[#F3F5F8] hover:text-ink">
+            Download Invite
+          </a>
+        </div>
+      </div>
+    </div>
+  {% elif booking.status == 'attended' %}
+  <div class="mt-6 flex flex-wrap items-center gap-3">
+      <a href="{% url 'exam:reschedule' booking.booking_id %}"
+         class="inline-flex h-11 items-center rounded-lg border border-line px-5 text-sm font-semibold text-body hover:border-[#B9BFC9]">
+        Show Results
+      </a>
+  {% endif %}
+  </div>
+  <p class="mt-6 text-xs text-faint">Exam ID for reference · {{ booking.booking_id }}</p>
+</div>
+{% endblock %}

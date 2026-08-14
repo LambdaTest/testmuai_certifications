@@ -45,19 +45,28 @@
 
   <div class="flex flex-col gap-3">
     {% for booking in bookings %}
-      <div class="rounded-2xl border border-line bg-white p-5">
-        <p class="font-semibold">{{ booking.exam.exam_name }}</p>
-        {% comment %}
-          scheduled_at is stored UTC. Rendering it inside {% timezone %} shows
-          it in the zone the candidate booked in — without this Django converts
-          to settings.TIME_ZONE and silently displays UTC.
-        {% endcomment %}
-        {% timezone booking.booked_timezone %}
-          <p class="mt-1 text-sm text-muted">
-            {{ booking.scheduled_at|date:"l, F j, Y" }} · {{ booking.scheduled_at|date:"g:i A" }}
-          </p>
-        {% endtimezone %}
-      </div>
+      {% comment %}
+        An <a> rather than a div with a click handler, so it behaves like a
+        link: keyboard focusable, opens in a new tab on cmd-click, and readable
+        by screen readers.
+      {% endcomment %}
+      <a href="{% url 'exam:explore_assessment' booking.booking_id %}"
+         class="group flex items-center gap-4 rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
+        <span class="min-w-0 flex-1">
+          <span class="block font-semibold text-ink">{{ booking.exam.exam_name }}</span>
+          {% comment %}
+            scheduled_at is stored UTC. Rendering it inside {% timezone %} shows
+            it in the zone the candidate booked in — without this Django converts
+            to settings.TIME_ZONE and silently displays UTC.
+          {% endcomment %}
+          {% timezone booking.booked_timezone %}
+            <span class="mt-1 block text-sm text-muted">
+              {{ booking.scheduled_at|date:"l, F j, Y" }} · {{ booking.scheduled_at|date:"g:i A" }}
+            </span>
+          {% endtimezone %}
+        </span>
+        <span class="text-[17px] text-[#B9BFC9] group-hover:text-brand" aria-hidden="true">→</span>
+      </a>
     {% empty %}
       <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
         No {% if status == 'booked' %}upcoming{% else %}{{ status_display|lower }}{% endif %} assessments.
