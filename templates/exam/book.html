@@ -27,6 +27,8 @@
         {% timezone booked.booked_timezone %}{{ booked.scheduled_at|date:"l, F j · H:i" }}{% endtimezone %}
         ({{ booked.booked_timezone }})
       </p>
+      <br>
+      <p class="mt-1 text-sm text-zinc-400"> Exam ID for Future Reference · {{ booked.booking_id }}</p>
     </div>
   {% endif %}
 

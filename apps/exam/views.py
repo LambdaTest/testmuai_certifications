@@ -9,6 +9,7 @@ picks their own date and time.
 import json
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -49,12 +50,27 @@ def book(request):
         if match:
             preselected = match.slug
 
-    booked = None
     form = BookingForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
         # Candidate is None until the OIDC integration lands.
-        booked = form.save(candidate=None)
+        booking = form.save(candidate=None)
+        # Redirect after POST. Reloading then re-issues a harmless GET instead
+        # of re-submitting the form and creating a second booking.
+        return redirect(f"{reverse('exam:book')}?booked={booking.booking_id}")
+
+    # The booking just made, read back from the redirect so the confirmation
+    # survives a reload. An unknown or malformed id simply shows nothing.
+    booked = None
+    if request.GET.get("booked"):
+        try:
+            booked = (
+                ExamBooking.objects.select_related("exam")
+                .filter(booking_id=request.GET["booked"])
+                .first()
+            )
+        except (ValueError, ValidationError):
+            booked = None
 
     exams = _exam_payload()
     tz_options = timezones.timezone_options(timezones.DEFAULT_TIMEZONE)
