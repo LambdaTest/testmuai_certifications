@@ -135,7 +135,7 @@ class Exam(models.Model):
         blank=True,
         help_text="Defaults to '<subject> Certification Exam' when left blank.",
     )
-    candidate_name = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="exams")
+    # candidate_name = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="exams")
     #: Mirrors the slug the main site already uses in its catalog URLs
     #: (testmuai.com/certifications/<slug>/). Internal, but keeping them aligned
     #: gives both systems one vocabulary.
@@ -160,11 +160,11 @@ class Exam(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    scheduled_at = models.DateTimeField(blank=True, null=True)
+    # scheduled_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         db_table = "exams"
-        ordering = ["scheduled_at"]
+        ordering = ["updated_at"]
         constraints = [
             # The database refuses a mismatched pair no matter how the row is
             # written — admin, shell, bulk_create, or raw SQL. clean() and
@@ -276,3 +276,17 @@ class ExamBooking(models.Model):
         from .timezones import to_local
 
         return to_local(self.scheduled_at, self.booked_timezone)
+
+class Certificates(models.Model):
+    """
+    A certificate is a credential that a candidate earns by passing an exam.
+    """
+    certificate_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
+    candidate = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="certificates")
+    exam = models.ForeignKey(Exam, on_delete=models.PROTECT, related_name="certificates")
+    issued_at = models.DateTimeField(auto_now_add=True)
+    certificate_file = models.FileField(upload_to="certificates/")
+
+    class Meta:
+        db_table = "certificates"
+        ordering = ["-issued_at"]
