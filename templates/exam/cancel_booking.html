@@ -23,7 +23,7 @@
   {% if booking.status == 'booked' %}
 
     <header class="mt-4 mb-6">
-      <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">Cancel this exam?</h1>
+      <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">Cancel This Exam?</h1>
       <p class="mt-2 text-[15px] leading-[1.6] text-muted">
         Your slot will be released. You can book again whenever you like — it stays free.
       </p>
@@ -54,13 +54,13 @@
         {% csrf_token %}
         <button type="submit"
                 class="h-11 w-full rounded-lg bg-danger-tint px-6 text-sm font-bold text-danger hover:bg-[#F6D9D9] sm:w-auto">
-          Cancel exam
+          Confirm Cancellation
         </button>
       </form>
 
       <a href="{% url 'exam:explore_assessment' booking.booking_id %}"
          class="inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31] sm:w-auto">
-        Keep booking
+        Keep Booking
       </a>
     </div>
 
