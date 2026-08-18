@@ -44,8 +44,8 @@
             Exam Center      exams: create, edit, publish
             Question Center  question bank: add, import, tag, search
             Subject Center   subjects
-            Candidate Center lookup by email/name/external_id → their bookings,
-                             results, evaluations; also Export Candidates
+            Candidate Center find a candidate by email/name/external_id → their
+                             bookings, results, evaluations; also Export Candidates
             Certificates     issue, revoke, reissue, verify
             Analytics        pass rates, question performance
             Settings         booking rules, email templates, Manage Roles
@@ -85,7 +85,7 @@
       {# Welcome + primary action #}
       <div class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-white p-5">
         <div>
-          <div class="text-[11.5px] font-bold tracking-[1.6px] text-brand uppercase">Administration</div>
+          <div class="text-[11.5px] font-bold tracking-[1.6px] text-brand uppercase">Admin</div>
           {# user_name #}
           <h1 class="mt-1 text-2xl font-bold tracking-tight">Welcome, Harish</h1>
         </div>
@@ -100,27 +100,24 @@
         {# exams_underway — attempts in progress right now #}
         <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
           <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Exams underway</div>
-          <div class="mt-1.5 flex items-end gap-2">
+          <div class="mt-1.5">
             <span class="text-3xl font-extrabold tracking-tight">3</span>
-            <span class="mb-1 text-[13px] text-muted">in progress</span>
           </div>
         </a>
 
         {# awaiting_grading — subjective attempts not yet evaluated #}
         <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
           <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Awaiting grading</div>
-          <div class="mt-1.5 flex items-end gap-2">
+          <div class="mt-1.5">
             <span class="text-3xl font-extrabold tracking-tight text-warn">12</span>
-            <span class="mb-1 text-[13px] text-muted">subjective</span>
           </div>
         </a>
 
         {# upcoming_exams — bookings ahead of now #}
         <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
           <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Upcoming exams</div>
-          <div class="mt-1.5 flex items-end gap-2">
+          <div class="mt-1.5">
             <span class="text-3xl font-extrabold tracking-tight">48</span>
-            <span class="mb-1 text-[13px] text-muted">booked</span>
           </div>
         </a>
       </div>
@@ -166,14 +163,14 @@
           <span class="ml-auto text-[17px] text-[#B9BFC9]">→</span>
         </a>
 
-        {# The support-desk entry point: find a person, see everything about them #}
+        {# Candidate lookup lives in Candidate Center — this is exam outcomes #}
         <a href="#" class="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-[18px] hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.10)]">
-          <span class="grid size-11 flex-none place-items-center rounded-[11px] bg-[#EEF0F4]">
-            <svg width="20" height="20" fill="none" stroke="#3A4354" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/></svg>
+          <span class="grid size-11 flex-none place-items-center rounded-[11px] bg-ok-tint">
+            <svg width="20" height="20" fill="none" stroke="#0E8A45" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16V9"/><path d="M10 16V4"/><path d="M16 16v-5"/></svg>
           </span>
           <span class="min-w-0">
-            <span class="block text-[15.5px] font-bold text-ink">Find a Candidate</span>
-            <span class="mt-0.5 block text-[13px] text-muted">Bookings, results and evaluations</span>
+            <span class="block text-[15.5px] font-bold text-ink">Results</span>
+            <span class="mt-0.5 block text-[13px] text-muted">Scores, pass rates and outcomes</span>
           </span>
           <span class="ml-auto text-[17px] text-[#B9BFC9]">→</span>
         </a>
