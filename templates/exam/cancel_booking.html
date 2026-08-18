@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load tz %}
+
+{% comment %}
+  Confirmation before cancelling a booking.
+
+  Context from apps.exam.views.cancel_booking_page (and cancel_booking on GET):
+    booking – the ExamBooking, with exam and subject already selected
+
+  The cancel itself is a POST to exam:cancel_booking. It must not be a GET —
+  anything that follows links without a human (browser prefetch, link previews,
+  mail scanners) would otherwise cancel someone's exam.
+{% endcomment %}
+
+{% block title %}Cancel booking · TestMu AI Certifications{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 py-10">
+
+  <a href="{% url 'exam:explore_assessment' booking.booking_id %}"
+     class="text-[13.5px] font-semibold text-brand hover:text-brand-dark">← Back to assessment</a>
+
+  {% if booking.status == 'booked' %}
+
+    <header class="mt-4 mb-6">
+      <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">Cancel this exam?</h1>
+      <p class="mt-2 text-[15px] leading-[1.6] text-muted">
+        Your slot will be released. You can book again whenever you like — it stays free.
+      </p>
+    </header>
+
+    {# ---- What's being cancelled ---- #}
+    <div class="rounded-2xl border border-line bg-surface p-6">
+      <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Booked exam</div>
+      <p class="mt-1.5 text-lg font-semibold">{{ booking.exam.exam_name }}</p>
+      {% comment %}
+        scheduled_at is stored UTC — render inside {% timezone %} or Django
+        converts it to settings.TIME_ZONE and silently shows UTC.
+      {% endcomment %}
+      {% timezone booking.booked_timezone %}
+        <p class="mt-1 text-[15px] text-muted">
+          {{ booking.scheduled_at|date:"l, F j, Y" }} · {{ booking.scheduled_at|date:"g:i A" }}
+        </p>
+      {% endtimezone %}
+      <p class="mt-0.5 text-sm text-muted">
+        {{ booking.booked_timezone }} · {{ booking.exam.get_exam_type_display }} ·
+        {{ booking.exam.duration_minutes }} min
+      </p>
+    </div>
+
+    {# ---- Actions. The safe option is the prominent one. ---- #}
+    <div class="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
+      <form method="post" action="{% url 'exam:cancel_booking' booking.booking_id %}">
+        {% csrf_token %}
+        <button type="submit"
+                class="h-11 w-full rounded-lg bg-danger-tint px-6 text-sm font-bold text-danger hover:bg-[#F6D9D9] sm:w-auto">
+          Cancel exam
+        </button>
+      </form>
+
+      <a href="{% url 'exam:explore_assessment' booking.booking_id %}"
+         class="inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31] sm:w-auto">
+        Keep booking
+      </a>
+    </div>
+
+  {% else %}
+
+    {# Already cancelled, attended, or a no-show — nothing to cancel. #}
+    <header class="mt-4 mb-6">
+      <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">Nothing to cancel</h1>
+      <p class="mt-2 text-[15px] leading-[1.6] text-muted">
+        This booking is already
+        {% if booking.status == 'cancelled' %}cancelled{% elif booking.status == 'attended' %}completed{% else %}closed{% endif %},
+        so there's no slot to release.
+      </p>
+    </header>
+
+    <div class="rounded-2xl border border-line bg-surface p-6">
+      <p class="text-lg font-semibold">{{ booking.exam.exam_name }}</p>
+      {% timezone booking.booked_timezone %}
+        <p class="mt-1 text-[15px] text-muted">
+          {{ booking.scheduled_at|date:"l, F j, Y" }} · {{ booking.scheduled_at|date:"g:i A" }}
+          · {{ booking.booked_timezone }}
+        </p>
+      {% endtimezone %}
+    </div>
+
+    <div class="mt-6">
+      <a href="{% url 'exam:myassessment' 'booked' %}"
+         class="inline-flex h-11 items-center justify-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31]">
+        My Assessments →
+      </a>
+    </div>
+
+  {% endif %}
+</div>
+{% endblock %}

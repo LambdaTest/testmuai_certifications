@@ -92,7 +92,9 @@
                 </a>
               </div>
             </div>
-            <button type="button" class="text-[13.5px] font-semibold text-[#FF9D93] hover:text-[#FFC0B9]">Cancel booking</button>
+            <a href="{% url 'exam:cancel_booking_page' upcoming_booking.booking_id %}">
+              <button type="button" class="text-[13.5px] font-semibold text-[#FF9D93] hover:text-[#FFC0B9]">Cancel booking</button>
+            </a>
           </div>
         {% else %}
           <a href="{% url 'exam:book' %}"

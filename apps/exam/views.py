@@ -50,7 +50,9 @@ def book(request):
         if match:
             preselected = match.slug
 
-    form = BookingForm(request.POST or None)
+    # Anonymous until OIDC lands, so the clash check is inert on this path.
+    candidate = request.user if request.user.is_authenticated else None
+    form = BookingForm(request.POST or None, candidate=candidate)
 
     if request.method == "POST" and form.is_valid():
         # Candidate is None until the OIDC integration lands.
@@ -124,7 +126,9 @@ def reschedule(request, booking_id):
         status=ExamBooking.Status.BOOKED,
     )
 
-    form = RescheduleForm(request.POST or None)
+    form = RescheduleForm(
+        request.POST or None, booking=booking, candidate=request.user
+    )
     if request.method == "POST" and form.is_valid():
         form.apply(booking)
         return redirect("home:dashboard")
@@ -193,6 +197,51 @@ def explore_assessment(request, booking_id):
     return render(
         request,
         "exam/explore_assessment.html",
+        {
+            "booking": booking,
+        },
+    )
+
+@login_required
+def cancel_booking_page(request, booking_id):
+    """
+    Takes the candidate to the cancel booking page.
+    Shows the candidate's booking details for one assessment from where he can cancel.
+    """
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam__subject"),
+        booking_id=booking_id,
+        candidate=request.user,
+    )
+
+    return render(
+        request,
+        "exam/cancel_booking.html",
+        {
+            "booking": booking,
+        },
+    )
+
+@login_required
+def cancel_booking(request, booking_id):
+    """
+    Cancels a candidate's booking.
+    """
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam__subject"),
+        booking_id=booking_id,
+        candidate=request.user,
+        status=ExamBooking.Status.BOOKED,
+    )
+
+    if request.method == "POST":
+        booking.status = ExamBooking.Status.CANCELLED
+        booking.save()
+        return redirect("home:dashboard")
+
+    return render(
+        request,
+        "exam/cancel_booking.html",
         {
             "booking": booking,
         },
