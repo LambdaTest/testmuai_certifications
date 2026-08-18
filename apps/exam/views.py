@@ -239,10 +239,4 @@ def cancel_booking(request, booking_id):
         booking.save()
         return redirect("home:dashboard")
 
-    return render(
-        request,
-        "exam/cancel_booking.html",
-        {
-            "booking": booking,
-        },
-    )
+    return redirect("home:dashboard")

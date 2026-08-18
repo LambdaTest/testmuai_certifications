@@ -1,6 +1,184 @@
 {% extends "base.html" %}
 
-{% block title %}Admin dashboard · TestMu AI Certifications{% endblock %}
+{% comment %}
+  Admin dashboard — UI only.
+
+  No view, no URLs, no models. Every sidebar and tile link is href="#"; the
+  comment beside each names where it should eventually point. Numbers are
+  placeholders with the context variable named above them.
+
+  The sidebar lives in this file for now. Once there is a second admin page it
+  should move into a `base_admin.html` that extends base.html, or every admin
+  template will carry its own copy.
+
+  Layout decisions carried over from the wireframe discussion:
+    · Grading is not a section — assigned work appears under My Tasks.
+    · "Assign Grading" (not "Assign Bookings") hands unassigned subjective
+      attempts to examiners. Objective exams grade themselves.
+    · Manage Roles sits under Settings, since roles apply to staff, not
+      candidates.
+    · Export Candidates sits inside Candidate Center.
+{% endcomment %}
+
+{% block title %}Admin · TestMu AI Certifications{% endblock %}
 
 {% block content %}
+<div class="mx-auto max-w-[1200px] px-4 sm:px-6" x-data="{ nav: false }">
+
+  {# Sidebar toggle — the sidebar is hidden below lg #}
+  <button type="button" @click="nav = !nav"
+          class="mt-6 inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm font-semibold text-body lg:hidden">
+    <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5.5h14M3 10h14M3 14.5h14"/></svg>
+    Menu
+  </button>
+
+  <div class="flex gap-8 py-6 lg:py-10">
+
+    {# ---------------- Sidebar ---------------- #}
+    <aside class="w-56 shrink-0" :class="nav ? 'block' : 'hidden lg:block'">
+      <nav class="flex flex-col gap-1">
+        {% comment %}
+          href targets, once the views exist:
+            Dashboard        home:dashboard
+            My Tasks         admin task queue — assigned grading, reviews
+            Exam Center      exams: create, edit, publish
+            Question Center  question bank: add, import, tag, search
+            Subject Center   subjects
+            Candidate Center lookup by email/name/external_id → their bookings,
+                             results, evaluations; also Export Candidates
+            Certificates     issue, revoke, reissue, verify
+            Analytics        pass rates, question performance
+            Settings         booking rules, email templates, Manage Roles
+            Support Tickets  stub for now
+        {% endcomment %}
+
+        <a href="#" aria-current="page"
+           class="rounded-lg bg-brand-tint px-3 py-2.5 text-[14.5px] font-semibold text-brand-dark">Dashboard</a>
+
+        <a href="#" class="flex items-center justify-between rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">
+          My Tasks
+          {# my_task_count — assigned evaluations awaiting this user #}
+          <span class="rounded-full bg-warn-tint px-2 py-0.5 text-[11px] font-bold text-warn">7</span>
+        </a>
+
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Exam Center</a>
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Question Center</a>
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Subject Center</a>
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Candidate Center</a>
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Certificates</a>
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Analytics</a>
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Settings</a>
+
+        <div class="my-1 border-t border-line"></div>
+
+        {# Stub until the ticket model exists — flagged so it isn't mistaken for working #}
+        <a href="#" class="flex items-center justify-between rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">
+          Support Tickets
+          <span class="rounded-full bg-[#F0F1F4] px-2 py-0.5 text-[10px] font-bold text-faint">SOON</span>
+        </a>
+      </nav>
+    </aside>
+
+    {# ---------------- Main ---------------- #}
+    <div class="min-w-0 flex-1">
+
+      {# Welcome + primary action #}
+      <div class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-white p-5">
+        <div>
+          <div class="text-[11.5px] font-bold tracking-[1.6px] text-brand uppercase">Administration</div>
+          {# user_name #}
+          <h1 class="mt-1 text-2xl font-bold tracking-tight">Welcome, Harish</h1>
+        </div>
+        {# Hands unassigned subjective attempts to examiners. Objective grades itself. #}
+        <a href="#" class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
+          Assign Grading →
+        </a>
+      </div>
+
+      {# Stats — every one is a link to the work behind it #}
+      <div class="mt-4 grid gap-4 sm:grid-cols-3">
+        {# exams_underway — attempts in progress right now #}
+        <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
+          <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Exams underway</div>
+          <div class="mt-1.5 flex items-end gap-2">
+            <span class="text-3xl font-extrabold tracking-tight">3</span>
+            <span class="mb-1 text-[13px] text-muted">in progress</span>
+          </div>
+        </a>
+
+        {# awaiting_grading — subjective attempts not yet evaluated #}
+        <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
+          <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Awaiting grading</div>
+          <div class="mt-1.5 flex items-end gap-2">
+            <span class="text-3xl font-extrabold tracking-tight text-warn">12</span>
+            <span class="mb-1 text-[13px] text-muted">subjective</span>
+          </div>
+        </a>
+
+        {# upcoming_exams — bookings ahead of now #}
+        <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
+          <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Upcoming exams</div>
+          <div class="mt-1.5 flex items-end gap-2">
+            <span class="text-3xl font-extrabold tracking-tight">48</span>
+            <span class="mb-1 text-[13px] text-muted">booked</span>
+          </div>
+        </a>
+      </div>
+
+      {# Quick actions — the things done most often #}
+      <h2 class="mt-8 mb-3 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Quick actions</h2>
+      <div class="grid gap-4 sm:grid-cols-2">
+
+        <a href="#" class="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-[18px] hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.10)]">
+          <span class="grid size-11 flex-none place-items-center rounded-[11px] bg-brand-tint">
+            <svg width="20" height="20" fill="none" stroke="#1A6FD4" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12"/><path d="M4 10h12"/></svg>
+          </span>
+          <span class="min-w-0">
+            <span class="block text-[15.5px] font-bold text-ink">Add Questions</span>
+            <span class="mt-0.5 block text-[13px] text-muted">One at a time, with answer options</span>
+          </span>
+          <span class="ml-auto text-[17px] text-[#B9BFC9]">→</span>
+        </a>
+
+        {% comment %}
+          Highest-value admin action: a credible exam needs 150–300 questions
+          for randomisation to mean anything, and nobody types those in a form.
+        {% endcomment %}
+        <a href="#" class="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-[18px] hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.10)]">
+          <span class="grid size-11 flex-none place-items-center rounded-[11px] bg-[#E7F6F4]">
+            <svg width="20" height="20" fill="none" stroke="#0B8D7B" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13V4"/><path d="M6.5 7.5 10 4l3.5 3.5"/><path d="M4 15.5h12"/></svg>
+          </span>
+          <span class="min-w-0">
+            <span class="block text-[15.5px] font-bold text-ink">Import Questions</span>
+            <span class="mt-0.5 block text-[13px] text-muted">Bulk upload from CSV</span>
+          </span>
+          <span class="ml-auto text-[17px] text-[#B9BFC9]">→</span>
+        </a>
+
+        <a href="#" class="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-[18px] hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.10)]">
+          <span class="grid size-11 flex-none place-items-center rounded-[11px] bg-warn-tint">
+            <svg width="20" height="20" fill="none" stroke="#B97F10" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="12.5" rx="2"/><path d="M3 8.5h14"/><path d="M7 2.8v3.2"/><path d="M13 2.8v3.2"/></svg>
+          </span>
+          <span class="min-w-0">
+            <span class="block text-[15.5px] font-bold text-ink">Create New Exam</span>
+            <span class="mt-0.5 block text-[13px] text-muted">Set subject, type and pass mark</span>
+          </span>
+          <span class="ml-auto text-[17px] text-[#B9BFC9]">→</span>
+        </a>
+
+        {# The support-desk entry point: find a person, see everything about them #}
+        <a href="#" class="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-[18px] hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.10)]">
+          <span class="grid size-11 flex-none place-items-center rounded-[11px] bg-[#EEF0F4]">
+            <svg width="20" height="20" fill="none" stroke="#3A4354" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/></svg>
+          </span>
+          <span class="min-w-0">
+            <span class="block text-[15.5px] font-bold text-ink">Find a Candidate</span>
+            <span class="mt-0.5 block text-[13px] text-muted">Bookings, results and evaluations</span>
+          </span>
+          <span class="ml-auto text-[17px] text-[#B9BFC9]">→</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
