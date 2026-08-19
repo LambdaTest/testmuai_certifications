@@ -147,19 +147,23 @@ pre-defined slots and no capacity, so there is no seat contention. Rules live in
 
 ## `archived/`
 
-The previous Next.js implementation, kept as a working reference for the booking UX. Also holds
-the specs, which are still current and largely stack-independent:
+The previous Next.js implementation, kept as a working reference for the booking UX.
+Nothing in the running app depends on it.
 
-| Document | Still applies |
+## Documentation
+
+Specs live in [`docs/`](docs/). They were written for the Next implementation and
+mostly survived the move to Django — the data model, the auth design and the
+conventions still apply. Two need attention:
+
+| Document | State |
 |---|---|
-| `archived/docs/master-spec.md` | Yes — scope, flow, open decisions |
-| `archived/docs/auth.md` | Yes — the OIDC handoff from TestMu AI's login |
-| `archived/docs/conventions.md` | Mostly — ignore the Vercel/serverless sections |
-| `archived/src/db/README.md` | Yes — the data model to build out |
-| `archived/docs/routes.md` | Concepts only — Next route groups, not Django URLs |
+| [`docs/master-spec.md`](docs/master-spec.md) | Current — purpose, scope, open decisions |
+| [`docs/auth.md`](docs/auth.md) | Current — the OIDC handoff from TestMu AI's login |
+| [`docs/conventions.md`](docs/conventions.md) | Mostly — the Vercel and serverless sections no longer apply |
+| [`docs/routes.md`](docs/routes.md) | **Stale** — describes Next route groups, needs rewriting for Django URLs |
 
-These need migrating into `docs/` properly. Until then, treat them as the source of truth for
-anything not yet built.
+`scripts/build-spec.py` regenerates `master-spec.docx` from the markdown.
 
 ## Not yet built
 

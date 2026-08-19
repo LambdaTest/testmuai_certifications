@@ -230,7 +230,7 @@ class ExamBooking(models.Model):
         ATTENDED = "attended", "Attended"
         NO_SHOW = "no_show", "No show"
 
-    #: Nullable until the OIDC integration lands — see archived/docs/auth.md.
+    #: Nullable until the OIDC integration lands — see docs/auth.md.
     #: Every booking must have a candidate before this reaches real users.
     candidate = models.ForeignKey(
         settings.AUTH_USER_MODEL,

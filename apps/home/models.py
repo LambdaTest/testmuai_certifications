@@ -50,7 +50,7 @@ class UserManager(BaseUserManager):
 class User(AbstractUser):
     """
     This app never authenticates anyone directly. Identity comes from TestMu AI's
-    existing login over OIDC — see archived/docs/auth.md. No sign-in form, no
+    existing login over OIDC — see docs/auth.md. No sign-in form, no
     usable password.
 
     AUTH_USER_MODEL is baked into Django's migration graph, so this had to be
