@@ -3,14 +3,16 @@
 In-house platform for delivering TestMu AI professional certifications — booking, exam delivery,
 grading, and credential issuance. Replaces our current external vendor.
 
-> **Status:** early. The booking page works end to end; everything after it is still to build.
+> **Status:** the candidate booking journey works end to end — book, reschedule, cancel,
+> calendar invites, dashboard, assessments. The exam player, grading and credentials are
+> not started. See [`docs/master-spec.md`](docs/master-spec.md).
 
 ## Stack
 
 | Layer | Choice |
 |---|---|
 | Backend | Django 5.x |
-| Database | PostgreSQL (SQLite locally with no setup) |
+| Database | PostgreSQL — everywhere, including local development |
 | Frontend | Django templates + Tailwind + Alpine.js |
 | Background jobs | Celery + Redis *(not wired up yet)* |
 | Hosting | AWS — EC2/Elastic Beanstalk + RDS *(not set up yet)* |
@@ -70,7 +72,7 @@ tailwindcss -i static/css/input.css -o static/css/output.css --minify
 ```
 config/         settings, root URLconf, wsgi/asgi
 apps/
-  home/         accounts and cross-cutting — User model, dashboard (later)
+  home/         accounts and cross-cutting — User model, dashboards
   exam/         the assessment domain — certifications, bookings, and to come:
                 exam versions, questions, attempts, grading, credentials
 templates/      base.html + per-app templates
@@ -96,7 +98,7 @@ or Django silently won't find it.
 
 ### `seed_certifications`
 
-Creates or updates the 22-certification catalog. Matched on **slug**, which is the identity.
+Creates or updates the 22-exam catalogue. Matched on **slug**, which is the identity.
 
 ```bash
 .venv/bin/python manage.py seed_certifications
@@ -114,19 +116,18 @@ Three things to know:
   admin and the next run reverts it. That's intentional — the seed is the source of truth for
   those four fields — so anything that should be admin-editable must come *out* of `defaults`.
 - **It never deletes.** Removing an entry from `CERTIFICATIONS` leaves the row in place.
-  Deleting a certification that has bookings or issued credentials against it must never be a
-  side effect of running a seed script.
+  Deleting an exam that has bookings or issued credentials against it must never be a side
+  effect of running a seed script.
 
 > **Everything it seeds is `published`, so everything is bookable.** Fine for a demo, wrong for
-> real: a certification shouldn't be bookable until it has a published exam version with
-> questions behind it. `Certification.is_bookable` currently checks only status and needs the
-> version check once exam versions exist.
+> real: an exam shouldn't be bookable until it has questions behind it. `Exam.is_bookable`
+> currently checks only status.
 
 Seed scripts are preferred over hand-entry through the admin — repeatable for fresh local
 databases, staging, and CI, and they show up in a diff. Recurring work (expiring abandoned
 attempts, releasing results) becomes a Celery task instead, not a command someone has to cron.
 
-## Two rules to know before writing anything
+## Three rules to know before writing anything
 
 **1. Timezone conversion happens in one place.** `apps/exam/timezones.py` owns every
 conversion between a candidate's wall-clock choice and the stored UTC instant. Times are stored
@@ -137,6 +138,11 @@ candidate who misreads their booking time misses their exam, and it is unrecover
 a form post can be made directly — so `BookingForm` re-checks every rule server-side. Never let a
 UI guard be the only guard.
 
+**3. A pre-converted datetime does not survive a template filter.** With `USE_TZ = True`, Django's
+`date` filter converts aware datetimes to `settings.TIME_ZONE` — UTC — before formatting, silently
+undoing any conversion done in Python. Render the raw field inside `{% timezone %}` instead. See
+[`docs/conventions.md`](docs/conventions.md#timezones).
+
 ## Booking model
 
 **Self-scheduled, not slot-based.** Candidates pick their own date and time. There are no
@@ -144,6 +150,9 @@ pre-defined slots and no capacity, so there is no seat contention. Rules live in
 
 - `BOOKING_MIN_DAYS_AHEAD = 1` — no same-day booking
 - `BOOKING_MAX_MONTHS_AHEAD = 3`
+- `BOOKING_GAP_MINUTES = 60` — clear time required either side of an exam a candidate has
+  already booked. An objective exam occupies its full duration; a subjective one is a
+  36-hour window with a deadline, so it only blocks around its start.
 
 ## `archived/`
 
@@ -167,7 +176,7 @@ conventions still apply. Two need attention:
 
 ## Not yet built
 
-Exam versions · sections · question bank · attempts · the exam player · grading · result release ·
-credentials and public verification · the candidate dashboard · admin beyond Django's default ·
-authentication (the OIDC integration with TestMu AI's login is deferred — `Booking.candidate` is
-nullable until it lands).
+The question bank · attempts and the exam player · grading and result release · credentials and
+public verification · the custom admin beyond Django's default · authentication (the OIDC
+integration with the TestMu AI login is deferred, which is why `ExamBooking.candidate` is
+nullable).
