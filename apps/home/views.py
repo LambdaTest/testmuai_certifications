@@ -13,6 +13,8 @@ from django.utils import timezone
 from apps.exam.calendar import google_calendar_url
 from apps.exam.models import ExamBooking
 
+from .models import User
+
 
 def _countdown(scheduled_at, now=None):
     """
@@ -67,9 +69,16 @@ def dashboard(request):
     except AttributeError:
         user_role = None
         user_name = None
-    if user_role == "admin" or user_role == "examiner":
+    # Compared against User.Role rather than string literals — the stored value
+    # is "admin" while the label is "Admin", and comparing to the label gives a
+    # branch that silently never matches.
+    if user_role == User.Role.ADMIN:
         return render(request, "home/dashboard_admin.html", {"user_name": user_name, "user_role": user_role})
-    elif user_role == "candidate":
+    elif user_role == User.Role.EXAMINER:
+        # Its own template, not a variant of the admin one: an examiner should
+        # be structurally unable to render admin controls.
+        return render(request, "home/dashboard_examiner.html", {"user_name": user_name, "user_role": user_role})
+    elif user_role == User.Role.CANDIDATE:
         booking = _next_booking(request.user)
         return render(
             request,

@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% comment %}
+  Examiner dashboard — UI only. No view, no URL, no models.
+
+  Deliberately a separate template rather than conditionals inside
+  dashboard_admin.html. An examiner should be structurally unable to render
+  admin controls; with {% if %} blocks that is one bad condition away, and
+  nobody can answer "what can an examiner do?" without mentally executing the
+  template.
+
+  GRADING IS BLIND. An examiner sees an exam reference, never the candidate's
+  name or email — including in history. If a candidate disputes a fail, "did
+  the examiner know who I was?" needs a clean no. If something looks wrong, the
+  examiner quotes the reference and an admin resolves it in Candidate Center.
+
+  Context, once a view exists:
+    user_name            examiner's display name
+    pending_evaluations  oldest first — the longest wait is the candidate who
+                         has been without a result the longest
+    grading_history      read-only, most recent first
+{% endcomment %}
+
+{% block title %}Grading · TestMu AI Certifications{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-[1200px] px-4 sm:px-6" x-data="{ nav: false }">
+
+  <button type="button" @click="nav = !nav"
+          class="mt-6 inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm font-semibold text-body lg:hidden">
+    <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5.5h14M3 10h14M3 14.5h14"/></svg>
+    Menu
+  </button>
+
+  <div class="flex gap-8 py-6 lg:py-10">
+
+    {# ---------------- Sidebar ---------------- #}
+    <aside class="w-56 shrink-0" :class="nav ? 'block' : 'hidden lg:block'">
+      <nav class="flex flex-col gap-1">
+        {% comment %}
+          href targets once the views exist:
+            Pending Evaluations  this page
+            Grading History      read-only list of completed evaluations
+            Support Tickets      stub for now
+            Settings             absence dates; name and email are read-only,
+                                 since they come from the TestMu AI account
+        {% endcomment %}
+        <a href="#" aria-current="page"
+           class="rounded-lg bg-brand-tint px-3 py-2.5 text-[14.5px] font-semibold text-brand-dark">Pending Evaluations</a>
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Grading History</a>
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Settings</a>
+
+        <div class="my-1 border-t border-line"></div>
+
+        <a href="#" class="flex items-center justify-between rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">
+          Support Tickets
+          <span class="rounded-full bg-[#F0F1F4] px-2 py-0.5 text-[10px] font-bold text-faint">SOON</span>
+        </a>
+      </nav>
+    </aside>
+
+    {# ---------------- Main ---------------- #}
+    <div class="min-w-0 flex-1">
+
+      <header class="mb-6">
+        <div class="text-[11.5px] font-bold tracking-[1.6px] text-brand uppercase">Examiner</div>
+        {# user_name #}
+        <h1 class="mt-1 text-2xl font-bold tracking-tight">Welcome, Priya</h1>
+        <p class="mt-1.5 text-[15px] text-muted">
+          Submissions are anonymous. Quote the reference if anything needs an admin's attention.
+        </p>
+      </header>
+
+      {# ---- Pending evaluations ---- #}
+      <div class="mb-3 flex items-baseline justify-between gap-3">
+        <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Pending evaluations</h2>
+        {# pending_evaluations|length #}
+        <span class="text-[13px] text-faint">3 waiting</span>
+      </div>
+
+      {% comment %}
+        Oldest first, deliberately. Results only reach a candidate when the
+        examiner presses Complete Evaluation, so the oldest submission is the
+        person who has been waiting longest with no score. Sorting it to the top
+        makes the queue self-correcting.
+      {% endcomment %}
+      <div class="flex flex-col gap-3">
+
+        <div class="flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-white p-5">
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2.5">
+              <span class="font-semibold">Accessibility Testing Certification Exam</span>
+              <span class="rounded-full bg-danger-tint px-2.5 py-0.5 text-[11px] font-bold text-danger">Waiting 5 days</span>
+            </div>
+            <p class="mt-1 text-[13px] text-muted">
+              Submitted 14 Aug 2026 ·
+              <span class="font-mono text-[12.5px]">ad2ca9be</span>
+            </p>
+          </div>
+          <a href="#" class="inline-flex h-10 items-center rounded-lg bg-[#111] px-5 text-sm font-bold text-white hover:bg-[#2A2B31]">
+            Grade →
+          </a>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-white p-5">
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2.5">
+              <span class="font-semibold">KaneAI Certification Exam</span>
+              <span class="rounded-full bg-warn-tint px-2.5 py-0.5 text-[11px] font-bold text-warn">Waiting 2 days</span>
+            </div>
+            <p class="mt-1 text-[13px] text-muted">
+              Submitted 17 Aug 2026 ·
+              <span class="font-mono text-[12.5px]">7f31c04d</span>
+            </p>
+          </div>
+          <a href="#" class="inline-flex h-10 items-center rounded-lg bg-[#111] px-5 text-sm font-bold text-white hover:bg-[#2A2B31]">
+            Grade →
+          </a>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-white p-5">
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2.5">
+              <span class="font-semibold">Selenium Advanced Certification Exam</span>
+              <span class="rounded-full bg-[#F0F1F4] px-2.5 py-0.5 text-[11px] font-bold text-faint">Waiting 6 hours</span>
+            </div>
+            <p class="mt-1 text-[13px] text-muted">
+              Submitted 19 Aug 2026 ·
+              <span class="font-mono text-[12.5px]">c92b18ef</span>
+            </p>
+          </div>
+          <a href="#" class="inline-flex h-10 items-center rounded-lg bg-[#111] px-5 text-sm font-bold text-white hover:bg-[#2A2B31]">
+            Grade →
+          </a>
+        </div>
+
+        {% comment %}
+          Empty state — render this instead when nothing is assigned.
+
+          <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
+            No pending evaluations. Nothing is waiting on you.
+          </p>
+        {% endcomment %}
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
