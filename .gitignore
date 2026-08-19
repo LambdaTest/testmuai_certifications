@@ -28,3 +28,6 @@ venv/
 # archived Next.js implementation
 archived/node_modules/
 archived/.next/
+
+# local backlog — deliberately not shared
+TRACKER.md
