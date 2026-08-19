@@ -84,15 +84,15 @@ end. Nothing in this app should wait on that.
 This is workable, but auth is the one piece that cannot be exercised until they wire up, so
 surprises surface late. Three rules keep that cheap:
 
-1. **All auth behind one adapter** — `src/lib/auth.ts`. Route handlers and components ask that
-   module who the user is; they never know how identity arrived. Swapping the stub for the real
-   handoff is then one file, not a refactor. Auth assumptions leaking across the codebase during
-   a months-long build is the expensive failure here.
+1. **All auth behind one module** — `apps/home/auth.py` (not yet created). Views ask it who the
+   user is; they never know how identity arrived. Swapping the local login for the real handoff
+   is then one file, not a refactor. Auth assumptions leaking across the codebase during a
+   months-long build is the expensive failure here.
 2. **`users.external_id` is an opaque string.** Never parse it, never assume numeric, never assume
    it is an email. We do not yet know its shape, and a team that assumed integers for six weeks
    is a costly correction.
 3. **`certifications.external_ref` is nullable and unused for now** — see
-   `src/core/certifications/README.md`. It absorbs whatever identifier they eventually send.
+   `apps/exam/models.py`. It absorbs whatever identifier they eventually send.
 
 **Get the integration spec early even though the implementation lands late.** Asking internal
 teams or Eklavya for documentation is not a change request and costs the main-site team nothing.
@@ -102,9 +102,31 @@ their handoff works nothing like we assumed.
 ## Local development
 
 Developers cannot reach the company login from `localhost`, and a shared-domain cookie would not
-work there either. Ship a **dev-only stub**: an endpoint behind `NODE_ENV !== 'production'` that
-mints a session for a fixture user, so the whole team can work offline and CI can run end-to-end
-tests. Guard it so it can never be enabled in a deployed environment.
+work there either. Two options, in order of preference:
+
+**A mock OIDC provider** — `oidc-provider` (npm), Dex or Keycloak in Docker with fixture users.
+It speaks the real protocol, so the app cannot tell the difference: same redirect, same code
+exchange, same claims. Strictly better than a stub, because it exercises the code that will
+run in production.
+
+**Django's own login**, which is what we use today. `createsuperuser --external_id <id>` makes
+an account with a usable password, reachable at `/admin/login/`. These accounts are the only
+ones in the system with a password, and they should be removed once OIDC lands.
+
+## What we know now
+
+**TestMu AI is the identity provider**, not Google directly. Its login screen offers Google,
+GitHub and SSO as upstream options alongside email and password, plus self-registration — so
+there is no user provisioning on our side.
+
+**The current redirect carries the exam id.** Eklavya is reached at
+`certifications.testmuai.com/certification/courseform.aspx?id=2934`, where `2934` is TestMu AI's
+own course id (not the vendor's, so it survives the vendor). We ignore it — candidates pick their
+exam from a selector on `/book` — but `Exam.external_ref` exists to map it if that ever changes.
+
+**We inherit `certifications.testmuai.com`.** That subdomain already points at Eklavya. Taking it
+over, and keeping a compatibility route for the old `.aspx` URL, would make cutover a DNS change
+with no link edits on the main site's part.
 
 ## Open
 
