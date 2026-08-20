@@ -156,8 +156,16 @@ class Exam(models.Model):
     duration_minutes = models.PositiveIntegerField(
         help_text="Determined by the exam type: 45 for objective, 2160 (36h) for subjective."
     )
+    #: TEMPORARY as a stored field. Once Exam ↔ Question exists this becomes a
+    #: derived property — the sum of the per-exam marks — because a stored total
+    #: silently goes stale the moment a question is added, removed or reweighted.
+    #: Nothing should write to it once that relation lands.
     maximum_marks = models.PositiveIntegerField(blank=True, null=True)
+
+    #: Absolute marks needed to pass. Copied onto the booking at grading time,
+    #: so raising the bar later never reclassifies a credential already issued.
     passing_marks = models.PositiveIntegerField(blank=True, null=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # scheduled_at = models.DateTimeField(blank=True, null=True)
@@ -253,7 +261,15 @@ class ExamBooking(models.Model):
     booked_timezone = models.CharField(max_length=64)
 
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.BOOKED)
+    #: Null until graded — not a sentinel like -1, so aggregates such as an
+    #: average score exclude ungraded bookings automatically.
     marks_obtained = models.PositiveIntegerField(blank=True, null=True)
+
+    #: Snapshots of the exam's values, written at grading time, never read live.
+    #: The exam keeps evolving — questions get added, reweighted or removed —
+    #: so without the copies "82 out of 100" quietly becomes "82 out of 105",
+    #: and a later change to the pass bar would reclassify old results.
+    #: Together with marks_obtained these are all pass/fail needs.
     maximum_marks = models.PositiveIntegerField(blank=True, null=True)
     passing_marks = models.PositiveIntegerField(blank=True, null=True)
     graded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="graded_bookings", blank=True, null=True)
