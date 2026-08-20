@@ -86,7 +86,7 @@
           <h1 class="mt-1 text-2xl font-bold tracking-tight">Welcome, {{user_name}}</h1>
         </div>
         {# Hands unassigned subjective attempts to examiners/ other admins. Objective grades itself. #}
-        <a href="{% url 'assign_grading' %}" class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
+        <a href="{% url 'exam:assign_grading' %}" class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
           Assign Grading →
         </a>
       </div>
@@ -97,7 +97,7 @@
         <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
           <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Exams underway</div>
           <div class="mt-1.5">
-            <span class="text-3xl font-extrabold tracking-tight">3</span>
+            <span class="text-3xl font-extrabold tracking-tight">{{exams_underway}}</span>
           </div>
         </a>
 
@@ -105,7 +105,7 @@
         <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
           <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Awaiting grading</div>
           <div class="mt-1.5">
-            <span class="text-3xl font-extrabold tracking-tight">12</span>
+            <span class="text-3xl font-extrabold tracking-tight">{{awaiting_grading}}</span>
           </div>
         </a>
 
@@ -113,12 +113,12 @@
         <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
           <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Upcoming exams</div>
           <div class="mt-1.5">
-            <span class="text-3xl font-extrabold tracking-tight">48</span>
+            <span class="text-3xl font-extrabold tracking-tight">{{upcoming_exams}}</span>
           </div>
         </a>
       </div>
 
-      {# Quick actions — the things done most often #}
+      {# Quick actions — the things done most often are placed in this section #}
       <h2 class="mt-8 mb-3 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Quick actions</h2>
       <div class="grid gap-4 sm:grid-cols-2">
 

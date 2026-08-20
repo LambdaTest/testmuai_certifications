@@ -73,7 +73,13 @@ def dashboard(request):
     # is "admin" while the label is "Admin", and comparing to the label gives a
     # branch that silently never matches.
     if user_role == User.Role.ADMIN:
-        return render(request, "home/dashboard_admin.html", {"user_name": user_name, "user_role": user_role})
+        exams_underway = ExamBooking.objects.filter(status=ExamBooking.Status.ATTENDED, scheduled_at__gte=timezone.now()).count()
+        awaiting_grading = ExamBooking.objects.filter(status=ExamBooking.Status.UNDER_REVIEW).count()
+        upcoming_exams = ExamBooking.objects.filter(status=ExamBooking.Status.BOOKED, scheduled_at__gte=timezone.now()).count()
+        return render(request, 
+                      "home/dashboard_admin.html", 
+                      {"user_name": user_name, "user_role": user_role, 
+                       "exams_underway": exams_underway, "awaiting_grading": awaiting_grading, "upcoming_exams": upcoming_exams})
     elif user_role == User.Role.EXAMINER:
         # Its own template, not a variant of the admin one: an examiner should
         # be structurally unable to render admin controls.
