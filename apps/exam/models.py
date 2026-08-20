@@ -310,10 +310,9 @@ class Certificates(models.Model):
     A certificate is a credential that a candidate earns by passing an exam.
     """
     certificate_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
-    candidate = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="certificates")
-    exam = models.ForeignKey(Exam, on_delete=models.PROTECT, related_name="certificates")
     issued_at = models.DateTimeField(auto_now_add=True)
     certificate_file = models.FileField(upload_to="certificates/")
+    booking = models.OneToOneField(ExamBooking, on_delete=models.PROTECT, related_name="certificate")
 
     class Meta:
         db_table = "certificates"
