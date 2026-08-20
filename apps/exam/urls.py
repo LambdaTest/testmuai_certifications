@@ -12,4 +12,5 @@ urlpatterns = [
     path("assessment/<uuid:booking_id>", views.explore_assessment, name="explore_assessment"),
     path("bookings/<uuid:booking_id>/cancel/", views.cancel_booking, name="cancel_booking"),
     path("bookings/<uuid:booking_id>/cancelpage/", views.cancel_booking_page, name="cancel_booking_page"),
+    path("assign_grading/", views.assign_grading, name="assign_grading"),
 ]

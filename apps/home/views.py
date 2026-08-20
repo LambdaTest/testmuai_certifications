@@ -101,3 +101,4 @@ def dashboard(request):
         # templates/404.html with a 404 status. Rendering that template
         # directly would return HTTP 200 with a "not found" page on it.
         raise Http404("No dashboard for this role.")
+    

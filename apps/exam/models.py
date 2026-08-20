@@ -142,7 +142,6 @@ class Exam(models.Model):
     slug = models.SlugField(max_length=255, unique=True)
     description = models.TextField(blank=True)
     marketing_url = models.URLField(blank=True)
-
     #: TestMu AI's own numeric course id, as passed by the current redirect
     #: (?id=2934). Nullable and unused for now — it exists so a prefill hint can
     #: be mapped later without a migration.
@@ -157,7 +156,7 @@ class Exam(models.Model):
     duration_minutes = models.PositiveIntegerField(
         help_text="Determined by the exam type: 45 for objective, 2160 (36h) for subjective."
     )
-
+    maximum_marks = models.PositiveIntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # scheduled_at = models.DateTimeField(blank=True, null=True)
@@ -229,6 +228,8 @@ class ExamBooking(models.Model):
         CANCELLED = "cancelled", "Cancelled"
         ATTENDED = "attended", "Attended"
         NO_SHOW = "no_show", "No show"
+        UNDER_REVIEW = "under_review", "Under review"
+        GRADED = "graded", "Graded"
 
     #: Nullable until the OIDC integration lands — see docs/auth.md.
     #: Every booking must have a candidate before this reaches real users.
@@ -251,7 +252,8 @@ class ExamBooking(models.Model):
     booked_timezone = models.CharField(max_length=64)
 
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.BOOKED)
-
+    marks_obtained = models.PositiveIntegerField(blank=True, null=True)
+    max_marks = models.PositiveIntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -259,11 +261,16 @@ class ExamBooking(models.Model):
         db_table = "bookings"
         ordering = ["-scheduled_at"]
         constraints = [
-            # One open booking per exam per candidate. Partial, so a
-            # cancelled booking doesn't block rebooking.
+            # One in-flight booking per exam per candidate. Partial: these
+            # three states hold the slot; cancelled, no-show and graded release
+            # it, so a candidate can book the exam again afterwards.
+            #
+            # String literals rather than Status.BOOKED — a class body is not
+            # an enclosing scope, so names defined on ExamBooking are not
+            # visible inside Meta.
             models.UniqueConstraint(
                 fields=["candidate", "exam"],
-                condition=models.Q(status="booked"),
+                condition=models.Q(status__in=["booked", "under_review", "attended"]),
                 name="one_open_booking_per_exam",
             ),
         ]

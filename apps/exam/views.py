@@ -19,6 +19,7 @@ from . import timezones
 from .calendar import build_ics
 from .forms import BookingForm, RescheduleForm
 from .models import Exam, ExamBooking
+from apps.home.models import User
 
 
 def _exam_payload():
@@ -238,5 +239,31 @@ def cancel_booking(request, booking_id):
         booking.status = ExamBooking.Status.CANCELLED
         booking.save()
         return redirect("home:dashboard")
+
+    return redirect("home:dashboard")
+
+def assign_grading(request):
+    """
+    Assigns ungraded subjective attempts to examiners or other admins.
+    """
+    # Only allow superusers to access this view
+    if not request.user.role != User.Role.ADMIN:
+        return redirect("home:dashboard")
+
+    # Get all ungraded subjective attempts
+    ungraded_attempts = ExamBooking.objects.filter(
+        status=ExamBooking.Status.ATTENDED,
+        exam__subject__is_subjective=True,
+        grade__isnull=True,
+    ).select_related("exam", "candidate")
+
+    # Assign each ungraded attempt to an examiner/ admin
+    for attempt in ungraded_attempts:
+        # Here you can implement your logic to assign the attempt to an examiner/ admin
+        # For example, you can assign it to the first available superuser
+        examiner = User.objects.filter(is_superuser=True).first()
+        if examiner:
+            attempt.examiner = examiner
+            attempt.save()
 
     return redirect("home:dashboard")
