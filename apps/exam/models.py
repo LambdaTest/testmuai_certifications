@@ -157,6 +157,7 @@ class Exam(models.Model):
         help_text="Determined by the exam type: 45 for objective, 2160 (36h) for subjective."
     )
     maximum_marks = models.PositiveIntegerField(blank=True, null=True)
+    passing_marks = models.PositiveIntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # scheduled_at = models.DateTimeField(blank=True, null=True)
@@ -253,7 +254,11 @@ class ExamBooking(models.Model):
 
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.BOOKED)
     marks_obtained = models.PositiveIntegerField(blank=True, null=True)
-    max_marks = models.PositiveIntegerField(blank=True, null=True)
+    maximum_marks = models.PositiveIntegerField(blank=True, null=True)
+    passing_marks = models.PositiveIntegerField(blank=True, null=True)
+    graded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="graded_bookings", blank=True, null=True)
+    graded_at = models.DateTimeField(blank=True, null=True)
+    feedback = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
