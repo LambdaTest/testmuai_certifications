@@ -11,7 +11,7 @@ import json
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
@@ -267,3 +267,22 @@ def assign_grading(request):
             attempt.save()
 
     return redirect("home:dashboard")
+
+
+def subject_center(request):
+    """
+    This is for the page that will contain subject related options
+    such as creating a new subject, editing an existing subject, etc.
+    Only accessible to admins."
+    """
+    return render(request, "exam/subject_center.html")
+
+@login_required
+def create_subject_page(request):
+    """
+    This is for the page that will help create a new subject for the admin."
+    """
+    if request.user.role != User.Role.ADMIN:
+        return Http404("home:dashboard")
+
+

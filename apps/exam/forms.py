@@ -15,9 +15,10 @@ from datetime import timedelta
 from django import forms
 from django.conf import settings
 from django.utils import timezone as dj_timezone
+from django.utils.text import slugify
 
 from . import timezones
-from .models import Exam, ExamBooking
+from .models import Exam, ExamBooking, Subject
 
 
 def occupied_minutes(exam):
@@ -173,3 +174,72 @@ class RescheduleForm(ScheduleForm):
         booking.booked_timezone = self.cleaned_data["timezone"]
         booking.save(update_fields=["scheduled_at", "booked_timezone", "updated_at"])
         return booking
+
+
+class SubjectForm(forms.ModelForm):
+    """
+    Authoring form for a subject.
+
+    A ModelForm, unlike the booking forms: every input maps onto a column, so
+    there is nothing for a hand-written Form to add. BookingForm is a plain
+    Form only because date + hour + minute + timezone collapse into a single
+    `scheduled_at`.
+
+    `created_by` is deliberately not a field — a user must not choose who
+    authored a subject. The view sets it from request.user.
+    """
+
+    class Meta:
+        model = Subject
+        fields = ["name", "slug", "description", "subject_level"]
+        labels = {"subject_level": "Level"}
+        help_texts = {
+            "slug": "Leave blank to generate one from the name.",
+        }
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "e.g. Selenium"}),
+            "slug": forms.TextInput(attrs={"placeholder": "selenium"}),
+            "description": forms.Textarea(attrs={"rows": 4}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Optional on the form, still required on the model — clean() fills it
+        # in from the name when left blank.
+        self.fields["slug"].required = False
+
+        css = (
+            "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm "
+            "outline-none focus-visible:border-brand focus-visible:ring-3 "
+            "focus-visible:ring-brand/30"
+        )
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", css)
+
+    def _available_slug(self, base):
+        """`selenium`, else `selenium-2`, `selenium-3`… — first one free."""
+        taken = Subject.objects.exclude(pk=self.instance.pk)
+        candidate, suffix = base, 2
+        while taken.filter(slug=candidate).exists():
+            candidate = f"{base}-{suffix}"
+            suffix += 1
+        return candidate
+
+    def clean(self):
+        cleaned = super().clean()
+
+        # A typed slug is left alone: if it collides, the model's unique check
+        # reports it, because the author chose that value and should be told.
+        # A derived one is made unique silently — they didn't choose it, so a
+        # collision is not their problem.
+        if not cleaned.get("slug") and cleaned.get("name"):
+            base = slugify(cleaned["name"])
+            if not base:
+                self.add_error(
+                    "slug",
+                    "A slug could not be generated from that name. Please enter one.",
+                )
+            else:
+                cleaned["slug"] = self._available_slug(base)
+
+        return cleaned
