@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% comment %}
+  Subject Center — list, search and edit subjects.
+
+  Context from apps.exam.views.subject_center:
+    subjects – currently the first 10
+
+  Two things are not wired yet:
+
+  · The search box submits `?q=` back to this page. The view ignores it, so
+    searching does nothing until it reads request.GET.get("q") and filters on
+    it. Left as a GET form rather than a client-side filter on purpose — the
+    view only loads 10 subjects, so filtering in the browser would search a
+    slice and look like the rest don't exist.
+
+  · The pencil links are href="#". They want a subject_edit route taking the
+    slug; there is no such URL yet.
+{% endcomment %}
+
+{% block title %}Subject Center · TestMu AI Certifications{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+
+  <header class="mb-6">
+    <div class="text-[11.5px] font-bold tracking-[1.6px] text-brand uppercase">Admin</div>
+    <h1 class="mt-1 text-2xl font-bold tracking-tight">Subject Center</h1>
+  </header>
+
+  {# ---- Add + search ---- #}
+  <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+    <a href="{% url 'exam:create_subject_page' %}"
+       class="inline-flex h-11 shrink-0 items-center justify-center rounded-lg bg-[#111] px-5 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
+      Add New Subject
+    </a>
+
+    <form method="get" action="{% url 'exam:subject_center' %}" class="relative flex-1">
+      <input type="search" name="q" value="{{ request.GET.q|default:'' }}"
+             placeholder="Search subjects"
+             aria-label="Search subjects"
+             class="h-11 w-full rounded-lg border border-zinc-300 bg-white pr-3 pl-10 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+      <svg class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-zinc-400"
+           viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"
+           stroke-linecap="round" aria-hidden="true">
+        <circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/>
+      </svg>
+    </form>
+  </div>
+
+  {# ---- List ---- #}
+  <div class="overflow-hidden rounded-2xl border border-line bg-white">
+    {% for subject in subjects %}
+      <div class="flex items-center gap-4 border-b border-[#F0F1F3] px-5 py-4 last:border-0">
+        <span class="min-w-0 flex-1 truncate font-medium">{{ subject.name }}</span>
+
+        {# subject_edit route does not exist yet #}
+        <a href="#" aria-label="Edit {{ subject.name }}"
+           class="grid size-9 shrink-0 place-items-center rounded-lg border border-line text-zinc-500 hover:border-brand hover:text-brand">
+          <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M13.5 3.5a1.9 1.9 0 0 1 2.7 2.7L7.4 15 4 16l1-3.4 8.5-9.1Z"/>
+          </svg>
+        </a>
+      </div>
+    {% empty %}
+      <p class="px-5 py-12 text-center text-sm text-muted">
+        {% if request.GET.q %}
+          No subjects match “{{ request.GET.q }}”.
+        {% else %}
+          No subjects yet. Add the first one to get started.
+        {% endif %}
+      </p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -18,7 +18,7 @@ from django.urls import reverse
 from . import timezones
 from .calendar import build_ics
 from .forms import BookingForm, RescheduleForm
-from .models import Exam, ExamBooking
+from .models import Exam, ExamBooking, Subject
 from apps.home.models import User
 from apps.home.decorators import role_required
 
@@ -276,7 +276,8 @@ def subject_center(request):
     such as creating a new subject, editing an existing subject, etc.
     Only accessible to admins."
     """
-    return render(request, "exam/subject_center.html")
+    subjects = Subject.objects.all()[:10]  # Fetch the first 10 subjects for display
+    return render(request, "exam/subject_center.html", {"subjects": subjects})
 
 @login_required
 def create_subject_page(request):
