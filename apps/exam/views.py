@@ -276,7 +276,7 @@ def explore_subjects(request):
     such as creating a new subject, editing an existing subject, etc.
     Only accessible to admins."
     """
-    subjects = Subject.objects.all()[:10]  # Fetch the first 10 subjects for display
+    subjects = Subject.objects.all()  # Fetch the subjects for display
     return render(request, "exam/subject_center.html", {"subjects": subjects})
 
 @login_required

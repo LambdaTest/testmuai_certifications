@@ -1,50 +1,58 @@
 {% extends "base_staff.html" %}
 
 {% comment %}
-  Subject Center — list, search and edit subjects.
+  Subject Center — the full list of subjects, with a live filter.
 
   Context from apps.exam.views.explore_subjects:
-    subjects – currently the first 10
+    subjects – all of them, unpaginated
 
-  Two things are not wired yet:
+  Search runs in the browser rather than on the server. Every subject is
+  already on the page and there will not be more than a few dozen, so a round
+  trip per keystroke-or-submit buys nothing. If Alpine fails to load the
+  filter stops working but the list still renders.
 
-  · The search box submits `?q=` back to this page. The view ignores it, so
-    searching does nothing until it reads request.GET.get("q") and filters on
-    it. Left as a GET form rather than a client-side filter on purpose — the
-    view only loads 10 subjects, so filtering in the browser would search a
-    slice and look like the rest don't exist.
+  Adding a subject lives in the sidebar, not on this page.
 
-  · The pencil links are href="#". They want a subject_edit route taking the
-    slug; there is no such URL yet.
+  Not wired: the pencil links are href="#" — a subject_edit route taking the
+  slug does not exist yet.
 {% endcomment %}
 
 {% block title %}Subject Center · TestMu AI Certifications{% endblock %}
 
 {% block staff_content %}
+{% comment %}
+  Names are lowercased once into a JS array, so filtering is a plain substring
+  check rather than DOM inspection — the row display and the "no matches"
+  message then read from the same source and cannot disagree.
+{% endcomment %}
+<div x-data="{
+       q: '',
+       names: [{% for subject in subjects %}'{{ subject.name|lower|escapejs }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+       get term() { return this.q.trim().toLowerCase() },
+       get matches() { return this.names.filter(n => n.includes(this.term)).length },
+     }">
 
   <header class="mb-6">
     <h1 class="text-2xl font-bold tracking-tight">Subject Center</h1>
   </header>
 
-  {# Adding a subject lives in the sidebar, not here. #}
-  <div class="mb-6">
-    <form method="get" action="{% url 'exam:explore_subjects' %}" class="relative">
-      <input type="search" name="q" value="{{ request.GET.q|default:'' }}"
-             placeholder="Search subjects"
-             aria-label="Search subjects"
-             class="h-11 w-full rounded-lg border border-zinc-300 bg-white pr-3 pl-10 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
-      <svg class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-zinc-400"
-           viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"
-           stroke-linecap="round" aria-hidden="true">
-        <circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/>
-      </svg>
-    </form>
+  <div class="mb-6 relative">
+    <input type="search" x-model="q"
+           placeholder="Search subjects"
+           aria-label="Search subjects"
+           class="h-11 w-full rounded-lg border border-zinc-300 bg-white pr-3 pl-10 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+    <svg class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-zinc-400"
+         viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"
+         stroke-linecap="round" aria-hidden="true">
+      <circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/>
+    </svg>
   </div>
 
   {# ---- List ---- #}
   <div class="overflow-hidden rounded-2xl border border-line bg-white">
     {% for subject in subjects %}
-      <div class="flex items-center gap-4 border-b border-[#F0F1F3] px-5 py-4 last:border-0">
+      <div x-show="!term || '{{ subject.name|lower|escapejs }}'.includes(term)"
+           class="flex items-center gap-4 border-b border-[#F0F1F3] px-5 py-4 last:border-0">
         <span class="min-w-0 flex-1 truncate font-medium">{{ subject.name }}</span>
 
         {# subject_edit route does not exist yet #}
@@ -58,13 +66,16 @@
       </div>
     {% empty %}
       <p class="px-5 py-12 text-center text-sm text-muted">
-        {% if request.GET.q %}
-          No subjects match “{{ request.GET.q }}”.
-        {% else %}
-          No subjects yet. Add the first one to get started.
-        {% endif %}
+        No subjects yet. Add the first one from the sidebar.
       </p>
     {% endfor %}
-  </div>
-{% endblock %}
 
+    {% if subjects %}
+      <p x-show="term && matches === 0" x-cloak
+         class="px-5 py-12 text-center text-sm text-muted">
+        No subjects match “<span x-text="q.trim()"></span>”.
+      </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
