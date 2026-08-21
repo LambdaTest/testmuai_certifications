@@ -20,6 +20,7 @@ from .calendar import build_ics
 from .forms import BookingForm, RescheduleForm
 from .models import Exam, ExamBooking
 from apps.home.models import User
+from apps.home.decorators import role_required
 
 
 def _exam_payload():
@@ -268,7 +269,7 @@ def assign_grading(request):
 
     return redirect("home:dashboard")
 
-
+@role_required(User.Role.ADMIN)
 def subject_center(request):
     """
     This is for the page that will contain subject related options

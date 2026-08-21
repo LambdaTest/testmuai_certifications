@@ -15,8 +15,6 @@ from functools import wraps
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
 
-from .models import User
-
 
 def role_required(*roles):
     """
@@ -52,9 +50,3 @@ def role_required(*roles):
         return wrapped
 
     return decorator
-
-
-#: role_required() returns a decorator, so these are usable directly as
-#: @admin_required / @examiner_required.
-admin_required = role_required(User.Role.ADMIN)
-examiner_required = role_required(User.Role.EXAMINER)
