@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% comment %}
+  Shell for every admin and staff page: site chrome from base.html, plus the
+  sidebar. Pages extend this and fill {% block staff_content %} — they should
+  never carry their own copy of the nav.
+
+  Sections with more than one destination expand; single-destination ones stay
+  flat, since a chevron revealing one item is noise.
+
+  ACCORDION. One `section` value lives on the outer x-data, so opening one
+  closes whatever was open. Per-section state would let several stand open at
+  once and push the sidebar past the fold.
+
+  The section you are in opens on load, worked out from
+  request.resolver_match.url_name — so no view has to pass anything, and there
+  is no open/closed state to persist across page loads.
+
+  The unfold is a CSS grid trick rather than a plugin: animating
+  grid-template-rows from 0fr to 1fr reaches the content's natural height,
+  which a plain height transition cannot do. Alpine's x-collapse would mean
+  loading @alpinejs/collapse on top of the core build.
+
+  Unbuilt destinations are href="#". Wire them as the views appear.
+{% endcomment %}
+
+{% block content %}
+{% with url_name=request.resolver_match.url_name %}
+<div class="mx-auto max-w-[1200px] px-4 sm:px-6"
+     x-data="{
+       nav: false,
+       section: {% if url_name == 'explore_subjects' or url_name == 'create_subject_page' %}'subject'{% else %}null{% endif %},
+       toggle(name) { this.section = this.section === name ? null : name },
+     }">
+
+  <button type="button" @click="nav = !nav"
+          class="mt-6 inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm font-semibold text-body lg:hidden">
+    <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5.5h14M3 10h14M3 14.5h14"/></svg>
+    Menu
+  </button>
+
+  <div class="flex gap-8 py-6 lg:py-10">
+
+    {# ---------------- Sidebar ---------------- #}
+    <aside class="w-60 shrink-0" :class="nav ? 'block' : 'hidden lg:block'">
+      <nav class="flex flex-col gap-0.5">
+
+        <a href="{% url 'home:dashboard' %}"
+           {% if url_name == "dashboard" %}aria-current="page"{% endif %}
+           class="rounded-lg px-3 py-2.5 text-[14.5px] {% if url_name == "dashboard" %}bg-brand-tint font-semibold text-brand-dark{% else %}font-medium text-body hover:bg-[#F3F5F8] hover:text-ink{% endif %}">
+          Dashboard
+        </a>
+
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">My Tasks</a>
+
+        {# ---- Exam Center ---- #}
+        <button type="button" @click="toggle('exam')" :aria-expanded="section === 'exam'"
+                class="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">
+          Exam Center
+          <svg class="size-3.5 text-zinc-400 transition-transform duration-200" :class="section === 'exam' && 'rotate-180'"
+               viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/></svg>
+        </button>
+        <div class="grid transition-[grid-template-rows] duration-200 ease-out"
+             :class="section === 'exam' ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
+             :aria-hidden="section !== 'exam'">
+          <div class="overflow-hidden">
+            <div class="flex flex-col gap-0.5 py-0.5 pl-3">
+              <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Explore Exams</a>
+              <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Create Exam</a>
+            </div>
+          </div>
+        </div>
+
+        {# ---- Question Center ---- #}
+        <button type="button" @click="toggle('question')" :aria-expanded="section === 'question'"
+                class="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">
+          Question Center
+          <svg class="size-3.5 text-zinc-400 transition-transform duration-200" :class="section === 'question' && 'rotate-180'"
+               viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/></svg>
+        </button>
+        <div class="grid transition-[grid-template-rows] duration-200 ease-out"
+             :class="section === 'question' ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
+             :aria-hidden="section !== 'question'">
+          <div class="overflow-hidden">
+            <div class="flex flex-col gap-0.5 py-0.5 pl-3">
+              <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Question Bank</a>
+              <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Add Question</a>
+              <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Import Questions</a>
+            </div>
+          </div>
+        </div>
+
+        {# ---- Subject Center ---- #}
+        <button type="button" @click="toggle('subject')" :aria-expanded="section === 'subject'"
+                class="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">
+          Subject Center
+          <svg class="size-3.5 text-zinc-400 transition-transform duration-200" :class="section === 'subject' && 'rotate-180'"
+               viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/></svg>
+        </button>
+        <div class="grid transition-[grid-template-rows] duration-200 ease-out"
+             :class="section === 'subject' ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
+             :aria-hidden="section !== 'subject'">
+          <div class="overflow-hidden">
+            <div class="flex flex-col gap-0.5 py-0.5 pl-3">
+              <a href="{% url 'exam:create_subject_page' %}"
+                 class="rounded-lg px-3 py-2 text-[13.5px] {% if url_name == "create_subject_page" %}bg-brand-tint font-semibold text-brand-dark{% else %}text-muted hover:bg-[#F3F5F8] hover:text-ink{% endif %}">Add Subject</a>
+              <a href="{% url 'exam:explore_subjects' %}"
+                 class="rounded-lg px-3 py-2 text-[13.5px] {% if url_name == "explore_subjects" %}bg-brand-tint font-semibold text-brand-dark{% else %}text-muted hover:bg-[#F3F5F8] hover:text-ink{% endif %}">Explore Subjects</a>
+            </div>
+          </div>
+        </div>
+
+        {# ---- Candidate Center ---- #}
+        <button type="button" @click="toggle('candidate')" :aria-expanded="section === 'candidate'"
+                class="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">
+          Candidate Center
+          <svg class="size-3.5 text-zinc-400 transition-transform duration-200" :class="section === 'candidate' && 'rotate-180'"
+               viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/></svg>
+        </button>
+        <div class="grid transition-[grid-template-rows] duration-200 ease-out"
+             :class="section === 'candidate' ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
+             :aria-hidden="section !== 'candidate'">
+          <div class="overflow-hidden">
+            <div class="flex flex-col gap-0.5 py-0.5 pl-3">
+              <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Find Candidate</a>
+              <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Export Candidates</a>
+            </div>
+          </div>
+        </div>
+
+        {# ---- Single destinations ---- #}
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Certificates</a>
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Analytics</a>
+
+        {# ---- Settings ---- #}
+        <button type="button" @click="toggle('settings')" :aria-expanded="section === 'settings'"
+                class="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">
+          Settings
+          <svg class="size-3.5 text-zinc-400 transition-transform duration-200" :class="section === 'settings' && 'rotate-180'"
+               viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/></svg>
+        </button>
+        <div class="grid transition-[grid-template-rows] duration-200 ease-out"
+             :class="section === 'settings' ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
+             :aria-hidden="section !== 'settings'">
+          <div class="overflow-hidden">
+            <div class="flex flex-col gap-0.5 py-0.5 pl-3">
+              <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Manage Roles</a>
+              <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Booking Rules</a>
+              <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Email Templates</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="my-1 border-t border-line"></div>
+
+        {# Stub until the ticket model exists — flagged so it isn't mistaken for working #}
+        <a href="#" class="flex items-center justify-between rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">
+          Support Tickets
+          <span class="rounded-full bg-[#F0F1F4] px-2 py-0.5 text-[10px] font-bold text-faint">SOON</span>
+        </a>
+      </nav>
+    </aside>
+
+    {# ---------------- Page ---------------- #}
+    <div class="min-w-0 flex-1">
+      {% block staff_content %}{% endblock %}
+    </div>
+  </div>
+</div>
+{% endwith %}
+{% endblock %}

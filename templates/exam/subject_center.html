@@ -1,9 +1,9 @@
-{% extends "base.html" %}
+{% extends "base_staff.html" %}
 
 {% comment %}
   Subject Center — list, search and edit subjects.
 
-  Context from apps.exam.views.subject_center:
+  Context from apps.exam.views.explore_subjects:
     subjects – currently the first 10
 
   Two things are not wired yet:
@@ -20,22 +20,15 @@
 
 {% block title %}Subject Center · TestMu AI Certifications{% endblock %}
 
-{% block content %}
-<div class="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+{% block staff_content %}
 
   <header class="mb-6">
-    <div class="text-[11.5px] font-bold tracking-[1.6px] text-brand uppercase">Admin</div>
-    <h1 class="mt-1 text-2xl font-bold tracking-tight">Subject Center</h1>
+    <h1 class="text-2xl font-bold tracking-tight">Subject Center</h1>
   </header>
 
-  {# ---- Add + search ---- #}
-  <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-    <a href="{% url 'exam:create_subject_page' %}"
-       class="inline-flex h-11 shrink-0 items-center justify-center rounded-lg bg-[#111] px-5 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
-      Add New Subject
-    </a>
-
-    <form method="get" action="{% url 'exam:subject_center' %}" class="relative flex-1">
+  {# Adding a subject lives in the sidebar, not here. #}
+  <div class="mb-6">
+    <form method="get" action="{% url 'exam:explore_subjects' %}" class="relative">
       <input type="search" name="q" value="{{ request.GET.q|default:'' }}"
              placeholder="Search subjects"
              aria-label="Search subjects"
@@ -73,5 +66,5 @@
       </p>
     {% endfor %}
   </div>
-</div>
 {% endblock %}
+

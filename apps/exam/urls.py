@@ -14,5 +14,5 @@ urlpatterns = [
     path("bookings/<uuid:booking_id>/cancelpage/", views.cancel_booking_page, name="cancel_booking_page"),
     path("assign_grading/", views.assign_grading, name="assign_grading"),
     path("create_subject_page/", views.create_subject_page, name="create_subject_page"),
-    path("subject_center/", views.subject_center, name="subject_center"),
+    path("subject_center/explore_subjects/", views.explore_subjects, name="explore_subjects"),
 ]

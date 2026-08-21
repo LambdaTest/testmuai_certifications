@@ -270,7 +270,7 @@ def assign_grading(request):
     return redirect("home:dashboard")
 
 @role_required(User.Role.ADMIN)
-def subject_center(request):
+def explore_subjects(request):
     """
     This is for the page that will contain subject related options
     such as creating a new subject, editing an existing subject, etc.
