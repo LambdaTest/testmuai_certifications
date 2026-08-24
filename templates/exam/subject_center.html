@@ -27,6 +27,7 @@
 {% endcomment %}
 <div x-data="{
        q: '',
+       openRow: null,
        names: [{% for subject in subjects %}'{{ subject.name|lower|escapejs }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
        get term() { return this.q.trim().toLowerCase() },
        get matches() { return this.names.filter(n => n.includes(this.term)).length },
@@ -51,18 +52,111 @@
   {# ---- List ---- #}
   <div class="overflow-hidden rounded-2xl border border-line bg-white">
     {% for subject in subjects %}
-      <div x-show="!term || '{{ subject.name|lower|escapejs }}'.includes(term)"
-           class="flex items-center gap-4 border-b border-[#F0F1F3] px-5 py-4 last:border-0">
-        <span class="min-w-0 flex-1 truncate font-medium">{{ subject.name }}</span>
+      {% comment %}
+        Each row keeps its own copy of the field values plus a JSON snapshot of
+        how they started. `dirty` compares the two, so Save stays disabled
+        until something actually changed and Discard can restore exactly what
+        was there — no round trip, no reload.
 
-        {# subject_edit route does not exist yet #}
-        <a href="#" aria-label="Edit {{ subject.name }}"
-           class="grid size-9 shrink-0 place-items-center rounded-lg border border-line text-zinc-500 hover:border-brand hover:text-brand">
-          <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor"
-               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M13.5 3.5a1.9 1.9 0 0 1 2.7 2.7L7.4 15 4 16l1-3.4 8.5-9.1Z"/>
-          </svg>
-        </a>
+        `openRow` lives on the outer scope, so opening one card closes any
+        other. Alpine's nested scopes let this inner component read it.
+      {% endcomment %}
+      <div x-show="!term || '{{ subject.name|lower|escapejs }}'.includes(term)"
+           x-data="{
+             f: {
+               name: '{{ subject.name|escapejs }}',
+               slug: '{{ subject.slug|escapejs }}',
+               description: '{{ subject.description|escapejs }}',
+               subject_level: '{{ subject.subject_level|escapejs }}',
+             },
+             snapshot: null,
+             init() { this.snapshot = JSON.stringify(this.f) },
+             get dirty() { return JSON.stringify(this.f) !== this.snapshot },
+             discard() { this.f = JSON.parse(this.snapshot); openRow = null },
+           }"
+           class="border-b border-[#F0F1F3] last:border-0">
+
+        <div class="flex items-center gap-4 px-5 py-4">
+          <span class="min-w-0 flex-1 truncate font-medium">{{ subject.name }}</span>
+
+          <button type="button"
+                  @click="openRow = openRow === {{ subject.pk }} ? null : {{ subject.pk }}"
+                  :aria-expanded="openRow === {{ subject.pk }}"
+                  aria-label="Edit {{ subject.name }}"
+                  class="grid size-9 shrink-0 place-items-center rounded-lg border transition-colors"
+                  :class="openRow === {{ subject.pk }}
+                            ? 'border-brand bg-brand-tint text-brand'
+                            : 'border-line text-zinc-500 hover:border-brand hover:text-brand'">
+            <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                 stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M13.5 3.5a1.9 1.9 0 0 1 2.7 2.7L7.4 15 4 16l1-3.4 8.5-9.1Z"/>
+            </svg>
+          </button>
+        </div>
+
+        {# Unfolds to the content's natural height — same grid trick as the sidebar #}
+        <div class="grid transition-[grid-template-rows] duration-200 ease-out"
+             :class="openRow === {{ subject.pk }} ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
+             :aria-hidden="openRow !== {{ subject.pk }}">
+          <div class="overflow-hidden">
+            <form method="post" action="{% url 'exam:edit_subject' subject.pk %}"
+                  class="border-t border-[#F0F1F3] bg-surface px-5 py-5">
+              {% csrf_token %}
+
+              <div class="grid gap-4 sm:grid-cols-2">
+                <label class="block">
+                  <span class="mb-1.5 block text-[13px] font-semibold text-body">Name</span>
+                  <input type="text" name="name" x-model="f.name" required
+                         class="h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+                </label>
+
+                <label class="block">
+                  <span class="mb-1.5 block text-[13px] font-semibold text-body">Slug</span>
+                  <input type="text" name="slug" x-model="f.slug"
+                         class="h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+                </label>
+
+                <label class="block sm:col-span-2">
+                  <span class="mb-1.5 block text-[13px] font-semibold text-body">Description</span>
+                  <textarea name="description" x-model="f.description" rows="3"
+                            class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30"></textarea>
+                </label>
+
+                <label class="block">
+                  <span class="mb-1.5 block text-[13px] font-semibold text-body">Level</span>
+                  {% comment %}
+                    Mirrors Subject.Level. Pass Subject.Level.choices from the
+                    view as `levels` if you would rather have one source.
+                  {% endcomment %}
+                  <select name="subject_level" x-model="f.subject_level"
+                          class="h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="mt-5 flex items-center gap-3">
+                {# Disabled until something actually changed #}
+                <button type="submit" :disabled="!dirty"
+                        class="inline-flex h-10 items-center rounded-lg px-5 text-sm font-bold transition-colors"
+                        :class="dirty
+                                  ? 'bg-brand text-white hover:bg-brand-dark'
+                                  : 'cursor-not-allowed bg-[#E4E9F0] text-faint'">
+                  Save
+                </button>
+
+                <button type="button" @click="discard()"
+                        class="inline-flex h-10 items-center rounded-lg bg-danger-tint px-5 text-sm font-bold text-danger hover:bg-[#F6D9D9]">
+                  Discard
+                </button>
+
+                <span x-show="dirty" x-cloak class="text-[13px] text-muted">Unsaved changes</span>
+              </div>
+            </form>
+          </div>
+        </div>
       </div>
     {% empty %}
       <p class="px-5 py-12 text-center text-sm text-muted">

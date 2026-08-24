@@ -17,7 +17,7 @@ from django.urls import reverse
 
 from . import timezones
 from .calendar import build_ics
-from .forms import BookingForm, RescheduleForm
+from .forms import BookingForm, RescheduleForm, SubjectForm
 from .models import Exam, ExamBooking, Subject
 from apps.home.models import User
 from apps.home.decorators import role_required
@@ -288,3 +288,13 @@ def create_subject_page(request):
         return Http404("home:dashboard")
 
 
+@role_required(User.Role.ADMIN)
+def edit_subject(request, subject_id):
+    """
+    This is for the page that will help edit an existing subject for the admin."
+    """
+    subject = get_object_or_404(Subject, id=subject_id)
+    form = SubjectForm(request.POST or None, instance=subject)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+    return redirect("exam:explore_subjects")
