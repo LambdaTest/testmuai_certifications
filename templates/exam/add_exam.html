@@ -1,0 +1,192 @@
+{% extends "base_staff.html" %}
+
+{% comment %}
+  Add / Edit Exam — one template for both.
+
+  Context:
+    form – an ExamForm, bound to an existing exam when editing
+
+  Which mode it is comes from `form.instance.pk`: unsaved means adding. That
+  keeps one file rather than two that drift apart, and the <form> has no
+  `action`, so it posts back to whichever URL served it.
+
+  Edit reuses this file — point an edit view at it and the title, button and
+  prefilled values all follow from the bound instance.
+
+  Duration is deliberately not a field. Exam.save() derives it from exam_type
+  — 45 minutes objective, 36 hours subjective — and a CheckConstraint enforces
+  the pair, so letting an author type it would only create a value the database
+  rejects. The help text under Format says so.
+{% endcomment %}
+
+{% block title %}{% if form.instance.pk %}Edit Exam{% else %}Add Exam{% endif %} · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<div class="max-w-3xl">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-bold tracking-tight">
+      {% if form.instance.pk %}Edit Exam{% else %}Add Exam{% endif %}
+    </h1>
+    <p class="mt-1.5 text-[15px] text-muted">
+      An exam belongs to a subject and carries its own level — Selenium 101 and
+      Selenium Advanced are two exams on one subject.
+    </p>
+  </header>
+
+  <form method="post" class="rounded-2xl border border-line bg-white p-6">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="mb-5 rounded-xl border border-danger/40 bg-danger-tint p-4">
+        {% for error in form.non_field_errors %}
+          <p class="text-sm font-medium text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {# ---------- What it is ---------- #}
+    <div class="grid gap-5 sm:grid-cols-2">
+
+      <div>
+        <label for="{{ form.subject.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.subject.label }}
+        </label>
+        {{ form.subject }}
+        {% for error in form.subject.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+
+      <div>
+        <label for="{{ form.exam_name.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.exam_name.label }}
+        </label>
+        {{ form.exam_name }}
+        {# blank=True on the model — save() falls back to "<subject> Certification Exam" #}
+        <p class="mt-1.5 text-[13px] text-muted">Leave blank to use “&lt;subject&gt; Certification Exam”.</p>
+        {% for error in form.exam_name.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+
+      <div class="sm:col-span-2">
+        <label for="{{ form.slug.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.slug.label }}
+        </label>
+        {{ form.slug }}
+        {% if form.slug.help_text %}
+          <p class="mt-1.5 text-[13px] text-muted">{{ form.slug.help_text }}</p>
+        {% endif %}
+        {% for error in form.slug.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+
+      <div class="sm:col-span-2">
+        <label for="{{ form.description.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.description.label }}
+        </label>
+        {{ form.description }}
+        {% for error in form.description.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# ---------- Format ---------- #}
+    <div class="mt-7 border-t border-[#F0F1F3] pt-6">
+      <h2 class="mb-4 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Format</h2>
+
+      <div class="grid gap-5 sm:grid-cols-2">
+        <div>
+          <label for="{{ form.exam_type.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+            {{ form.exam_type.label }}
+          </label>
+          {{ form.exam_type }}
+          <p class="mt-1.5 text-[13px] text-muted">
+            Sets the duration automatically — 45 minutes objective, 36 hours subjective.
+          </p>
+          {% for error in form.exam_type.errors %}
+            <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+          {% endfor %}
+        </div>
+
+        <div>
+          <label for="{{ form.exam_level.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+            {{ form.exam_level.label }}
+          </label>
+          {{ form.exam_level }}
+          {% for error in form.exam_level.errors %}
+            <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+          {% endfor %}
+        </div>
+
+        <div>
+          <label for="{{ form.maximum_marks.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+            {{ form.maximum_marks.label }}
+          </label>
+          {{ form.maximum_marks }}
+          {% for error in form.maximum_marks.errors %}
+            <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+          {% endfor %}
+        </div>
+
+        <div>
+          <label for="{{ form.passing_marks.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+            {{ form.passing_marks.label }}
+          </label>
+          {{ form.passing_marks }}
+          {% for error in form.passing_marks.errors %}
+            <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# ---------- Marketing ---------- #}
+    <div class="mt-7 border-t border-[#F0F1F3] pt-6">
+      <div>
+        <label for="{{ form.marketing_url.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.marketing_url.label }}
+        </label>
+        {{ form.marketing_url }}
+        {% if form.marketing_url.help_text %}
+          <p class="mt-1.5 text-[13px] text-muted">{{ form.marketing_url.help_text }}</p>
+        {% endif %}
+        {% for error in form.marketing_url.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% comment %}
+      Two submits, one form. Both create the exam; the difference is the status
+      the view gives it, read from request.POST["action"]. Status is not a form
+      field precisely so the button decides it — an author cannot type
+      "published" into a box.
+
+      Draft is the prominent one because it is the realistic path: an exam
+      needs questions before anyone can sit it, and publishing an empty one
+      makes it bookable but unanswerable.
+    {% endcomment %}
+    <div class="mt-7 flex flex-wrap items-center gap-3">
+      <button type="submit" name="action" value="draft"
+              class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
+        Save
+      </button>
+
+      <button type="submit" name="action" value="publish"
+              class="inline-flex h-11 items-center rounded-lg border border-line px-6 text-[14.5px] font-semibold text-body hover:border-brand hover:text-brand">
+        Add Exam
+      </button>
+
+      <a href="{% url 'exam:explore_exams' %}"
+         class="ml-auto inline-flex h-11 items-center rounded-lg px-4 text-[14.5px] font-semibold text-muted hover:text-ink">
+        Discard
+      </a>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

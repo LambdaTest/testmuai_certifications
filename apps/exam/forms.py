@@ -277,14 +277,13 @@ class ExamForm(AuthoringForm):
     """
     class Meta:
         model = Exam
-        fields = ['subject', 'exam_name', 'slug', 'exam_type', 'status',
+        fields = ['subject', 'exam_name', 'slug', 'exam_type',
                   'marketing_url', 'maximum_marks', 'passing_marks', 'exam_level', 'description']
         labels = {
             'subject': 'Subject',
             'exam_name': 'Exam Name',
             'slug': 'Slug',
             'exam_type': 'Exam Type',
-            'status': 'Status',
             'maximum_marks': 'Maximum Marks',
             'passing_marks': 'Passing Marks',
             'exam_level': 'Exam Level',
