@@ -277,7 +277,7 @@ def explore_subjects(request):
     Only accessible to admins."
     """
     subjects = Subject.objects.all()  # Fetch the subjects for display
-    return render(request, "exam/subject_center.html", {"subjects": subjects})
+    return render(request, "exam/explore_subjects.html", {"subjects": subjects})
 
 @role_required(User.Role.ADMIN)
 def create_subject(request):
