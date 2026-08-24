@@ -13,7 +13,7 @@ urlpatterns = [
     path("bookings/<uuid:booking_id>/cancel/", views.cancel_booking, name="cancel_booking"),
     path("bookings/<uuid:booking_id>/cancelpage/", views.cancel_booking_page, name="cancel_booking_page"),
     path("assign_grading/", views.assign_grading, name="assign_grading"),
-    path("create_subject_page/", views.create_subject_page, name="create_subject_page"),
+    path("subject_center/create_subject/", views.create_subject, name="create_subject"),
     path("subject_center/explore_subjects/", views.explore_subjects, name="explore_subjects"),
     path("subject_center/edit_subject/<int:subject_id>/", views.edit_subject, name="edit_subject"),
 ]

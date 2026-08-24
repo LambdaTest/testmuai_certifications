@@ -29,7 +29,7 @@
 <div class="mx-auto max-w-[1200px] px-4 sm:px-6"
      x-data="{
        nav: false,
-       section: {% if url_name == 'explore_subjects' or url_name == 'create_subject_page' %}'subject'{% else %}null{% endif %},
+       section: {% if url_name == 'explore_subjects' or url_name == 'create_subject' %}'subject'{% else %}null{% endif %},
        toggle(name) { this.section = this.section === name ? null : name },
      }">
 
@@ -102,8 +102,8 @@
              :aria-hidden="section !== 'subject'">
           <div class="overflow-hidden">
             <div class="flex flex-col gap-0.5 py-0.5 pl-3">
-              <a href="{% url 'exam:create_subject_page' %}"
-                 class="rounded-lg px-3 py-2 text-[13.5px] {% if url_name == "create_subject_page" %}bg-brand-tint font-semibold text-brand-dark{% else %}text-muted hover:bg-[#F3F5F8] hover:text-ink{% endif %}">Add Subject</a>
+              <a href="{% url 'exam:create_subject' %}"
+                 class="rounded-lg px-3 py-2 text-[13.5px] {% if url_name == "create_subject" %}bg-brand-tint font-semibold text-brand-dark{% else %}text-muted hover:bg-[#F3F5F8] hover:text-ink{% endif %}">Add Subject</a>
               <a href="{% url 'exam:explore_subjects' %}"
                  class="rounded-lg px-3 py-2 text-[13.5px] {% if url_name == "explore_subjects" %}bg-brand-tint font-semibold text-brand-dark{% else %}text-muted hover:bg-[#F3F5F8] hover:text-ink{% endif %}">Explore Subjects</a>
             </div>

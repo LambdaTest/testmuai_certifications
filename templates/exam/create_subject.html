@@ -1,0 +1,132 @@
+{% extends "base_staff.html" %}
+
+{% comment %}
+  Add Subject.
+
+  Context from apps.exam.views.create_subject:
+    form – a SubjectForm
+
+  ── How a Django form renders ──────────────────────────────────────────────
+
+  `form` is not HTML. It is an object you pull pieces out of:
+
+      {{ form.name }}             the <input>, built from the widget in
+                                  SubjectForm.Meta.widgets, already carrying
+                                  the Tailwind classes added in __init__
+      {{ form.name.label }}       the label text, "Name"
+      {{ form.name.label_tag }}   a full <label for="id_name">Name</label>
+      {{ form.name.help_text }}   the help_text from Meta
+      {{ form.name.errors }}      a <ul> of this field's errors, empty if none
+      {{ form.name.value }}       what the user typed, so a failed submit
+                                  redisplays rather than clearing the form
+      {{ form.non_field_errors }} errors from clean() that belong to no single
+                                  field
+
+  Three ways to render the whole thing:
+
+    1. {{ form }}            Django lays it all out. Fastest, no control over
+                             markup, will not match the design system.
+    2. {{ form.as_div }}     Same, wrapped in divs.
+    3. Field by field        What this file does — full control of layout and
+                             classes, at the cost of naming each field.
+
+  Two things are mandatory whichever you pick: {% csrf_token %} inside the
+  <form>, and a `method="post"`. Without the token Django rejects the POST.
+{% endcomment %}
+
+{% block title %}Add Subject · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<div class="max-w-2xl">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-bold tracking-tight">Add Subject</h1>
+    <p class="mt-1.5 text-[15px] text-muted">
+      A subject groups exams and questions — Selenium, Accessibility Testing, and so on.
+    </p>
+  </header>
+
+  <form method="post" action="{% url 'exam:create_subject' %}"
+        class="rounded-2xl border border-line bg-white p-6">
+    {% csrf_token %}
+
+    {% comment %}
+      Errors raised in clean() that don't belong to one field. SubjectForm
+      attaches its slug error to the slug field, so this is usually empty —
+      but leaving it out means a whole class of error renders nowhere.
+    {% endcomment %}
+    {% if form.non_field_errors %}
+      <div class="mb-5 rounded-xl border border-danger/40 bg-danger-tint p-4">
+        {% for error in form.non_field_errors %}
+          <p class="text-sm font-medium text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="grid gap-5 sm:grid-cols-2">
+
+      {# ---- Name ---- #}
+      <div>
+        <label for="{{ form.name.id_for_label }}"
+               class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.name.label }}
+        </label>
+        {{ form.name }}
+        {% for error in form.name.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+
+      {# ---- Slug ---- #}
+      <div>
+        <label for="{{ form.slug.id_for_label }}"
+               class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.slug.label }}
+        </label>
+        {{ form.slug }}
+        {% if form.slug.help_text %}
+          <p class="mt-1.5 text-[13px] text-muted">{{ form.slug.help_text }}</p>
+        {% endif %}
+        {% for error in form.slug.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+
+      {# ---- Description ---- #}
+      <div class="sm:col-span-2">
+        <label for="{{ form.description.id_for_label }}"
+               class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.description.label }}
+        </label>
+        {{ form.description }}
+        {% for error in form.description.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+
+      {# ---- Level ---- #}
+      <div>
+        <label for="{{ form.subject_level.id_for_label }}"
+               class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.subject_level.label }}
+        </label>
+        {{ form.subject_level }}
+        {% for error in form.subject_level.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="mt-6 flex items-center gap-3">
+      <button type="submit"
+              class="inline-flex h-11 items-center rounded-lg bg-brand px-6 text-[14.5px] font-bold text-white hover:bg-brand-dark">
+        Create Subject
+      </button>
+      <a href="{% url 'exam:explore_subjects' %}"
+         class="inline-flex h-11 items-center rounded-lg border border-line px-6 text-[14.5px] font-semibold text-body hover:border-[#B9BFC9]">
+        Cancel
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -279,13 +279,18 @@ def explore_subjects(request):
     subjects = Subject.objects.all()  # Fetch the subjects for display
     return render(request, "exam/subject_center.html", {"subjects": subjects})
 
-@login_required
-def create_subject_page(request):
+@role_required(User.Role.ADMIN)
+def create_subject(request):
     """
     This is for the page that will help create a new subject for the admin."
     """
-    if request.user.role != User.Role.ADMIN:
-        return Http404("home:dashboard")
+    form = SubjectForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        subject = form.save(commit=False)
+        subject.created_by = request.user  # Set the creator of the subject
+        subject.save()
+        return redirect("exam:explore_subjects")  # Redirect to the subject center after creation
+    return render(request, "exam/create_subject.html", {"form": form})
 
 
 @role_required(User.Role.ADMIN)
