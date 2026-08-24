@@ -4,11 +4,7 @@
   Add Subject.
 
   Context from apps.exam.views.create_subject:
-    form – a SubjectForm
-
-  ── How a Django form renders ──────────────────────────────────────────────
-
-  `form` is not HTML. It is an object you pull pieces out of:
+    form - a SubjectForm
 
       {{ form.name }}             the <input>, built from the widget in
                                   SubjectForm.Meta.widgets, already carrying
@@ -21,17 +17,6 @@
                                   redisplays rather than clearing the form
       {{ form.non_field_errors }} errors from clean() that belong to no single
                                   field
-
-  Three ways to render the whole thing:
-
-    1. {{ form }}            Django lays it all out. Fastest, no control over
-                             markup, will not match the design system.
-    2. {{ form.as_div }}     Same, wrapped in divs.
-    3. Field by field        What this file does — full control of layout and
-                             classes, at the cost of naming each field.
-
-  Two things are mandatory whichever you pick: {% csrf_token %} inside the
-  <form>, and a `method="post"`. Without the token Django rejects the POST.
 {% endcomment %}
 
 {% block title %}Add Subject · TestMu AI Certifications{% endblock %}
