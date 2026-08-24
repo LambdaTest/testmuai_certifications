@@ -17,10 +17,11 @@ from django.urls import reverse
 
 from . import timezones
 from .calendar import build_ics
-from .forms import BookingForm, RescheduleForm, SubjectForm
+from .forms import BookingForm, RescheduleForm, SubjectForm, ExamForm
 from .models import Exam, ExamBooking, Subject
 from apps.home.models import User
 from apps.home.decorators import role_required
+from django.db.models import Case, When, IntegerField
 
 
 def _exam_payload():
@@ -29,7 +30,7 @@ def _exam_payload():
         {
             "slug": c.slug,
             "name": c.exam_name,
-            "level": c.get_level_display(),
+            "level": c.get_exam_level_display(),
             "description": c.description,
         }
         for c in Exam.objects.filter(status=Exam.Status.PUBLISHED)
@@ -148,7 +149,7 @@ def reschedule(request, booking_id):
                     {
                         "slug": exam.slug,
                         "name": exam.exam_name,
-                        "level": exam.get_level_display(),
+                        "level": exam.get_exam_level_display(),
                         "description": exam.description,
                     }
                 ]
@@ -303,3 +304,28 @@ def edit_subject(request, subject_id):
     if request.method == "POST" and form.is_valid():
         form.save()
     return redirect("exam:explore_subjects")
+
+@role_required(User.Role.ADMIN)
+def explore_exams(request):
+    """
+    This is for viewing all the exams that are available in the system.
+    Only accessible to admins."
+    """
+    exams = Exam.objects.select_related("subject").order_by(
+      Case(When(status=Exam.Status.DRAFT, then=0), default=1, output_field=IntegerField()),
+      "exam_name",)
+    return render(request, "exam/explore_exams.html", {"exams": exams})
+
+@role_required(User.Role.ADMIN)
+def add_exam(request):
+    """
+    This is for the page that will help create a new exam for the admin."
+    """
+    form = ExamForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        exam = form.save(commit=False)
+        exam.created_by = request.user  # Set the creator of the exam
+        exam.save()
+        return redirect("exam:explore_exams")  # Redirect to the exam center after creation
+    return render(request, "exam/add_exam.html", {"form": form})
+    pass

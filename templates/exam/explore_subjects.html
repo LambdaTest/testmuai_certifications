@@ -67,7 +67,6 @@
                name: '{{ subject.name|escapejs }}',
                slug: '{{ subject.slug|escapejs }}',
                description: '{{ subject.description|escapejs }}',
-               subject_level: '{{ subject.subject_level|escapejs }}',
              },
              snapshot: null,
              init() { this.snapshot = JSON.stringify(this.f) },
@@ -122,19 +121,6 @@
                             class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30"></textarea>
                 </label>
 
-                <label class="block">
-                  <span class="mb-1.5 block text-[13px] font-semibold text-body">Level</span>
-                  {% comment %}
-                    Mirrors Subject.Level. Pass Subject.Level.choices from the
-                    view as `levels` if you would rather have one source.
-                  {% endcomment %}
-                  <select name="subject_level" x-model="f.subject_level"
-                          class="h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
-                    <option value="beginner">Beginner</option>
-                    <option value="intermediate">Intermediate</option>
-                    <option value="advanced">Advanced</option>
-                  </select>
-                </label>
               </div>
 
               <div class="mt-5 flex items-center gap-3">

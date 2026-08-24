@@ -89,17 +89,6 @@
         {% endfor %}
       </div>
 
-      {# ---- Level ---- #}
-      <div>
-        <label for="{{ form.subject_level.id_for_label }}"
-               class="mb-1.5 block text-[13px] font-semibold text-body">
-          {{ form.subject_level.label }}
-        </label>
-        {{ form.subject_level }}
-        {% for error in form.subject_level.errors %}
-          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
-        {% endfor %}
-      </div>
     </div>
 
     <div class="mt-6 flex items-center gap-3">

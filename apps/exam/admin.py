@@ -26,8 +26,7 @@ class CreatedByMixin:
 
 @admin.register(Subject)
 class SubjectAdmin(CreatedByMixin, admin.ModelAdmin):
-    list_display = ("name", "subject_level", "slug", "created_at")
-    list_filter = ("subject_level",)
+    list_display = ("name", "slug", "created_at")
     search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
 

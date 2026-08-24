@@ -92,18 +92,12 @@ class Subject(models.Model):
     """
     A subject is a subject of study for which a candidate can take an exam.
     """
-    class Level(models.TextChoices):
-        BEGINNER = "beginner", "Beginner"
-        INTERMEDIATE = "intermediate", "Intermediate"
-        ADVANCED = "advanced", "Advanced"
-
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True)
     description = models.TextField(blank=True) 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="subjects")
-    subject_level = models.CharField(max_length=16, choices=Level.choices, default=Level.BEGINNER)
 
     class Meta:
         db_table = "subjects"
@@ -129,6 +123,11 @@ class Exam(models.Model):
         Type.OBJECTIVE: 45,
         Type.SUBJECTIVE: 36 * 60,  # 36 hours
     }
+    class Level(models.TextChoices):
+            BEGINNER = "beginner", "Beginner"
+            INTERMEDIATE = "intermediate", "Intermediate"
+            ADVANCED = "advanced", "Advanced"
+    
     subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name="exams")
     exam_name = models.CharField(
         max_length=255,
@@ -150,7 +149,7 @@ class Exam(models.Model):
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
 
     exam_type = models.CharField(max_length=16, choices=Type.choices, default=Type.OBJECTIVE)
-
+    exam_level = models.CharField(max_length=16, choices=Level.choices, default=Level.BEGINNER)
     #: Minutes, per repo convention that durations state their unit. Set from
     #: `type` — leave it blank and save() fills it in.
     duration_minutes = models.PositiveIntegerField(
@@ -188,14 +187,6 @@ class Exam(models.Model):
 
     def __str__(self):
         return self.exam_name
-
-    @property
-    def level(self):
-        """Level comes from the subject — one source of truth."""
-        return self.subject.subject_level
-
-    def get_level_display(self):
-        return self.subject.get_subject_level_display()
 
     def clean(self):
         """Form-level validation — gives a readable error instead of IntegrityError."""

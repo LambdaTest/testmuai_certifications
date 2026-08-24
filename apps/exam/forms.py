@@ -176,7 +176,73 @@ class RescheduleForm(ScheduleForm):
         return booking
 
 
-class SubjectForm(forms.ModelForm):
+class AuthoringForm(forms.ModelForm):
+    """
+    Shared behaviour for the admin authoring forms.
+
+    Two things every one of them wants:
+
+    · **A derived slug.** Left blank, it is generated from whichever field
+      `slug_source` names, made unique by appending -2, -3… A slug the author
+      *typed* is left alone, so a collision is reported to them rather than
+      silently renamed — they chose that value and should be told.
+
+    · **Consistent inputs.** The design-system classes go on the widgets,
+      because {{ form.name }} generates the tag and a template cannot style it.
+
+    Subclasses set `slug_source` and otherwise just declare Meta. Written once
+    here rather than copied into each form: two copies of the slug rule would
+    eventually disagree about what a blank slug means.
+    """
+
+    #: Field the slug is derived from when left blank.
+    slug_source = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if "slug" in self.fields:
+            # Optional on the form, still required on the model — clean() fills
+            # it in from `slug_source`.
+            self.fields["slug"].required = False
+
+        css = (
+            "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm "
+            "outline-none focus-visible:border-brand focus-visible:ring-3 "
+            "focus-visible:ring-brand/30"
+        )
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", css)
+
+    def _available_slug(self, base):
+        """`selenium`, else `selenium-2`, `selenium-3`… — first one free."""
+        taken = self._meta.model.objects.exclude(pk=self.instance.pk)
+        candidate, suffix = base, 2
+        while taken.filter(slug=candidate).exists():
+            candidate = f"{base}-{suffix}"
+            suffix += 1
+        return candidate
+
+    def clean(self):
+        cleaned = super().clean()
+
+        if "slug" in self.fields and not cleaned.get("slug"):
+            source = cleaned.get(self.slug_source) if self.slug_source else None
+            if source:
+                base = slugify(source)
+                if not base:
+                    self.add_error(
+                        "slug",
+                        "A slug could not be generated from that name. "
+                        "Please enter one.",
+                    )
+                else:
+                    cleaned["slug"] = self._available_slug(base)
+
+        return cleaned
+
+
+class SubjectForm(AuthoringForm):
     """
     Authoring form for a subject.
 
@@ -189,10 +255,11 @@ class SubjectForm(forms.ModelForm):
     authored a subject. The view sets it from request.user.
     """
 
+    slug_source = "name"
+
     class Meta:
         model = Subject
-        fields = ["name", "slug", "description", "subject_level"]
-        labels = {"subject_level": "Level"}
+        fields = ["name", "slug", "description"]
         help_texts = {
             "slug": "Leave blank to generate one from the name.",
         }
@@ -202,44 +269,41 @@ class SubjectForm(forms.ModelForm):
             "description": forms.Textarea(attrs={"rows": 4}),
         }
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Optional on the form, still required on the model — clean() fills it
-        # in from the name when left blank.
-        self.fields["slug"].required = False
 
-        css = (
-            "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm "
-            "outline-none focus-visible:border-brand focus-visible:ring-3 "
-            "focus-visible:ring-brand/30"
-        )
-        for field in self.fields.values():
-            field.widget.attrs.setdefault("class", css)
+class ExamForm(AuthoringForm):
+    """
+    This is the form for handling exam creation, validation, and modification (of existing exams).
+    It is a model form connecting directly to the Exam model, allowing for easy data handling and validation.
+    """
+    class Meta:
+        model = Exam
+        fields = ['subject', 'exam_name', 'slug', 'exam_type', 'status',
+                  'marketing_url', 'maximum_marks', 'passing_marks', 'exam_level', 'description']
+        labels = {
+            'subject': 'Subject',
+            'exam_name': 'Exam Name',
+            'slug': 'Slug',
+            'exam_type': 'Exam Type',
+            'status': 'Status',
+            'maximum_marks': 'Maximum Marks',
+            'passing_marks': 'Passing Marks',
+            'exam_level': 'Exam Level',
+            'description': 'Exam Description'
+        }
+        help_texts = {
+            'slug': "Leave blank to generate one from the exam name.",
+            'marketing_url': "Optional. A URL that takes marketing page for this Exam."
+        }
+        widgets = {
+            "exam_name": forms.TextInput(attrs={"placeholder": "e.g. Selenium Basics"}),
+            "description": forms.Textarea(attrs={"rows": 4, "placeholder": "A brief description of the exam."}),
+            "slug": forms.TextInput(attrs={"placeholder": "selenium-basics"}),
+            "exam_level": forms.Select(attrs={"placeholder": "Select Exam Level"}),
+            "marketing_url": forms.URLInput(attrs={"placeholder": "https://example.com/selenium-basics"}),
+            "maximum_marks": forms.NumberInput(attrs={"min": 1}),
+            "passing_marks": forms.NumberInput(attrs={"min": 1}),
+            "subject": forms.Select(attrs={"placeholder": "Select Subject"}),
+            "exam_type": forms.Select(attrs={"placeholder": "Select Exam Type"}),
+        }
 
-    def _available_slug(self, base):
-        """`selenium`, else `selenium-2`, `selenium-3`… — first one free."""
-        taken = Subject.objects.exclude(pk=self.instance.pk)
-        candidate, suffix = base, 2
-        while taken.filter(slug=candidate).exists():
-            candidate = f"{base}-{suffix}"
-            suffix += 1
-        return candidate
-
-    def clean(self):
-        cleaned = super().clean()
-
-        # A typed slug is left alone: if it collides, the model's unique check
-        # reports it, because the author chose that value and should be told.
-        # A derived one is made unique silently — they didn't choose it, so a
-        # collision is not their problem.
-        if not cleaned.get("slug") and cleaned.get("name"):
-            base = slugify(cleaned["name"])
-            if not base:
-                self.add_error(
-                    "slug",
-                    "A slug could not be generated from that name. Please enter one.",
-                )
-            else:
-                cleaned["slug"] = self._available_slug(base)
-
-        return cleaned
+    slug_source = "exam_name"
