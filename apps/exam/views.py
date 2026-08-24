@@ -324,8 +324,11 @@ def add_exam(request):
     form = ExamForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         exam = form.save(commit=False)
-        exam.created_by = request.user  # Set the creator of the exam
+        exam.status = (
+            Exam.Status.PUBLISHED
+            if request.POST.get("action") == "publish"
+            else Exam.Status.DRAFT
+        )
         exam.save()
-        return redirect("exam:explore_exams")  # Redirect to the exam center after creation
+        return redirect("exam:explore_exams")
     return render(request, "exam/add_exam.html", {"form": form})
-    pass
