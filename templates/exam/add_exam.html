@@ -34,7 +34,28 @@
     </p>
   </header>
 
-  <form method="post" class="rounded-2xl border border-line bg-white p-6">
+  {% comment %}
+    MARKS_PER_QUESTION mirrors the house rule that every objective question is
+    worth 5. It belongs in settings once this is wired — hardcoded here only
+    because nothing server-side reads it yet.
+
+    `passing` is picked up by delegation: {{ form.passing_marks }} renders from
+    Django's widget, so it cannot carry x-model directly.
+  {% endcomment %}
+  <form method="post" class="rounded-2xl border border-line bg-white p-6"
+        x-data="{
+          MARKS_PER_QUESTION: 5,
+          placement: 'random',
+          count: 40,
+          selectedMarks: 0,
+          passing: {{ form.passing_marks.value|default:0 }},
+          get maxMarks() {
+            return this.placement === 'random'
+              ? (this.count || 0) * this.MARKS_PER_QUESTION
+              : this.selectedMarks
+          },
+        }"
+        @input="if ($event.target.name === 'passing_marks') passing = +$event.target.value || 0">
     {% csrf_token %}
 
     {% if form.non_field_errors %}
@@ -121,26 +142,109 @@
             <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
           {% endfor %}
         </div>
+      </div>
+    </div>
 
-        <div>
-          <label for="{{ form.maximum_marks.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
-            {{ form.maximum_marks.label }}
-          </label>
-          {{ form.maximum_marks }}
-          {% for error in form.maximum_marks.errors %}
-            <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
-          {% endfor %}
-        </div>
+    {% comment %}
+      ---------- Question Selection ----------
 
-        <div>
-          <label for="{{ form.passing_marks.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
-            {{ form.passing_marks.label }}
-          </label>
-          {{ form.passing_marks }}
-          {% for error in form.passing_marks.errors %}
-            <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
-          {% endfor %}
+      UI ONLY. `question_placement` and `question_count` are hand-written inputs
+      — neither exists on the Exam model yet, so ExamForm ignores them and
+      nothing is saved. They post under those names ready for wiring.
+
+      Maximum marks is deliberately NOT an input. It is derived — count × marks
+      for a random draw, the sum of the chosen questions for a manual one — so
+      the server must compute it on save. The figure shown here is a preview
+      only; a `readonly` input would still submit its value and can be edited in
+      devtools, which is why there isn't one.
+    {% endcomment %}
+    <div class="mt-7 border-t border-[#F0F1F3] pt-6">
+      <h2 class="mb-4 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Question Selection</h2>
+
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors"
+               :class="placement === 'random' ? 'border-brand bg-brand-tint' : 'border-line hover:border-[#B9BFC9]'">
+          <input type="radio" name="question_placement" value="random" x-model="placement"
+                 class="mt-0.5 size-4 accent-[#2C86EE]">
+          <span>
+            <span class="block text-[14.5px] font-semibold text-ink">Randomize from pool</span>
+            <span class="mt-0.5 block text-[13px] text-muted">
+              Each candidate draws a different set from the subject's question bank.
+            </span>
+          </span>
+        </label>
+
+        <label class="flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors"
+               :class="placement === 'manual' ? 'border-brand bg-brand-tint' : 'border-line hover:border-[#B9BFC9]'">
+          <input type="radio" name="question_placement" value="manual" x-model="placement"
+                 class="mt-0.5 size-4 accent-[#2C86EE]">
+          <span>
+            <span class="block text-[14.5px] font-semibold text-ink">Select manually</span>
+            <span class="mt-0.5 block text-[13px] text-muted">
+              Choose the exact questions. Every candidate sits the same paper.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      {# ---- Random: how many to draw ---- #}
+      <div x-show="placement === 'random'" x-cloak class="mt-5">
+        <label for="id_question_count" class="mb-1.5 block text-[13px] font-semibold text-body">
+          Questions to serve
+        </label>
+        <input type="number" name="question_count" id="id_question_count" min="1"
+               x-model.number="count"
+               class="h-11 w-full max-w-[12rem] rounded-lg border border-zinc-300 bg-white px-3 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+        <p class="mt-1.5 text-[13px] text-muted">
+          Drawn from every question in the chosen subject.
+        </p>
+      </div>
+
+      {# ---- Manual: the picker, not built yet ---- #}
+      <div x-show="placement === 'manual'" x-cloak class="mt-5">
+        <div class="rounded-xl border border-dashed border-[#D6DAE1] bg-surface p-8 text-center">
+          <p class="text-sm font-semibold text-body">Question picker</p>
+          <p class="mt-1 text-[13px] text-muted">
+            Not built yet — it needs questions in the bank first. Selecting them here
+            will total the marks as you go.
+          </p>
         </div>
+      </div>
+
+      {# ---- Derived total ---- #}
+      <div class="mt-5 flex items-center justify-between rounded-xl bg-surface px-5 py-4">
+        <div>
+          <span class="text-[13px] font-semibold text-body">Maximum marks</span>
+          <span class="mt-0.5 block text-[13px] text-muted">
+            Calculated from the questions served — not editable.
+          </span>
+        </div>
+        <span class="text-2xl font-extrabold tracking-tight" x-text="maxMarks"></span>
+      </div>
+    </div>
+
+    {# ---------- Pass mark ---------- #}
+    <div class="mt-7 border-t border-[#F0F1F3] pt-6">
+      <div class="max-w-[16rem]">
+        <label for="{{ form.passing_marks.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.passing_marks.label }}
+        </label>
+        {{ form.passing_marks }}
+        {% comment %}
+          A front-end warning only. The same rule needs enforcing in
+          ExamForm.clean(), or an exam nobody can pass reaches the database.
+        {% endcomment %}
+        <p x-show="passing > maxMarks && maxMarks > 0" x-cloak
+           class="mt-1.5 text-[13px] text-danger">
+          Cannot exceed the maximum marks (<span x-text="maxMarks"></span>).
+        </p>
+        <p x-show="!(passing > maxMarks && maxMarks > 0) && passing > 0 && maxMarks > 0" x-cloak
+           class="mt-1.5 text-[13px] text-muted">
+          <span x-text="Math.round(passing / maxMarks * 100)"></span>% to pass.
+        </p>
+        {% for error in form.passing_marks.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
       </div>
     </div>
 
