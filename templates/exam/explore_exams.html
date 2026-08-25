@@ -72,13 +72,17 @@
           <p class="mt-1 truncate text-[13px] text-muted">
             {{ exam.subject.name }} ·
             {{ exam.get_exam_type_display }} ·
-            {{ exam.duration_minutes }} min{% if exam.maximum_marks %} ·
+            {% if exam.duration_minutes == 2160 %}
+            36 Hours
+            {% else %}
+            {{ exam.duration_minutes }} min
+            {% endif %}
+            {% if exam.maximum_marks %} ·
             {{ exam.maximum_marks }} marks{% endif %}
           </p>
         </div>
 
-        {# edit_exam route does not exist yet #}
-        <a href="#" aria-label="Edit {{ exam.exam_name }}"
+        <a href="{% url 'exam:edit_exam' exam_id=exam.id %}" aria-label="Edit {{ exam.exam_name }}"
            class="grid size-9 shrink-0 place-items-center rounded-lg border border-line text-zinc-500 hover:border-brand hover:text-brand">
           <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor"
                stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

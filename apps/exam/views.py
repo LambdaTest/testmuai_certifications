@@ -332,3 +332,21 @@ def add_exam(request):
         exam.save()
         return redirect("exam:explore_exams")
     return render(request, "exam/add_exam.html", {"form": form})
+
+@role_required(User.Role.ADMIN)
+def edit_exam(request, exam_id):
+    """
+    View for editing an existing exam. Only accessible to admins."
+    """
+    exam = get_object_or_404(Exam, id=exam_id)
+    form = ExamForm(request.POST or None, instance=exam)
+    if request.method == "POST" and form.is_valid():
+        exam = form.save(commit=False)
+        exam.status = (
+            Exam.Status.PUBLISHED
+            if request.POST.get("action") == "publish"
+            else Exam.Status.DRAFT
+        )
+        exam.save()
+        return redirect("exam:explore_exams")
+    return render(request, "exam/add_exam.html", {"form": form})
