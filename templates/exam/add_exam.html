@@ -58,6 +58,8 @@
           count: {{ form.question_count.value|default:0 }},
           selectedMarks: 0,
           passing: {{ form.passing_marks.value|default:0 }},
+          {# Math.round because 0.7 * 100 is 70.00000000000001 in JS. #}
+          defaultPassPercent: Math.round({{ form.instance.DEFAULT_PASS_RATIO }} * 100),
           get maxMarks() {
             return this.selection === 'random'
               ? (this.count || 0) * this.MARKS_PER_QUESTION
@@ -208,7 +210,7 @@
         </label>
         {{ form.question_count }}
         <p class="mt-1.5 text-[13px] text-muted">
-          Drawn from every question in the chosen subject.
+          Default: 40. Drawn from every question in the chosen subject.
         </p>
         {% for error in form.question_count.errors %}
           <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
@@ -220,8 +222,7 @@
         <div class="rounded-xl border border-dashed border-[#D6DAE1] bg-surface p-8 text-center">
           <p class="text-sm font-semibold text-body">Question picker</p>
           <p class="mt-1 text-[13px] text-muted">
-            Not built yet — it needs questions in the bank first. Selecting them here
-            will total the marks as you go.
+            Manual question picker is coming soon.
           </p>
         </div>
       </div>
@@ -246,9 +247,21 @@
         </label>
         {{ form.passing_marks }}
         {% comment %}
-          A front-end warning only. The same rule needs enforcing in
-          ExamForm.clean(), or an exam nobody can pass reaches the database.
+          Three states, one at a time: what happens if you leave it blank, what
+          you have chosen, or why what you chose is wrong.
+
+          The blank byline is gated on maxMarks > 0 because the default is a
+          share of the paper — with no total there is nothing to take a share
+          of, and ExamForm.clean() correspondingly leaves the pass mark unset.
+          Promising a default there would be a lie.
+
+          Mirrors ExamForm.clean(); the warning is the explanation, the form is
+          the enforcement.
         {% endcomment %}
+        <p x-show="!passing && maxMarks > 0" x-cloak
+           class="mt-1.5 text-[13px] text-muted">
+          Default: <span x-text="defaultPassPercent"></span>%
+        </p>
         <p x-show="passing > maxMarks && maxMarks > 0" x-cloak
            class="mt-1.5 text-[13px] text-danger">
           Cannot exceed the maximum marks (<span x-text="maxMarks"></span>).
@@ -295,10 +308,27 @@
         Save
       </button>
 
+      {% comment %}
+        Publishing is closed off while manual selection is chosen: the picker
+        does not exist, so such an exam has no questions and would be bookable
+        but unanswerable. Disabled rather than hidden — a button that vanishes
+        reads as a bug, one that greys out with a reason reads as a rule.
+
+        ExamForm.clean() refuses the same combination. A disabled attribute only
+        stops the click; it is not a constraint.
+      {% endcomment %}
       <button type="submit" name="action" value="publish"
-              class="inline-flex h-11 items-center rounded-lg border border-line px-6 text-[14.5px] font-semibold text-body hover:border-brand hover:text-brand">
+              :disabled="selection === 'manual'"
+              :class="selection === 'manual'
+                ? 'cursor-not-allowed border-line text-faint'
+                : 'border-line text-body hover:border-brand hover:text-brand'"
+              class="inline-flex h-11 items-center rounded-lg border px-6 text-[14.5px] font-semibold">
         Add Exam
       </button>
+
+      <p x-show="selection === 'manual'" x-cloak class="text-[13px] text-muted">
+        Manual selection can only be saved as a draft for now.
+      </p>
 
       <a href="{% url 'exam:explore_exams' %}"
          class="ml-auto inline-flex h-11 items-center rounded-lg px-4 text-[14.5px] font-semibold text-muted hover:text-ink">

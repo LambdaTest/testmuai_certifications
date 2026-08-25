@@ -137,6 +137,11 @@ class Exam(models.Model):
     #: paper of N questions always totals N × 5, whoever sits it.
     MARKS_PER_QUESTION = 5
 
+    #: Share of the paper needed to pass when an author leaves the pass mark
+    #: blank. A house rule, so it lives beside the other one rather than as a
+    #: bare 0.7 inside a form.
+    DEFAULT_PASS_RATIO = 0.7
+
     question_selection = models.CharField(max_length=30, choices=QuestionSelection.choices, default=QuestionSelection.RANDOM)
     #: Random draws only — how many to pull from the subject's bank. Null for a
     #: manual paper, where the questions are chosen rather than counted.

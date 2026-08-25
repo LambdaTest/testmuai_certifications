@@ -19,7 +19,7 @@ from django.utils.text import slugify
 
 from . import timezones
 from .models import Exam, ExamBooking, Subject
-
+import math
 
 def occupied_minutes(exam):
     """
@@ -275,6 +275,14 @@ class ExamForm(AuthoringForm):
     This is the form for handling exam creation, validation, and modification (of existing exams).
     It is a model form connecting directly to the Exam model, allowing for easy data handling and validation.
     """
+
+    #: Which submit button was pressed — "draft" or "publish". Not a model field,
+    #: because status must not be typeable; the button decides it. Declaring it
+    #: anyway lets clean() see the author's intent, so publishing can be refused
+    #: with a readable error rather than the view quietly downgrading it.
+    #: Never rendered — the two <button name="action"> elements post it.
+    action = forms.CharField(required=False, widget=forms.HiddenInput)
+
     class Meta:
         model = Exam
         # maximum_marks is deliberately absent. It is derived from the questions
@@ -352,11 +360,40 @@ class ExamForm(AuthoringForm):
             # check below simply doesn't apply.
             maximum = self.instance.maximum_marks
 
+        # Left blank, the pass mark defaults to a share of the paper. Written
+        # back into cleaned_data, not just a local — save() reads cleaned_data,
+        # so a value only rebound to a variable never reaches the column.
+        #
+        # `not passing` rather than `== ""`: an IntegerField cleans a blank input
+        # to None, never to an empty string, so testing for "" would only ever
+        # catch a literal typed 0 and let the actual blank case through.
+        #
+        # Guarded on `maximum` because it is None for a manual paper — there is
+        # nothing to take a share of, and multiplying None raises.
         passing = cleaned.get("passing_marks")
+        if not passing and maximum:
+            # ceil, so a 25-mark paper needs 18 rather than 17.5.
+            passing = cleaned["passing_marks"] = math.ceil(
+                maximum * Exam.DEFAULT_PASS_RATIO
+            )
+
         if passing and maximum and passing > maximum:
             self.add_error(
                 "passing_marks",
                 f"Cannot be more than the maximum of {maximum} marks.",
+            )
+
+        # The template greys out the Publish button for a manual exam. That stops
+        # the click, not the request — so the rule is enforced here too, where it
+        # actually holds.
+        if (
+            cleaned.get("action") == "publish"
+            and selection == Exam.QuestionSelection.MANUAL
+        ):
+            self.add_error(
+                None,
+                "Choosing questions by hand isn't built yet, so a manual exam "
+                "can only be saved as a draft.",
             )
 
         return cleaned
