@@ -127,7 +127,20 @@ class Exam(models.Model):
             BEGINNER = "beginner", "Beginner"
             INTERMEDIATE = "intermediate", "Intermediate"
             ADVANCED = "advanced", "Advanced"
-    
+
+    class QuestionSelection(models.TextChoices):
+      RANDOM = "random", "Randomize From Pool"
+      MANUAL = "manual", "Select Manually"
+
+    #: Every objective question is worth the same, as on Eklavya. That uniformity
+    #: is what makes a random draw safe to set an absolute pass mark against: a
+    #: paper of N questions always totals N × 5, whoever sits it.
+    MARKS_PER_QUESTION = 5
+
+    question_selection = models.CharField(max_length=30, choices=QuestionSelection.choices, default=QuestionSelection.RANDOM)
+    #: Random draws only — how many to pull from the subject's bank. Null for a
+    #: manual paper, where the questions are chosen rather than counted.
+    question_count = models.PositiveIntegerField(null=True, blank=True)
     subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name="exams")
     exam_name = models.CharField(
         max_length=255,
@@ -188,6 +201,25 @@ class Exam(models.Model):
     def __str__(self):
         return self.exam_name
 
+    @classmethod
+    def total_marks_for(cls, question_selection, question_count):
+        """
+        What a paper is out of, given how its questions are chosen.
+
+        A classmethod rather than a property because ExamForm needs the answer
+        for values the user has just submitted, before they are on an instance.
+        Both callers share this one definition so the form and the database can
+        never disagree about the total.
+
+        Returns None for a manual paper: its total is the sum of the questions
+        actually picked, which needs Exam ↔ Question. Until that relation exists
+        there is nothing to add up, and None says "unknown" rather than inventing
+        a zero.
+        """
+        if question_selection == cls.QuestionSelection.RANDOM:
+            return (question_count or 0) * cls.MARKS_PER_QUESTION
+        return None
+
     def clean(self):
         """Form-level validation — gives a readable error instead of IntegrityError."""
         super().clean()
@@ -212,6 +244,12 @@ class Exam(models.Model):
             self.exam_name = f"{self.subject.name} Certification Exam"
         if not self.duration_minutes:
             self.duration_minutes = self.DURATION_BY_TYPE[self.exam_type]
+        # Maximum marks is derived, never typed. Guarded on None so saving a
+        # manual exam doesn't wipe a total that was set some other way — for
+        # manual papers the helper has no source to work from yet.
+        total = self.total_marks_for(self.question_selection, self.question_count)
+        if total is not None:
+            self.maximum_marks = total
         super().save(*args, **kwargs)
 
 

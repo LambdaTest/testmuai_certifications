@@ -43,14 +43,23 @@
     Django's widget, so it cannot carry x-model directly.
   {% endcomment %}
   <form method="post" class="rounded-2xl border border-line bg-white p-6"
+        {% comment %}
+          Seeded from the bound form, not from constants, so an edit opens on the
+          exam's real values and a rejected submit redisplays what was typed
+          rather than resetting to defaults.
+
+          MARKS_PER_QUESTION is read off the model through form.instance — one
+          definition, in Python, rather than a 5 hardcoded here that could drift
+          away from the one the server calculates with.
+        {% endcomment %}
         x-data="{
-          MARKS_PER_QUESTION: 5,
-          placement: 'random',
-          count: 40,
+          MARKS_PER_QUESTION: {{ form.instance.MARKS_PER_QUESTION }},
+          selection: '{{ form.question_selection.value|default:"random"|escapejs }}',
+          count: {{ form.question_count.value|default:0 }},
           selectedMarks: 0,
           passing: {{ form.passing_marks.value|default:0 }},
           get maxMarks() {
-            return this.placement === 'random'
+            return this.selection === 'random'
               ? (this.count || 0) * this.MARKS_PER_QUESTION
               : this.selectedMarks
           },
@@ -148,60 +157,66 @@
     {% comment %}
       ---------- Question Selection ----------
 
-      UI ONLY. `question_placement` and `question_count` are hand-written inputs
-      — neither exists on the Exam model yet, so ExamForm ignores them and
-      nothing is saved. They post under those names ready for wiring.
+      The radios are hand-written rather than {{ form.question_selection }} so
+      each choice can be a card with its own explanation. They still post under
+      the field's own name, so ExamForm cleans and saves them exactly as if the
+      default widget had rendered them — the markup is ours, the field is
+      Django's.
 
       Maximum marks is deliberately NOT an input. It is derived — count × marks
-      for a random draw, the sum of the chosen questions for a manual one — so
-      the server must compute it on save. The figure shown here is a preview
-      only; a `readonly` input would still submit its value and can be edited in
+      for a random draw, the sum of the chosen questions for a manual one — and
+      Exam.save() computes it. The figure here is a live preview only; a
+      `readonly` input would still submit its value and can be edited in
       devtools, which is why there isn't one.
     {% endcomment %}
     <div class="mt-7 border-t border-[#F0F1F3] pt-6">
       <h2 class="mb-4 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Question Selection</h2>
 
       <div class="grid gap-3 sm:grid-cols-2">
-        <label class="flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors"
-               :class="placement === 'random' ? 'border-brand bg-brand-tint' : 'border-line hover:border-[#B9BFC9]'">
-          <input type="radio" name="question_placement" value="random" x-model="placement"
-                 class="mt-0.5 size-4 accent-[#2C86EE]">
-          <span>
-            <span class="block text-[14.5px] font-semibold text-ink">Randomize from pool</span>
-            <span class="mt-0.5 block text-[13px] text-muted">
-              Each candidate draws a different set from the subject's question bank.
+        {% comment %}
+          Looping the field's own choices means the two cards come from the
+          TextChoices on the model. Add a third option there and it appears here
+          with no template change — and a renamed value can never leave a card
+          posting something the form will reject.
+        {% endcomment %}
+        {% for value, label in form.question_selection.field.choices %}
+          <label class="flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors"
+                 :class="selection === '{{ value }}' ? 'border-brand bg-brand-tint' : 'border-line hover:border-[#B9BFC9]'">
+            <input type="radio" name="{{ form.question_selection.html_name }}" value="{{ value }}"
+                   x-model="selection" class="mt-0.5 size-4 accent-[#2C86EE]">
+            <span>
+              <span class="block text-[14.5px] font-semibold text-ink">{{ label }}</span>
+              <span class="mt-0.5 block text-[13px] text-muted">
+                {% if value == 'random' %}
+                  Each candidate draws a different set from the subject's question bank.
+                {% else %}
+                  Choose the exact questions. Every candidate sits the same paper.
+                {% endif %}
+              </span>
             </span>
-          </span>
-        </label>
-
-        <label class="flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors"
-               :class="placement === 'manual' ? 'border-brand bg-brand-tint' : 'border-line hover:border-[#B9BFC9]'">
-          <input type="radio" name="question_placement" value="manual" x-model="placement"
-                 class="mt-0.5 size-4 accent-[#2C86EE]">
-          <span>
-            <span class="block text-[14.5px] font-semibold text-ink">Select manually</span>
-            <span class="mt-0.5 block text-[13px] text-muted">
-              Choose the exact questions. Every candidate sits the same paper.
-            </span>
-          </span>
-        </label>
+          </label>
+        {% endfor %}
       </div>
+      {% for error in form.question_selection.errors %}
+        <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+      {% endfor %}
 
       {# ---- Random: how many to draw ---- #}
-      <div x-show="placement === 'random'" x-cloak class="mt-5">
-        <label for="id_question_count" class="mb-1.5 block text-[13px] font-semibold text-body">
-          Questions to serve
+      <div x-show="selection === 'random'" x-cloak class="mt-5">
+        <label for="{{ form.question_count.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.question_count.label }}
         </label>
-        <input type="number" name="question_count" id="id_question_count" min="1"
-               x-model.number="count"
-               class="h-11 w-full max-w-[12rem] rounded-lg border border-zinc-300 bg-white px-3 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+        {{ form.question_count }}
         <p class="mt-1.5 text-[13px] text-muted">
           Drawn from every question in the chosen subject.
         </p>
+        {% for error in form.question_count.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
       </div>
 
       {# ---- Manual: the picker, not built yet ---- #}
-      <div x-show="placement === 'manual'" x-cloak class="mt-5">
+      <div x-show="selection === 'manual'" x-cloak class="mt-5">
         <div class="rounded-xl border border-dashed border-[#D6DAE1] bg-surface p-8 text-center">
           <p class="text-sm font-semibold text-body">Question picker</p>
           <p class="mt-1 text-[13px] text-muted">

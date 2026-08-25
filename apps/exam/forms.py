@@ -277,14 +277,20 @@ class ExamForm(AuthoringForm):
     """
     class Meta:
         model = Exam
-        fields = ['subject', 'exam_name', 'slug', 'exam_type',
-                  'marketing_url', 'maximum_marks', 'passing_marks', 'exam_level', 'description']
+        # maximum_marks is deliberately absent. It is derived from the questions
+        # served, so exposing it as a field would let a submitted value overwrite
+        # the computed one — and a `readonly` input is no defence, since the
+        # browser still posts it and devtools can change it.
+        fields = ['subject', 'exam_name', 'slug', 'exam_type', 'exam_level',
+                  'question_selection', 'question_count',
+                  'marketing_url', 'passing_marks', 'description']
         labels = {
             'subject': 'Subject',
             'exam_name': 'Exam Name',
             'slug': 'Slug',
             'exam_type': 'Exam Type',
-            'maximum_marks': 'Maximum Marks',
+            'question_selection': 'Question Selection',
+            'question_count': 'Questions to serve',
             'passing_marks': 'Passing Marks',
             'exam_level': 'Exam Level',
             'description': 'Exam Description'
@@ -299,10 +305,58 @@ class ExamForm(AuthoringForm):
             "slug": forms.TextInput(attrs={"placeholder": "selenium-basics"}),
             "exam_level": forms.Select(attrs={"placeholder": "Select Exam Level"}),
             "marketing_url": forms.URLInput(attrs={"placeholder": "https://example.com/selenium-basics"}),
-            "maximum_marks": forms.NumberInput(attrs={"min": 1}),
             "passing_marks": forms.NumberInput(attrs={"min": 1}),
+            # x-model lets Alpine mirror the typed value so the derived total
+            # updates as you type. Django passes unknown attrs straight through
+            # to the HTML, so framework hooks can live on a ModelForm widget.
+            "question_count": forms.NumberInput(attrs={
+                "min": 1,
+                "x-model.number": "count",
+                "class": ("h-11 w-full max-w-[12rem] rounded-lg border border-zinc-300 bg-white px-3 "
+                          "text-sm outline-none focus-visible:border-brand focus-visible:ring-3 "
+                          "focus-visible:ring-brand/30"),
+            }),
             "subject": forms.Select(attrs={"placeholder": "Select Subject"}),
             "exam_type": forms.Select(attrs={"placeholder": "Select Exam Type"}),
         }
 
     slug_source = "exam_name"
+
+    def clean(self):
+        """
+        Two rules the browser cannot be trusted with.
+
+        The template already warns about both, but a warning is decoration: the
+        form can be posted with JavaScript off, from curl, or from a devtools
+        edit. Anything that must be true of the stored row is checked here.
+        """
+        cleaned = super().clean()  # AuthoringForm fills in a blank slug
+
+        selection = cleaned.get("question_selection")
+        count = cleaned.get("question_count")
+
+        if selection == Exam.QuestionSelection.RANDOM:
+            if not count:
+                self.add_error("question_count", "Say how many questions to serve.")
+        elif selection == Exam.QuestionSelection.MANUAL:
+            # A manual paper's questions are picked, not counted. Clearing this
+            # stops a leftover number from an earlier edit reading as meaningful.
+            cleaned["question_count"] = count = None
+
+        # Same helper the model saves through, so the number validated here is
+        # exactly the number that lands in the column.
+        maximum = Exam.total_marks_for(selection, count)
+        if maximum is None:
+            # Manual: nothing to derive from yet, so fall back to whatever the
+            # exam already carried. On a new manual exam that is None and the
+            # check below simply doesn't apply.
+            maximum = self.instance.maximum_marks
+
+        passing = cleaned.get("passing_marks")
+        if passing and maximum and passing > maximum:
+            self.add_error(
+                "passing_marks",
+                f"Cannot be more than the maximum of {maximum} marks.",
+            )
+
+        return cleaned
