@@ -185,6 +185,7 @@ class Exam(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="exams", null=True)
     # scheduled_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
@@ -230,7 +231,10 @@ class Exam(models.Model):
         super().clean()
         expected = self.DURATION_BY_TYPE.get(self.exam_type)
         if expected is None:
-            raise ValidationError({"type": "Unknown exam type."})
+            # Keyed to the real field name. ModelForm._post_clean bridges model
+            # errors onto the form by name and raises ValueError for one it does
+            # not recognise — so a wrong key here is a 500, not a message.
+            raise ValidationError({"exam_type": "Unknown exam type."})
         if not self.duration_minutes:
             self.duration_minutes = expected
         elif self.duration_minutes != expected:

@@ -19,14 +19,14 @@
   rejects. The help text under Format says so.
 {% endcomment %}
 
-{% block title %}{% if form.instance.pk %}Edit Exam{% else %}Add Exam{% endif %} · TestMu AI Certifications{% endblock %}
+{% block title %}{% if form.instance.pk %}Edit Exam {% else %}Add Exam{% endif %} · TestMu AI Certifications{% endblock %}
 
 {% block staff_content %}
 <div class="max-w-3xl">
 
   <header class="mb-6">
     <h1 class="text-2xl font-bold tracking-tight">
-      {% if form.instance.pk %}Edit Exam{% else %}Add Exam{% endif %}
+      {% if form.instance.pk %}Edit Exam {{ form.instance.exam_name }} Created By {{form.instance.created_by}} {% else %}Add Exam{% endif %}
     </h1>
     <p class="mt-1.5 text-[15px] text-muted">
       An exam belongs to a subject and carries its own level — Selenium 101 and
