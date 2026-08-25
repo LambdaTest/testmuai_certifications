@@ -324,7 +324,8 @@ def add_exam(request):
     form = ExamForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         exam = form.save(commit=False)
-        exam.created_by = request.user  # Set the creator of the exam
+        print(exam)
+        exam.created_by = request.user
         exam.status = (
             Exam.Status.PUBLISHED
             if request.POST.get("action") == "publish"

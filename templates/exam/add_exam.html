@@ -25,9 +25,32 @@
 <div class="max-w-3xl">
 
   <header class="mb-6">
-    <h1 class="text-2xl font-bold tracking-tight">
-      {% if form.instance.pk %}Edit Exam {{ form.instance.exam_name }} Created By {{form.instance.created_by}} {% else %}Add Exam{% endif %}
-    </h1>
+    <div class="flex flex-wrap items-center gap-3">
+      <h1 class="text-2xl font-bold tracking-tight">
+        {% if form.instance.pk %}Edit {{ form.instance.exam_name }}{% else %}Add Exam{% endif %}
+      </h1>
+
+      {% comment %}
+        Authorship, shown only when there is an author to show.
+
+        Both halves of the condition earn their place: an unsaved exam has no
+        author yet, and the exams pre-dating the created_by column have
+        created_by = NULL. Without the second check those would render
+        "Created by None", which reads as a bug rather than as missing history.
+
+        Reuses the ok / ok-tint tokens that badge a published exam on Explore
+        Exams, so the same colour keeps meaning the same thing.
+      {% endcomment %}
+      {% if form.instance.pk and form.instance.created_by %}
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-ok-tint px-3 py-1 text-[12.5px] font-semibold text-ok">
+          <svg class="size-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="10" cy="6.5" r="3"/><path d="M4 16c0-3 2.7-4.5 6-4.5s6 1.5 6 4.5"/>
+          </svg>
+          Created by {{ form.instance.created_by }}
+        </span>
+      {% endif %}
+    </div>
     <p class="mt-1.5 text-[15px] text-muted">
       An exam belongs to a subject and carries its own level — Selenium 101 and
       Selenium Advanced are two exams on one subject.
