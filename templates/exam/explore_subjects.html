@@ -75,8 +75,24 @@
            }"
            class="border-b border-[#F0F1F3] last:border-0">
 
-        <div class="flex items-center gap-4 px-5 py-4">
+        <div class="flex items-center gap-3 px-5 py-4">
           <span class="min-w-0 flex-1 truncate font-medium">{{ subject.name }}</span>
+
+          {% comment %}
+            Authorship, as on Edit Exam. No {% if %} guard here, unlike that
+            page: Subject.created_by is non-nullable, so every subject has one.
+            Exam's is nullable only because six rows pre-date the column.
+
+            The view select_related's it — without that, this line costs one
+            query per subject, since the list is unpaginated.
+          {% endcomment %}
+          <span class="hidden shrink-0 items-center gap-1.5 rounded-full bg-ok-tint px-2.5 py-1 text-[11.5px] font-semibold text-ok sm:inline-flex">
+            <svg class="size-3" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                 stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="10" cy="6.5" r="3"/><path d="M4 16c0-3 2.7-4.5 6-4.5s6 1.5 6 4.5"/>
+            </svg>
+            {{ subject.created_by }}
+          </span>
 
           <button type="button"
                   @click="openRow = openRow === {{ subject.pk }} ? null : {{ subject.pk }}"

@@ -277,7 +277,9 @@ def explore_subjects(request):
     such as creating a new subject, editing an existing subject, etc.
     Only accessible to admins."
     """
-    subjects = Subject.objects.all()  # Fetch the subjects for display
+    # select_related, because the template shows each subject's author: the list
+    # is unpaginated, so without it every row costs its own query.
+    subjects = Subject.objects.select_related("created_by")
     return render(request, "exam/explore_subjects.html", {"subjects": subjects})
 
 @role_required(User.Role.ADMIN)
