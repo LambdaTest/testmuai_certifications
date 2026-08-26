@@ -98,6 +98,17 @@ STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# --- Uploaded media ----------------------------------------------------------
+# Author-uploaded question and answer media. Distinct from STATIC: static files
+# ship with the code, media arrives at runtime and must survive a deploy.
+#
+# Local disk is fine for development. It is NOT fine for the deployment target —
+# an EC2 instance that gets replaced loses every upload, and more than one
+# instance means each has a different idea of what exists. Before this goes
+# live, MEDIA_ROOT becomes S3 via a storage backend, and MEDIA_URL its bucket.
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Booking rules -----------------------------------------------------------

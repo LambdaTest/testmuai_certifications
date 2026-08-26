@@ -66,7 +66,7 @@
           <div class="overflow-hidden">
             <div class="flex flex-col gap-0.5 py-0.5 pl-3">
               <a href="{% url 'exam:explore_exams' %}" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Explore Exams</a>
-              <a href="{% url 'exam:add_exam' %}" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Create Exam</a>
+              <a href="{% url 'exam:add_exam'}" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Create Exam</a>
             </div>
           </div>
         </div>
@@ -84,7 +84,7 @@
           <div class="overflow-hidden">
             <div class="flex flex-col gap-0.5 py-0.5 pl-3">
               <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Question Bank</a>
-              <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Add Question</a>
+              <a href="{% url 'exam:add_question' %}" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Add Question</a>
               <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Import Questions</a>
             </div>
           </div>

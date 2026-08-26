@@ -18,6 +18,7 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.core.validators import FileExtensionValidator
 
 class Question(models.Model):
     """
@@ -42,7 +43,6 @@ class Question(models.Model):
     associated_image = models.ForeignKey("Image", on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
     associated_audio = models.ForeignKey("Audio", on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
     associated_video = models.ForeignKey("Video", on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
-    question_keywords = models.TextField(blank=True)
     question_tags = models.TextField(blank=True)
     marks = models.PositiveIntegerField(default=1)
 
@@ -60,12 +60,14 @@ class AnswerOptions(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="answers")
     question = models.ForeignKey(Question, on_delete=models.PROTECT, related_name="answers")
+    associated_image = models.ForeignKey("Image", on_delete=models.PROTECT, related_name="answers", blank=True, null=True)
+    associated_audio = models.ForeignKey("Audio", on_delete=models.PROTECT, related_name="answers", blank=True, null=True)
 
 class Audio(models.Model):
     """
     An audio file is a file that contains audio. It is associated with a question.
     """
-    audio_file = models.FileField(upload_to="audio/")
+    audio_file = models.FileField(upload_to="audio/", validators=[FileExtensionValidator(["mp3", "wav", "m4a", "ogg"])])
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="audios")
@@ -74,7 +76,7 @@ class Image(models.Model):
     """
     An image file is a file that contains an image. It is associated with a question.
     """
-    image_file = models.FileField(upload_to="image/")
+    image_file = models.FileField(upload_to="image/", validators=[FileExtensionValidator(["png", "jpg", "jpeg", "gif", "webp"])])
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="images")

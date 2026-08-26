@@ -11,7 +11,7 @@ import json
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, request
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
@@ -353,3 +353,17 @@ def edit_exam(request, exam_id):
         exam.save()
         return redirect("exam:explore_exams")
     return render(request, "exam/add_exam.html", {"form": form})
+
+@role_required(User.Role.ADMIN)
+def add_question(request):
+    """
+    This is for the page that will help create a new question for the admin."
+    """
+    # form = QuestionForm(request.POST or None)
+    # if request.method == "POST" and form.is_valid():
+    #     question = form.save(commit=False)
+    #     question.created_by = request.user  # Set the creator of the question
+    #     question.save()
+    #     return redirect("exam:explore_questions")  # Redirect to the question center after creation
+    # return render(request, "exam/add_question.html", {"form": form})
+    return render(request, "exam/add_question.html")

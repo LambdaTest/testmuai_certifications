@@ -1,0 +1,241 @@
+{% extends "base_staff.html" %}
+
+{% comment %}
+  Add Question — TEMPLATE ONLY. No url, view or form yet.
+
+  Every input is hand-written rather than rendered from a form, so each one
+  carries the Question field name it will eventually bind to. Wiring this up
+  means writing a QuestionForm whose Meta.fields match these names and swapping
+  each input for {{ form.<field> }} — the markup around them survives.
+
+  Context it will need:
+    subjects – for the question_subject dropdown
+    form     – a QuestionForm, once it exists
+    formset  – an inline formset for the answer options, once it exists
+
+  Not represented, deliberately:
+    created_by            set by the view from request.user, never chosen
+    created_at/updated_at auto fields
+
+  Two things below are guesses at the model's intent and want confirming — the
+  marks rule and the media uploads. Both are flagged where they appear.
+{% endcomment %}
+
+{% block title %}Add Question · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<div class="max-w-3xl">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-bold tracking-tight">Add Question</h1>
+    <p class="mt-1.5 text-[15px] text-muted">
+      Questions belong to a subject, not to an exam. Any exam on that subject can
+      draw this question automatically.
+    </p>
+  </header>
+
+  {% comment %}
+    `type` drives most of this page: objective questions take answer options and
+    a fixed mark, subjective ones take neither. Holding it in Alpine means the
+    page reshapes without a round trip.
+
+    `correct` is the index of the option marked right. Using one radio group
+    rather than four checkboxes makes "exactly one correct answer" true by
+    construction on the client — though the server must still enforce it, since
+    a hand-made post can send anything.
+  {% endcomment %}
+  <form method="post" class="rounded-2xl border border-line bg-white p-6"
+        x-data="{ type: 'objective', correct: 0, options: [0, 1, 2, 3] }">
+    {% csrf_token %}
+
+    {# ---------- The question ---------- #}
+    <div class="grid gap-5">
+      <div>
+        <label for="id_question_text" class="mb-1.5 block text-[13px] font-semibold text-body">
+          Question
+        </label>
+        <textarea name="question_text" id="id_question_text" rows="4" required
+                  placeholder="What does an explicit wait do in Selenium?"
+                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30"></textarea>
+      </div>
+
+      <div class="grid gap-5 sm:grid-cols-3">
+        <div>
+          <label for="id_question_subject" class="mb-1.5 block text-[13px] font-semibold text-body">
+            Subject
+          </label>
+          <select name="question_subject" id="id_question_subject" required
+                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+            <option value="">Select subject</option>
+            {% for subject in subjects %}
+              <option value="{{ subject.pk }}">{{ subject.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label for="id_question_type" class="mb-1.5 block text-[13px] font-semibold text-body">
+            Type
+          </label>
+          <select name="question_type" id="id_question_type" x-model="type"
+                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+            <option value="objective">Objective</option>
+            <option value="subjective">Subjective</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="id_question_difficulty" class="mb-1.5 block text-[13px] font-semibold text-body">
+            Difficulty
+          </label>
+          <select name="question_difficulty" id="id_question_difficulty"
+                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    {# ---------- Answer options ---------- #}
+    <div x-show="type === 'objective'" x-cloak class="mt-7 border-t border-[#F0F1F3] pt-6">
+      <h2 class="mb-1 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Answer options</h2>
+      <p class="mb-4 text-[13px] text-muted">Select the radio beside the correct one.</p>
+
+      {% comment %}
+        These are AnswerOptions rows, not Question fields — a separate model
+        linked by its `question` FK. Wiring them means an inline formset:
+
+          inlineformset_factory(Question, AnswerOptions, fields=[...], extra=4)
+
+        which renames these inputs to answers-0-answer_option_text and adds the
+        hidden management fields it needs. So treat the names here as
+        placeholders; the layout is what carries over.
+
+        AnswerOptions has no ordering field, so the order they come back in is
+        whatever Postgres returns. Worth a `position` column before this page
+        can round-trip an edit faithfully.
+      {% endcomment %}
+      <div class="grid gap-3">
+        <template x-for="i in options" :key="i">
+          <div class="flex items-center gap-3">
+            <input type="radio" name="correct_option" :value="i" x-model.number="correct"
+                   :aria-label="'Mark option ' + (i + 1) + ' correct'"
+                   class="size-4 shrink-0 accent-[#0E8A45]">
+            <input type="text" :name="'answer_option_text_' + i"
+                   :placeholder="'Option ' + (i + 1)"
+                   class="h-11 w-full rounded-lg border bg-white px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-brand/30"
+                   :class="correct === i ? 'border-ok bg-ok-tint' : 'border-zinc-300 focus-visible:border-brand'">
+          </div>
+        </template>
+      </div>
+
+      <button type="button" @click="options.push(options.length)"
+              class="mt-3 text-[13px] font-semibold text-brand hover:underline">
+        + Add another option
+      </button>
+    </div>
+
+    {# ---------- Marks ---------- #}
+    <div class="mt-7 border-t border-[#F0F1F3] pt-6">
+      <h2 class="mb-4 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Marks</h2>
+
+      {% comment %}
+        NEEDS A DECISION. Question.marks defaults to 1, but Exam.MARKS_PER_QUESTION
+        is 5 and Exam.total_marks_for() multiplies by it. If an objective question
+        can be worth anything other than 5, a randomised paper no longer totals
+        count × 5 and the derived maximum marks is wrong.
+
+        So this shows objective marks as fixed and posts a hidden 5, leaving the
+        input for subjective questions only. The alternative is to let objective
+        marks vary and make total_marks_for() sum real questions — which is the
+        Exam ↔ Question work anyway.
+      {% endcomment %}
+      <div x-show="type === 'objective'" x-cloak>
+        <input type="hidden" name="marks" value="5">
+        <div class="flex items-center justify-between rounded-xl bg-surface px-5 py-4">
+          <div>
+            <span class="text-[13px] font-semibold text-body">5 marks</span>
+            <span class="mt-0.5 block text-[13px] text-muted">
+              Every objective question is worth the same, so a randomised paper
+              always totals the same. Not editable.
+            </span>
+          </div>
+          <span class="text-2xl font-extrabold tracking-tight">5</span>
+        </div>
+      </div>
+
+      <div x-show="type === 'subjective'" x-cloak>
+        <label for="id_marks" class="mb-1.5 block text-[13px] font-semibold text-body">Marks</label>
+        <input type="number" name="marks" id="id_marks" min="1" value="10"
+               class="h-11 w-full max-w-[12rem] rounded-lg border border-zinc-300 bg-white px-3 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+      </div>
+    </div>
+
+    {# ---------- Media ---------- #}
+    <div class="mt-7 border-t border-[#F0F1F3] pt-6">
+      <h2 class="mb-1 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Media</h2>
+      <p class="mb-4 text-[13px] text-muted">Optional. Attach one if the question refers to it.</p>
+
+      {% comment %}
+        NEEDS A DECISION. associated_image / _audio / _video are ForeignKeys to
+        the Image, Audio and Video models — so strictly this should be three
+        dropdowns of existing rows, not three uploads.
+
+        Uploads are shown because a dropdown would be unusable: those models hold
+        only a file and a timestamp, no name or caption, so every entry would
+        read "Image object (3)". If picking existing media is wanted, they each
+        need a label field first.
+
+        Either way the view has more work than a plain ModelForm.save(): it must
+        create the Image/Audio/Video row from the upload, then attach it. The
+        <form> will also need enctype="multipart/form-data" — without it the
+        browser posts filenames only, silently.
+      {% endcomment %}
+      <div class="grid gap-4 sm:grid-cols-3">
+        <div>
+          <label for="id_associated_image" class="mb-1.5 block text-[13px] font-semibold text-body">Image</label>
+          <input type="file" name="associated_image" id="id_associated_image" accept="image/*"
+                 class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[13px] file:mr-3 file:rounded file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-[12.5px] file:font-semibold">
+        </div>
+        <div>
+          <label for="id_associated_audio" class="mb-1.5 block text-[13px] font-semibold text-body">Audio</label>
+          <input type="file" name="associated_audio" id="id_associated_audio" accept="audio/*"
+                 class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[13px] file:mr-3 file:rounded file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-[12.5px] file:font-semibold">
+        </div>
+        <div>
+          <label for="id_associated_video" class="mb-1.5 block text-[13px] font-semibold text-body">Video</label>
+          <input type="file" name="associated_video" id="id_associated_video" accept="video/*"
+                 class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[13px] file:mr-3 file:rounded file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-[12.5px] file:font-semibold">
+        </div>
+      </div>
+    </div>
+
+    {# ---------- Tags ---------- #}
+    <div class="mt-7 border-t border-[#F0F1F3] pt-6">
+      <label for="id_question_tags" class="mb-1.5 block text-[13px] font-semibold text-body">
+        Tags
+      </label>
+      <input type="text" name="question_tags" id="id_question_tags"
+             placeholder="waits, locators, grid"
+             class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+      <p class="mt-1.5 text-[13px] text-muted">
+        Optional. Comma-separated and lowercase — subject and difficulty are the
+        real filters, so use these only for what neither captures.
+      </p>
+    </div>
+
+    <div class="mt-7 flex flex-wrap items-center gap-3">
+      <button type="submit"
+              class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
+        Add Question
+      </button>
+      <a href="#"
+         class="ml-auto inline-flex h-11 items-center rounded-lg px-4 text-[14.5px] font-semibold text-muted hover:text-ink">
+        Discard
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

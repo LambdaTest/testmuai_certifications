@@ -41,7 +41,10 @@ class AnswerOptionsInline(admin.TabularInline):
 class QuestionAdmin(CreatedByMixin, admin.ModelAdmin):
     list_display = ("__str__", "question_subject", "question_type", "question_difficulty", "marks")
     list_filter = ("question_type", "question_difficulty", "question_subject")
-    search_fields = ("question_text", "question_keywords", "question_tags")
+    # Subject and difficulty are the filters that matter, and list_filter offers
+    # both. Search covers the rest — the wording, or a tag when the concept
+    # isn't in the wording.
+    search_fields = ("question_text", "question_tags")
     inlines = [AnswerOptionsInline]
 
     def save_formset(self, request, form, formset, change):
