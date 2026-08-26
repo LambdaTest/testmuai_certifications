@@ -85,7 +85,7 @@ class Video(models.Model):
     """
     A video file is a file that contains video. It is associated with a question.
     """
-    video_file = models.FileField(upload_to="video/")
+    video_file = models.FileField(upload_to="video/", validators=[FileExtensionValidator(["mp4", "webm"])])
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="videos")

@@ -196,18 +196,50 @@
       <div class="grid gap-4 sm:grid-cols-3">
         <div>
           <label for="id_associated_image" class="mb-1.5 block text-[13px] font-semibold text-body">Image</label>
-          <input type="file" name="associated_image" id="id_associated_image" accept="image/*"
+          <input type="file" name="associated_image" id="id_associated_image"
+                 accept=".png,.jpg,.jpeg,.gif,.webp"
                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[13px] file:mr-3 file:rounded file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-[12.5px] file:font-semibold">
+          {% comment %}
+            A byline, not a guard. `accept` only filters the file picker and is
+            ignored by a direct post, and nothing here checks size at all — the
+            browser has already uploaded the whole file by the time it could.
+            The 5 MB limit has to be enforced in forms.py.
+
+            SVG is deliberately absent from `accept`: it is XML and can carry a
+            <script>, and MEDIA_URL is same-origin, so an inline SVG would run
+            with the viewer's session.
+          {% endcomment %}
+          <p class="mt-1.5 text-[13px] text-muted">
+            PNG, JPG, GIF or WebP · under 5&nbsp;MB
+          </p>
         </div>
         <div>
           <label for="id_associated_audio" class="mb-1.5 block text-[13px] font-semibold text-body">Audio</label>
-          <input type="file" name="associated_audio" id="id_associated_audio" accept="audio/*"
+          <input type="file" name="associated_audio" id="id_associated_audio"
+                 accept=".mp3,.m4a,.wav,.ogg"
                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[13px] file:mr-3 file:rounded file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-[12.5px] file:font-semibold">
+          <p class="mt-1.5 text-[13px] text-muted">
+            MP3, M4A, WAV or OGG · under 5&nbsp;MB
+          </p>
         </div>
         <div>
           <label for="id_associated_video" class="mb-1.5 block text-[13px] font-semibold text-body">Video</label>
-          <input type="file" name="associated_video" id="id_associated_video" accept="video/*"
+          <input type="file" name="associated_video" id="id_associated_video"
+                 accept=".mp4,.webm"
                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[13px] file:mr-3 file:rounded file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-[12.5px] file:font-semibold">
+          {% comment %}
+            No size stated, per decision — but video is the one that most needs a
+            ceiling, since a short screen recording runs to tens of megabytes.
+            Whatever forms.py ends up allowing should be said here too, or an
+            author finds out by having a large upload rejected after the wait.
+
+            MP4 and WebM only: what a browser can actually play. MOV, AVI and MKV
+            upload fine and then fail silently in <video>, which a candidate
+            would discover mid-exam.
+          {% endcomment %}
+          <p class="mt-1.5 text-[13px] text-muted">
+            MP4 or WebM
+          </p>
         </div>
       </div>
     </div>
