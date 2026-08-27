@@ -18,7 +18,7 @@ from django.utils import timezone as dj_timezone
 from django.utils.text import slugify
 
 from . import timezones
-from .models import Exam, ExamBooking, Subject
+from .models import Exam, ExamBooking, Subject, Question
 import math
 
 def occupied_minutes(exam):
@@ -397,3 +397,92 @@ class ExamForm(AuthoringForm):
             )
 
         return cleaned
+
+
+class QuestionForm(AuthoringForm):
+    """
+    This is the form for handling question creation and validation.
+    It is a model form connecting directly to the Question model, allowing for easy data handling and validation.
+    """
+
+    slug_source = "question_text"
+
+    class Meta:
+        model = Question
+        fields = ['question_text', 'associated_image','associated_audio', 'associated_video', 'question_tags', 'marks', 'status',
+                  'question_type', 'question_difficulty', 'question_subject', ]
+        labels = {
+            'question_text': 'Question Text',
+            'associated_image': 'Associated Image',
+            'associated_audio': 'Associated Audio',
+            'associated_video': 'Associated Video',
+            'question_tags': 'Question Tags',
+            'marks': 'Marks',
+            'status': 'Status',
+            'question_type': 'Question Type',
+            'question_difficulty': 'Question Difficulty',
+            'question_subject': 'Question Subject',
+        }
+        help_texts = {
+            'question_tags': "Comma-separated tags for categorizing the question.",
+            'marks': "The number of marks allocated for this question. Default: 5",
+            'status': "Select whether the question is active or retired."
+        }
+        widgets = {
+            "question_text": forms.Textarea(attrs={"rows": 4, "placeholder": "Enter the question text here."}),
+            "associated_image": forms.ClearableFileInput(attrs={"accept": ".jpg,.jpeg,.png,.gif, webp"}),
+            "associated_audio": forms.ClearableFileInput(attrs={"accept": ".mp3,.wav,.m4a,.ogg"}),
+            "associated_video": forms.ClearableFileInput(attrs={"accept": ".mp4,.avi,.mov"}),
+            "question_tags": forms.TextInput(attrs={"placeholder": "e.g. math, algebra, geometry"}),
+            "question_type": forms.Select(),
+            "question_difficulty": forms.Select(),
+            "question_subject": forms.Select(),
+        }
+
+    def clean(self):
+            """
+            Validation for the QuestionForm to ensure that the data entered is valid and meets the requirements of the Question model.
+            """
+            cleaned = super().clean()  # AuthoringForm fills in a blank slug
+            associated_audio = cleaned.get("associated_audio")
+            associated_video = cleaned.get("associated_video")
+            associated_image = cleaned.get("associated_image")
+            file = []
+            media = []
+            if associated_audio:
+                media.append("audio")
+                file.append(associated_audio)
+            if associated_video:
+                media.append("video")
+                file.append(associated_video)
+            if associated_image:
+                media.append("image")
+                file.append(associated_image)
+            if len(media) > 1:
+                if not self.is_valid(file, media):
+                    raise forms.ValidationError(
+                        f"Media validation failed. Please upload correct type and within correct size limits."
+                    )
+            tag = cleaned.get("question_tags")
+            if tag:
+                for t in tag.split(","):
+                    t = t.lower()
+
+
+    def is_valid(self, file, media):
+        """
+        Validates the uploaded media files based on their type and size.
+        Returns True if all files are valid, False otherwise.
+        """
+        for f, m in zip(file, media):
+            if m == "audio":
+                if f.size > 5 * 1024 * 1024 and f.split(".")[-1].lower() not in ["mp3", "wav", "m4a", "ogg"]:  # 5 MB limit for audio
+                    return False
+            elif m == "video":
+                if f.size > 50 * 1024 * 1024 and f.split(".")[-1].lower() not in ["mp4", "avi", "mov"]:  # 50 MB limit for video
+                    return False
+            elif m == "image":
+                if f.size > 5 * 1024 * 1024 and f.split(".")[-1].lower() not in ["jpg", "jpeg", "png", "gif", "webp"]:  # 5 MB limit for image
+                    return False
+        return True
+

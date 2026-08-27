@@ -228,17 +228,22 @@
                  accept=".mp4,.webm"
                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[13px] file:mr-3 file:rounded file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-[12.5px] file:font-semibold">
           {% comment %}
-            No size stated, per decision — but video is the one that most needs a
-            ceiling, since a short screen recording runs to tens of megabytes.
-            Whatever forms.py ends up allowing should be said here too, or an
-            author finds out by having a large upload rejected after the wait.
+            50 MB rather than the 5 MB the other two get: a screen recording of
+            any useful length runs to tens of megabytes, and a ceiling an author
+            cannot work within just means they stop attaching video.
+
+            Still only a byline. Nothing here checks size — `accept` filters the
+            file picker and nothing more, and Django applies no upload ceiling of
+            its own (FILE_UPLOAD_MAX_MEMORY_SIZE picks memory over a temp file,
+            it does not cap anything). Until forms.py enforces it, this number is
+            a promise nothing keeps.
 
             MP4 and WebM only: what a browser can actually play. MOV, AVI and MKV
             upload fine and then fail silently in <video>, which a candidate
             would discover mid-exam.
           {% endcomment %}
           <p class="mt-1.5 text-[13px] text-muted">
-            MP4 or WebM
+            MP4 or WebM · under 50&nbsp;MB
           </p>
         </div>
       </div>

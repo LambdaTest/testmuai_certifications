@@ -17,7 +17,7 @@ from django.urls import reverse
 
 from . import timezones
 from .calendar import build_ics
-from .forms import BookingForm, RescheduleForm, SubjectForm, ExamForm
+from .forms import BookingForm, RescheduleForm, SubjectForm, ExamForm, QuestionForm
 from .models import Exam, ExamBooking, Subject
 from apps.home.models import User
 from apps.home.decorators import role_required
@@ -366,7 +366,6 @@ def add_question(request):
         question.save()
         return redirect("exam:question_bank")  # Redirect to the question center after creation
     return render(request, "exam/add_question.html", {"form": form})
-    return render(request, "exam/add_question.html")
 
 
 @role_required(User.Role.ADMIN)
