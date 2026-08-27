@@ -33,6 +33,10 @@ class Question(models.Model):
         OBJECTIVE = "objective", "Objective"
         SUBJECTIVE = "subjective", "Subjective"
 
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        RETIRED = "retired", "Retired"
+
     question_text = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -44,7 +48,7 @@ class Question(models.Model):
     associated_audio = models.ForeignKey("Audio", on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
     associated_video = models.ForeignKey("Video", on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
     question_tags = models.TextField(blank=True)
-    marks = models.PositiveIntegerField(default=1)
+    marks = models.PositiveIntegerField(default=5)
 
     class Meta:
         db_table = "questions"
@@ -69,7 +73,6 @@ class Audio(models.Model):
     """
     audio_file = models.FileField(upload_to="audio/", validators=[FileExtensionValidator(["mp3", "wav", "m4a", "ogg"])])
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="audios")
 
 class Image(models.Model):
@@ -78,7 +81,6 @@ class Image(models.Model):
     """
     image_file = models.FileField(upload_to="image/", validators=[FileExtensionValidator(["png", "jpg", "jpeg", "gif", "webp"])])
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="images")
 
 class Video(models.Model):
@@ -87,7 +89,6 @@ class Video(models.Model):
     """
     video_file = models.FileField(upload_to="video/", validators=[FileExtensionValidator(["mp4", "webm"])])
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="videos")
 
 class Subject(models.Model):
