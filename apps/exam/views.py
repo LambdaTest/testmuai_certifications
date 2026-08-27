@@ -17,10 +17,19 @@ from django.urls import reverse
 
 from . import timezones
 from .calendar import build_ics
-from .forms import BookingForm, RescheduleForm, SubjectForm, ExamForm, QuestionForm
+from . import forms as exam_forms
+from .forms import (
+    AnswerOptionFormSet,
+    BookingForm,
+    ExamForm,
+    QuestionForm,
+    RescheduleForm,
+    SubjectForm,
+)
 from .models import Exam, ExamBooking, Subject
 from apps.home.models import User
 from apps.home.decorators import role_required
+from django.db import transaction
 from django.db.models import Case, When, IntegerField
 
 
@@ -360,12 +369,56 @@ def add_question(request):
     This is for the page that will help create a new question for the admin."
     """
     form = QuestionForm(request.POST or None, request.FILES or None, user=request.user)
-    if request.method == "POST" and form.is_valid():
-        question = form.save(commit=False)
-        question.created_by = request.user  # Set the creator of the question
-        question.save()
-        return redirect("exam:question_bank")  # Redirect to the question center after creation
-    return render(request, "exam/add_question.html", {"form": form})
+
+    # request.FILES here too — each option can carry its own image and audio,
+    # and a FileInput reads only from `files`. form_kwargs reaches every child
+    # form: created_by is non-nullable on an option and on each media row it
+    # may create, and a formset has no idea who is logged in.
+    #
+    # instance=form.instance rather than a fresh Question: it is the same object
+    # the form fills in during _post_clean, so by the time the formset validates
+    # its clean() can read the question_type that was actually submitted.
+    formset = AnswerOptionFormSet(
+        request.POST or None,
+        request.FILES or None,
+        instance=form.instance,
+        form_kwargs={"user": request.user},
+    )
+
+    if request.method == "POST":
+        # Validated in this order, and as two statements. form.is_valid() is
+        # what populates form.instance, so the formset has to be asked second.
+        # Written as `form.is_valid() and formset.is_valid()` it would
+        # short-circuit — the author would fix the question, post again, and
+        # only then be told about the options.
+        form_ok = form.is_valid()
+        formset_ok = formset.is_valid()
+
+        if form_ok and formset_ok:
+            # One transaction. A question saved without its options can be
+            # served with nothing to pick from, so if the options fail the
+            # question and its media rows go back with them.
+            with transaction.atomic():
+                question = form.save()
+                # formset.instance is the same object, now with a pk, so
+                # save() fills in each option's FK for us. created_by and the
+                # option's media are handled inside AnswerOptionForm.save().
+                formset.save()
+            return redirect("exam:question_bank")
+
+    return render(
+        request,
+        "exam/add_question.html",
+        {
+            "form": form,
+            "formset": formset,
+            # So each upload's byline states the limit the form actually
+            # enforces, rather than a number typed into the markup.
+            "max_image_mb": exam_forms.MAX_IMAGE_MB,
+            "max_audio_mb": exam_forms.MAX_AUDIO_MB,
+            "max_video_mb": exam_forms.MAX_VIDEO_MB,
+        },
+    )
 
 
 @role_required(User.Role.ADMIN)

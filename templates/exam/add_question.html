@@ -1,24 +1,30 @@
 {% extends "base_staff.html" %}
 
 {% comment %}
-  Add Question — TEMPLATE ONLY. No url, view or form yet.
+  Add Question — a question and its answer options in one post.
 
-  Every input is hand-written rather than rendered from a form, so each one
-  carries the Question field name it will eventually bind to. Wiring this up
-  means writing a QuestionForm whose Meta.fields match these names and swapping
-  each input for {{ form.<field> }} — the markup around them survives.
+  Context from apps.exam.views.add_question:
+    form           QuestionForm
+    formset        AnswerOptionFormSet, six slots
+    max_*_mb       the limits forms.py enforces, so the bylines cannot drift
 
-  Context it will need:
-    subjects – for the question_subject dropdown
-    form     – a QuestionForm, once it exists
-    formset  – an inline formset for the answer options, once it exists
+  Two forms rather than one, because the options are AnswerOptions rows hanging
+  off the question by FK. The formset renames every option input to
+  answers-0-answer_option_text and friends, which is why those are rendered
+  through {{ option_form.field }} rather than written by hand.
+
+  {{ formset.management_form }} is not optional. It carries TOTAL_FORMS and
+  INITIAL_FORMS, and a formset posted without them raises ValidationError
+  rather than reporting a field error.
+
+  enctype="multipart/form-data" is likewise load-bearing. Without it the browser
+  posts filenames instead of files, silently, and every upload arrives empty.
 
   Not represented, deliberately:
-    created_by            set by the view from request.user, never chosen
+    created_by            set from request.user, never chosen
+    status                a question is ACTIVE on creation; retiring happens on
+                          the Question Bank
     created_at/updated_at auto fields
-
-  Two things below are guesses at the model's intent and want confirming — the
-  marks rule and the media uploads. Both are flagged where they appear.
 {% endcomment %}
 
 {% block title %}Add Question · TestMu AI Certifications{% endblock %}
@@ -35,65 +41,90 @@
   </header>
 
   {% comment %}
-    `type` drives most of this page: objective questions take answer options and
-    a fixed mark, subjective ones take neither. Holding it in Alpine means the
-    page reshapes without a round trip.
+    `type` drives most of this page: objective questions take answer options,
+    subjective ones take none. Holding it in Alpine reshapes the page without a
+    round trip — but the server decides in the end, since the formset's clean()
+    rejects options on a subjective question however the page looked.
 
-    `correct` is the index of the option marked right. Using one radio group
-    rather than four checkboxes makes "exactly one correct answer" true by
-    construction on the client — though the server must still enforce it, since
-    a hand-made post can send anything.
+    `correct` is the index of the option marked right, and `visible` how many
+    slots are on screen. Both are seeded from the posted data so a validation
+    error does not throw away what the author chose: each expression builds a
+    small array of 1/0 from the bound values and reads the index back out.
+
+    `removed` holds slots the author has taken back out. remove() *clears the
+    inputs* as well as hiding the row, and that is the part that matters —
+    AnswerOptionForm decides whether to save a slot by looking at its text, so
+    a hidden row still carrying a value would be saved anyway.
   {% endcomment %}
-  <form method="post" class="rounded-2xl border border-line bg-white p-6"
-        x-data="{ type: 'objective', correct: 0, options: [0, 1, 2, 3] }">
+  <form method="post" enctype="multipart/form-data"
+        class="rounded-2xl border border-line bg-white p-6"
+        x-data="{
+          type: '{{ form.question_type.value|default:"objective"|escapejs }}',
+          correct: [{% for option_form in formset %}{{ option_form.is_correct.value|yesno:"1,0,0" }}{% if not forloop.last %},{% endif %}{% endfor %}].indexOf(1),
+          slots: {{ formset|length }},
+          visible: Math.max(4, [{% for option_form in formset %}{{ option_form.answer_option_text.value|yesno:"1,0,0" }}{% if not forloop.last %},{% endif %}{% endfor %}].lastIndexOf(1) + 1),
+          removed: [],
+          shows(i) { return i < this.visible && !this.removed.includes(i) },
+          shown() { return [...Array(this.slots).keys()].filter(i => this.shows(i)).length },
+          remove(i, el) {
+            el.closest('[data-option]').querySelectorAll('input[type=text], input[type=file]').forEach(n => n.value = '');
+            if (this.correct === i) this.correct = -1;
+            this.removed.push(i);
+          },
+          add() { this.removed.length ? this.removed.shift() : this.visible++ },
+          canAdd() { return this.removed.length > 0 || this.visible < this.slots },
+        }">
     {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="mb-5 rounded-xl border border-danger bg-danger-tint p-4">
+        {% for error in form.non_field_errors %}
+          <p class="text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
 
     {# ---------- The question ---------- #}
     <div class="grid gap-5">
       <div>
-        <label for="id_question_text" class="mb-1.5 block text-[13px] font-semibold text-body">
-          Question
+        <label for="{{ form.question_text.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.question_text.label }}
         </label>
-        <textarea name="question_text" id="id_question_text" rows="4" required
-                  placeholder="What does an explicit wait do in Selenium?"
-                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30"></textarea>
+        {{ form.question_text }}
+        {% for error in form.question_text.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
       </div>
 
       <div class="grid gap-5 sm:grid-cols-3">
         <div>
-          <label for="id_question_subject" class="mb-1.5 block text-[13px] font-semibold text-body">
-            Subject
+          <label for="{{ form.question_subject.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+            {{ form.question_subject.label }}
           </label>
-          <select name="question_subject" id="id_question_subject" required
-                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
-            <option value="">Select subject</option>
-            {% for subject in subjects %}
-              <option value="{{ subject.pk }}">{{ subject.name }}</option>
-            {% endfor %}
-          </select>
+          {{ form.question_subject }}
+          {% for error in form.question_subject.errors %}
+            <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+          {% endfor %}
         </div>
 
         <div>
-          <label for="id_question_type" class="mb-1.5 block text-[13px] font-semibold text-body">
-            Type
+          <label for="{{ form.question_type.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+            {{ form.question_type.label }}
           </label>
-          <select name="question_type" id="id_question_type" x-model="type"
-                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
-            <option value="objective">Objective</option>
-            <option value="subjective">Subjective</option>
-          </select>
+          {{ form.question_type }}
+          {% for error in form.question_type.errors %}
+            <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+          {% endfor %}
         </div>
 
         <div>
-          <label for="id_question_difficulty" class="mb-1.5 block text-[13px] font-semibold text-body">
-            Difficulty
+          <label for="{{ form.question_difficulty.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+            {{ form.question_difficulty.label }}
           </label>
-          <select name="question_difficulty" id="id_question_difficulty"
-                  class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
-            <option value="easy">Easy</option>
-            <option value="medium">Medium</option>
-            <option value="hard">Hard</option>
-          </select>
+          {{ form.question_difficulty }}
+          {% for error in form.question_difficulty.errors %}
+            <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+          {% endfor %}
         </div>
       </div>
     </div>
@@ -101,37 +132,117 @@
     {# ---------- Answer options ---------- #}
     <div x-show="type === 'objective'" x-cloak class="mt-7 border-t border-[#F0F1F3] pt-6">
       <h2 class="mb-1 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Answer options</h2>
-      <p class="mb-4 text-[13px] text-muted">Select the radio beside the correct one.</p>
+      <p class="mb-4 text-[13px] text-muted">Mark the correct one. An option can carry its own image or audio.</p>
+
+      {{ formset.management_form }}
+
+      {% if formset.non_form_errors %}
+        <div class="mb-4 rounded-xl border border-danger bg-danger-tint p-4">
+          {% for error in formset.non_form_errors %}
+            <p class="text-[13px] text-danger">{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
 
       {% comment %}
-        These are AnswerOptions rows, not Question fields — a separate model
-        linked by its `question` FK. Wiring them means an inline formset:
+        Six slots are rendered and four shown; "+ Add another option" reveals the
+        rest. Adding a form in JavaScript instead would mean cloning markup and
+        incrementing TOTAL_FORMS by hand, and a management form that disagrees
+        with the posted data raises rather than validates. Empty slots cost
+        nothing — AnswerOptionForm.has_changed() reports an untouched slot as
+        unchanged, so Django skips it rather than saving a blank row.
 
-          inlineformset_factory(Question, AnswerOptions, fields=[...], extra=4)
+        The correct-answer control is a button, not a radio. Django names each
+        option's is_correct separately (answers-0-is_correct), so they cannot
+        form a native radio group; the hidden input beside each button carries
+        the real value, and "on" / "" is exactly what CheckboxInput reads back as
+        True / False. With JavaScript off nothing is marked, and the formset's
+        clean() says so plainly rather than saving a question with no correct
+        answer.
 
-        which renames these inputs to answers-0-answer_option_text and adds the
-        hidden management fields it needs. So treat the names here as
-        placeholders; the layout is what carries over.
-
-        AnswerOptions has no ordering field, so the order they come back in is
-        whatever Postgres returns. Worth a `position` column before this page
-        can round-trip an edit faithfully.
+        AnswerOptions still has no ordering column, so a saved question's options
+        come back in whatever order Postgres returns. It needs a `position` field
+        before this page can round-trip an edit faithfully.
       {% endcomment %}
-      <div class="grid gap-3">
-        <template x-for="i in options" :key="i">
-          <div class="flex items-center gap-3">
-            <input type="radio" name="correct_option" :value="i" x-model.number="correct"
-                   :aria-label="'Mark option ' + (i + 1) + ' correct'"
-                   class="size-4 shrink-0 accent-[#0E8A45]">
-            <input type="text" :name="'answer_option_text_' + i"
-                   :placeholder="'Option ' + (i + 1)"
-                   class="h-11 w-full rounded-lg border bg-white px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-brand/30"
-                   :class="correct === i ? 'border-ok bg-ok-tint' : 'border-zinc-300 focus-visible:border-brand'">
+      <div class="grid gap-3" role="radiogroup" aria-label="Correct answer">
+        {% for option_form in formset %}
+          <div x-show="shows({{ forloop.counter0 }})" x-cloak
+               x-data="{ media: false }" data-option
+               class="rounded-xl border px-4 py-3"
+               :class="correct === {{ forloop.counter0 }} ? 'border-ok bg-ok-tint' : 'border-line bg-white'">
+
+            {{ option_form.id }}
+
+            <div class="flex items-center gap-3">
+              <button type="button" role="radio"
+                      @click="correct = {{ forloop.counter0 }}"
+                      :aria-checked="correct === {{ forloop.counter0 }}"
+                      aria-label="Mark option {{ forloop.counter }} correct"
+                      class="grid size-5 shrink-0 place-items-center rounded-full border-2"
+                      :class="correct === {{ forloop.counter0 }} ? 'border-ok' : 'border-zinc-300'">
+                <span x-show="correct === {{ forloop.counter0 }}"
+                      class="size-2.5 rounded-full bg-ok"></span>
+              </button>
+
+              <input type="hidden" name="{{ option_form.is_correct.html_name }}"
+                     :value="correct === {{ forloop.counter0 }} ? 'on' : ''">
+
+              {{ option_form.answer_option_text }}
+
+              <button type="button" @click="media = !media"
+                      :aria-expanded="media"
+                      class="shrink-0 text-[12.5px] font-semibold whitespace-nowrap"
+                      :class="media ? 'text-brand' : 'text-muted hover:text-brand'">
+                <span x-text="media ? '− media' : '+ media'"></span>
+              </button>
+
+              {% comment %}
+                Hidden rather than disabled once only two options are left: an
+                objective question needs at least two, and a disabled button
+                invites a click that does nothing. The server enforces the same
+                floor in the formset's clean(), since this control does not
+                exist for a post made without JavaScript.
+              {% endcomment %}
+              <button type="button" x-show="shown() > 2" x-cloak
+                      @click="remove({{ forloop.counter0 }}, $el)"
+                      aria-label="Remove option {{ forloop.counter }}"
+                      class="grid size-7 shrink-0 place-items-center rounded-lg text-zinc-400 hover:bg-danger-tint hover:text-danger">
+                <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                  <path d="M5 10h10"/>
+                </svg>
+              </button>
+            </div>
+
+            {% for error in option_form.answer_option_text.errors %}
+              <p class="mt-1.5 pl-8 text-[13px] text-danger">{{ error }}</p>
+            {% endfor %}
+
+            <div x-show="media" x-cloak class="mt-3 grid gap-3 pl-8 sm:grid-cols-2">
+              <div>
+                <label for="{{ option_form.image_upload.id_for_label }}"
+                       class="mb-1 block text-[12.5px] font-semibold text-body">Image</label>
+                {{ option_form.image_upload }}
+                <p class="mt-1 text-[12.5px] text-muted">Under {{ max_image_mb }}&nbsp;MB</p>
+                {% for error in option_form.image_upload.errors %}
+                  <p class="mt-1 text-[12.5px] text-danger">{{ error }}</p>
+                {% endfor %}
+              </div>
+              <div>
+                <label for="{{ option_form.audio_upload.id_for_label }}"
+                       class="mb-1 block text-[12.5px] font-semibold text-body">Audio</label>
+                {{ option_form.audio_upload }}
+                <p class="mt-1 text-[12.5px] text-muted">Under {{ max_audio_mb }}&nbsp;MB</p>
+                {% for error in option_form.audio_upload.errors %}
+                  <p class="mt-1 text-[12.5px] text-danger">{{ error }}</p>
+                {% endfor %}
+              </div>
+            </div>
           </div>
-        </template>
+        {% endfor %}
       </div>
 
-      <button type="button" @click="options.push(options.length)"
+      <button type="button" x-show="canAdd()" x-cloak @click="add()"
               class="mt-3 text-[13px] font-semibold text-brand hover:underline">
         + Add another option
       </button>
@@ -142,18 +253,16 @@
       <h2 class="mb-4 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Marks</h2>
 
       {% comment %}
-        NEEDS A DECISION. Question.marks defaults to 1, but Exam.MARKS_PER_QUESTION
-        is 5 and Exam.total_marks_for() multiplies by it. If an objective question
-        can be worth anything other than 5, a randomised paper no longer totals
-        count × 5 and the derived maximum marks is wrong.
+        One input, not two. It is hidden for an objective question rather than
+        replaced by a hidden field, because two inputs sharing the name `marks`
+        would both post and the form would read whichever came last.
 
-        So this shows objective marks as fixed and posts a hidden 5, leaving the
-        input for subjective questions only. The alternative is to let objective
-        marks vary and make total_marks_for() sum real questions — which is the
-        Exam ↔ Question work anyway.
+        Hidden or not it still posts, and QuestionForm.clean() overwrites it with
+        Exam.MARKS_PER_QUESTION for objective questions — Exam.total_marks_for()
+        multiplies count by that constant rather than summing real questions, so
+        one question worth 7 makes every randomised paper's maximum marks wrong.
       {% endcomment %}
       <div x-show="type === 'objective'" x-cloak>
-        <input type="hidden" name="marks" value="5">
         <div class="flex items-center justify-between rounded-xl bg-surface px-5 py-4">
           <div>
             <span class="text-[13px] font-semibold text-body">5 marks</span>
@@ -167,9 +276,13 @@
       </div>
 
       <div x-show="type === 'subjective'" x-cloak>
-        <label for="id_marks" class="mb-1.5 block text-[13px] font-semibold text-body">Marks</label>
-        <input type="number" name="marks" id="id_marks" min="1" value="10"
-               class="h-11 w-full max-w-[12rem] rounded-lg border border-zinc-300 bg-white px-3 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+        <label for="{{ form.marks.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.marks.label }}
+        </label>
+        <div class="max-w-[12rem]">{{ form.marks }}</div>
+        {% for error in form.marks.errors %}
+          <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+        {% endfor %}
       </div>
     </div>
 
@@ -179,88 +292,73 @@
       <p class="mb-4 text-[13px] text-muted">Optional. Attach one if the question refers to it.</p>
 
       {% comment %}
-        NEEDS A DECISION. associated_image / _audio / _video are ForeignKeys to
-        the Image, Audio and Video models — so strictly this should be three
-        dropdowns of existing rows, not three uploads.
+        Uploads, not dropdowns. associated_image / _audio / _video are
+        ForeignKeys, so a plain ModelForm would render three pickers of existing
+        rows — and those models carry no caption, so every entry would read
+        "Image object (3)". QuestionForm declares three FileFields under separate
+        names instead, and creates the row on save.
 
-        Uploads are shown because a dropdown would be unusable: those models hold
-        only a file and a timestamp, no name or caption, so every entry would
-        read "Image object (3)". If picking existing media is wanted, they each
-        need a label field first.
+        The bylines print the limits from forms.py rather than stating a number
+        here, so the promise and the check cannot drift apart. They are still
+        only bylines: `accept` filters the file picker and nothing more, and
+        Django applies no upload ceiling of its own. The enforcement is the
+        max_size validator on each field.
 
-        Either way the view has more work than a plain ModelForm.save(): it must
-        create the Image/Audio/Video row from the upload, then attach it. The
-        <form> will also need enctype="multipart/form-data" — without it the
-        browser posts filenames only, silently.
+        SVG is deliberately absent from the image list: it is XML, it can carry a
+        <script>, and MEDIA_URL is same-origin. MP4 and WebM only for video —
+        MOV, AVI and MKV upload fine and then fail silently in <video>, which a
+        candidate would discover mid-exam.
       {% endcomment %}
       <div class="grid gap-4 sm:grid-cols-3">
         <div>
-          <label for="id_associated_image" class="mb-1.5 block text-[13px] font-semibold text-body">Image</label>
-          <input type="file" name="associated_image" id="id_associated_image"
-                 accept=".png,.jpg,.jpeg,.gif,.webp"
-                 class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[13px] file:mr-3 file:rounded file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-[12.5px] file:font-semibold">
-          {% comment %}
-            A byline, not a guard. `accept` only filters the file picker and is
-            ignored by a direct post, and nothing here checks size at all — the
-            browser has already uploaded the whole file by the time it could.
-            The 5 MB limit has to be enforced in forms.py.
-
-            SVG is deliberately absent from `accept`: it is XML and can carry a
-            <script>, and MEDIA_URL is same-origin, so an inline SVG would run
-            with the viewer's session.
-          {% endcomment %}
+          <label for="{{ form.image_upload.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+            {{ form.image_upload.label }}
+          </label>
+          {{ form.image_upload }}
           <p class="mt-1.5 text-[13px] text-muted">
-            PNG, JPG, GIF or WebP · under 5&nbsp;MB
+            PNG, JPG, GIF or WebP · under {{ max_image_mb }}&nbsp;MB
           </p>
+          {% for error in form.image_upload.errors %}
+            <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+          {% endfor %}
         </div>
         <div>
-          <label for="id_associated_audio" class="mb-1.5 block text-[13px] font-semibold text-body">Audio</label>
-          <input type="file" name="associated_audio" id="id_associated_audio"
-                 accept=".mp3,.m4a,.wav,.ogg"
-                 class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[13px] file:mr-3 file:rounded file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-[12.5px] file:font-semibold">
+          <label for="{{ form.audio_upload.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+            {{ form.audio_upload.label }}
+          </label>
+          {{ form.audio_upload }}
           <p class="mt-1.5 text-[13px] text-muted">
-            MP3, M4A, WAV or OGG · under 5&nbsp;MB
+            MP3, M4A, WAV or OGG · under {{ max_audio_mb }}&nbsp;MB
           </p>
+          {% for error in form.audio_upload.errors %}
+            <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+          {% endfor %}
         </div>
         <div>
-          <label for="id_associated_video" class="mb-1.5 block text-[13px] font-semibold text-body">Video</label>
-          <input type="file" name="associated_video" id="id_associated_video"
-                 accept=".mp4,.webm"
-                 class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[13px] file:mr-3 file:rounded file:border-0 file:bg-surface file:px-2.5 file:py-1 file:text-[12.5px] file:font-semibold">
-          {% comment %}
-            50 MB rather than the 5 MB the other two get: a screen recording of
-            any useful length runs to tens of megabytes, and a ceiling an author
-            cannot work within just means they stop attaching video.
-
-            Still only a byline. Nothing here checks size — `accept` filters the
-            file picker and nothing more, and Django applies no upload ceiling of
-            its own (FILE_UPLOAD_MAX_MEMORY_SIZE picks memory over a temp file,
-            it does not cap anything). Until forms.py enforces it, this number is
-            a promise nothing keeps.
-
-            MP4 and WebM only: what a browser can actually play. MOV, AVI and MKV
-            upload fine and then fail silently in <video>, which a candidate
-            would discover mid-exam.
-          {% endcomment %}
+          <label for="{{ form.video_upload.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+            {{ form.video_upload.label }}
+          </label>
+          {{ form.video_upload }}
           <p class="mt-1.5 text-[13px] text-muted">
-            MP4 or WebM · under 50&nbsp;MB
+            MP4 or WebM · under {{ max_video_mb }}&nbsp;MB
           </p>
+          {% for error in form.video_upload.errors %}
+            <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+          {% endfor %}
         </div>
       </div>
     </div>
 
     {# ---------- Tags ---------- #}
     <div class="mt-7 border-t border-[#F0F1F3] pt-6">
-      <label for="id_question_tags" class="mb-1.5 block text-[13px] font-semibold text-body">
-        Tags
+      <label for="{{ form.question_tags.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+        {{ form.question_tags.label }}
       </label>
-      <input type="text" name="question_tags" id="id_question_tags"
-             placeholder="waits, locators, grid"
-             class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
-      <p class="mt-1.5 text-[13px] text-muted">
-        Optional. Comma-separated and lowercase — subject and difficulty are the
-        real filters, so use these only for what neither captures.
-      </p>
+      {{ form.question_tags }}
+      <p class="mt-1.5 text-[13px] text-muted">{{ form.question_tags.help_text }}</p>
+      {% for error in form.question_tags.errors %}
+        <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+      {% endfor %}
     </div>
 
     <div class="mt-7 flex flex-wrap items-center gap-3">
@@ -268,7 +366,7 @@
               class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
         Add Question
       </button>
-      <a href="#"
+      <a href="{% url 'exam:question_bank' %}"
          class="ml-auto inline-flex h-11 items-center rounded-lg px-4 text-[14.5px] font-semibold text-muted hover:text-ink">
         Discard
       </a>

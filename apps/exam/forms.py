@@ -639,6 +639,75 @@ class QuestionForm(MediaUploadMixin, AuthoringForm):
         return question
 
 
+class AnswerOptionForm(MediaUploadMixin, forms.ModelForm):
+    """
+    One answer option, with its own optional image and audio.
+
+    Same shape as QuestionForm's media handling and for the same reason:
+    AnswerOptions.associated_image and .associated_audio are ForeignKeys, so
+    leaving them in Meta.fields would generate dropdowns of existing rows. The
+    uploads are declared under separate names, and save() creates the row.
+
+    No video field, matching the model — an option is a thing you glance at
+    while choosing, and a clip you have to sit through is not that. The
+    question itself can carry the video.
+
+    `user` arrives from the formset's form_kwargs, because created_by is
+    non-nullable on the option and on each media row it may create.
+    """
+
+    image_upload = _upload_field("Image", IMAGE_EXTENSIONS, MAX_IMAGE_MB)
+    audio_upload = _upload_field("Audio", AUDIO_EXTENSIONS, MAX_AUDIO_MB)
+
+    MEDIA_UPLOADS = (
+        ("image_upload", Image, "image_file", "associated_image"),
+        ("audio_upload", Audio, "audio_file", "associated_audio"),
+    )
+
+    class Meta:
+        model = AnswerOptions
+        fields = ["answer_option_text", "is_correct"]
+        labels = {"answer_option_text": "Option"}
+        widgets = {
+            "answer_option_text": forms.TextInput(
+                attrs={
+                    "class": (
+                        "h-11 w-full rounded-lg border bg-white px-3 text-sm outline-none "
+                        "focus-visible:ring-3 focus-visible:ring-brand/30"
+                    )
+                }
+            ),
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+    def has_changed(self):
+        """
+        An empty slot must stay empty even if a file was picked for it.
+
+        Django decides whether to save an extra form by asking whether anything
+        changed. FileFields always report changed when a file is present, so
+        without this an author who attaches an image to the wrong row and then
+        clears the text would save an option with no text — and
+        answer_option_text is required, so it would fail validation instead of
+        being skipped. Anchoring on the text makes the text the thing that says
+        "this slot is in use".
+        """
+        if not self.instance.pk and not self.data.get(self.add_prefix("answer_option_text"), "").strip():
+            return False
+        return super().has_changed()
+
+    def save(self, commit=True):
+        option = super().save(commit=False)
+        option.created_by = self.user
+        self.attach_media(option)
+        if commit:
+            option.save()
+        return option
+
+
 class BaseAnswerOptionFormSet(BaseInlineFormSet):
     """
     The rule a single AnswerOptions row cannot express: an objective question
@@ -704,20 +773,10 @@ class BaseAnswerOptionFormSet(BaseInlineFormSet):
 AnswerOptionFormSet = inlineformset_factory(
     Question,
     AnswerOptions,
+    form=AnswerOptionForm,
     formset=BaseAnswerOptionFormSet,
-    fields=["answer_option_text", "is_correct"],
     extra=6,
     # Nothing to delete on an add page. Editing a question will want this, and
     # turning it on means rendering the DELETE checkbox the factory then adds.
     can_delete=False,
-    widgets={
-        "answer_option_text": forms.TextInput(
-            attrs={
-                "class": (
-                    "h-11 w-full rounded-lg border bg-white px-3 text-sm outline-none "
-                    "focus-visible:ring-3 focus-visible:ring-brand/30"
-                )
-            }
-        ),
-    },
 )
