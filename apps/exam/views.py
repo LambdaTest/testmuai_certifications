@@ -359,11 +359,24 @@ def add_question(request):
     """
     This is for the page that will help create a new question for the admin."
     """
-    # form = QuestionForm(request.POST or None)
-    # if request.method == "POST" and form.is_valid():
-    #     question = form.save(commit=False)
-    #     question.created_by = request.user  # Set the creator of the question
-    #     question.save()
-    #     return redirect("exam:explore_questions")  # Redirect to the question center after creation
-    # return render(request, "exam/add_question.html", {"form": form})
+    form = QuestionForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        question = form.save(commit=False)
+        question.created_by = request.user  # Set the creator of the question
+        question.save()
+        return redirect("exam:question_bank")  # Redirect to the question center after creation
+    return render(request, "exam/add_question.html", {"form": form})
     return render(request, "exam/add_question.html")
+
+
+@role_required(User.Role.ADMIN)
+def question_bank(request):
+    """
+    This is for the page that will show all the questions available in the system.
+    Only accessible to admins."
+    """
+    questions = Question.objects.select_related("created_by", "associated_audio", "associated_video").order_by(
+        Case(When(status=Question.Status.ACTIVE, then=0), default=1, output_field=IntegerField()),
+        "created_at"
+    )
+    return render(request, "exam/question_bank.html", {"questions": questions})

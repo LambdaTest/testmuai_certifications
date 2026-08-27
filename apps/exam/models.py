@@ -49,6 +49,7 @@ class Question(models.Model):
     associated_video = models.ForeignKey("Video", on_delete=models.PROTECT, related_name="questions", blank=True, null=True)
     question_tags = models.TextField(blank=True)
     marks = models.PositiveIntegerField(default=5)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
 
     class Meta:
         db_table = "questions"

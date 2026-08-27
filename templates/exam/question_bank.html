@@ -1,0 +1,298 @@
+{% extends "base_staff.html" %}
+
+{% comment %}
+  Question Bank — TEMPLATE ONLY. No url, view or delete route yet.
+
+  Context it will need from a future apps.exam.views.question_bank:
+    questions – Question rows, unpaginated for now
+
+  and the view must fetch them as:
+
+    Question.objects.select_related("question_subject")
+                    .prefetch_related("answers", "question_subject__exams")
+
+  Without that, every card costs a query for its subject, another for its
+  options, and another for the exams in its "Attached to" list. Three per row
+  on a page built to show a whole bank.
+
+  NO EDITING, deliberately. A question that has been sat is the record of what
+  a candidate was asked, so changing its wording after the fact rewrites
+  history that grading and appeals depend on. The card is read-only; the only
+  action is removal.
+
+  DELETE is unwired — both buttons are href="#". When it is built it must be a
+  POST, not a link: a GET that destroys a row is one crawler or one prefetching
+  browser away from clearing the bank. The shape to copy is
+  cancel_booking_page / cancel_booking in views.py — a confirm page, then a
+  POST. And per the design we settled on, it should be a *gated* delete:
+  destroy only a question no candidate has answered, and retire the rest by
+  flipping status to RETIRED.
+
+  Search runs in the browser, as on Explore Exams and Explore Subjects: the
+  rows are all on the page already. It matches question text, subject and tags,
+  because an admin hunting for a question remembers its wording or its topic.
+{% endcomment %}
+
+{% block title %}Question Bank · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+{% comment %}
+  `open` holds the index of the expanded card, so opening one closes the last —
+  the same accordion rule the sidebar uses, for the same reason. A bank runs to
+  hundreds of rows, and several expanded at once turns the page into a scroll.
+
+  The unfold is the grid-template-rows 0fr → 1fr trick from base_staff.html,
+  not a height transition: it animates to the content's natural height, which a
+  fixed height cannot know in advance.
+{% endcomment %}
+<div x-data="{
+       q: '',
+       open: null,
+       haystack: [{% for question in questions %}'{{ question.question_text|lower|escapejs }} {{ question.question_subject.name|lower|escapejs }} {{ question.question_tags|lower|escapejs }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+       get term() { return this.q.trim().toLowerCase() },
+       get matches() { return this.haystack.filter(h => h.includes(this.term)).length },
+       toggle(i) { this.open = this.open === i ? null : i },
+     }">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-bold tracking-tight">Question Bank</h1>
+    <p class="mt-1.5 text-[15px] text-muted">
+      Questions belong to a subject. Any exam on that subject draws from here
+      automatically, so there is nothing to attach by hand.
+    </p>
+  </header>
+
+  <div class="mb-6 relative">
+    <input type="search" x-model="q"
+           placeholder="Search questions, subjects or tags"
+           aria-label="Search questions"
+           class="h-11 w-full rounded-lg border border-zinc-300 bg-white pr-3 pl-10 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+    <svg class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-zinc-400"
+         viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"
+         stroke-linecap="round" aria-hidden="true">
+      <circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/>
+    </svg>
+  </div>
+
+  {# ---- The bank ---- #}
+  <div class="grid gap-3">
+    {% for question in questions %}
+      <div x-show="!term || '{{ question.question_text|lower|escapejs }} {{ question.question_subject.name|lower|escapejs }} {{ question.question_tags|lower|escapejs }}'.includes(term)"
+           class="overflow-hidden rounded-2xl border border-line bg-white">
+
+        {# -------- Collapsed head -------- #}
+        <div class="flex items-start gap-3 px-5 py-4">
+
+          {% comment %}
+            The whole summary is the toggle, not a small chevron — a card that
+            expands should be clickable across its face. It is a <button> and
+            not a <div @click> so it takes focus and answers the space bar,
+            which a div never does however it is styled.
+          {% endcomment %}
+          <button type="button" @click="toggle({{ forloop.counter0 }})"
+                  :aria-expanded="open === {{ forloop.counter0 }}"
+                  class="min-w-0 flex-1 text-left">
+
+            <div class="flex flex-wrap items-center gap-2">
+              {% if question.status == 'retired' %}
+                <span class="rounded-full bg-[#F0F1F4] px-2.5 py-0.5 text-[11px] font-bold text-faint">Retired</span>
+              {% else %}
+                <span class="rounded-full bg-ok-tint px-2.5 py-0.5 text-[11px] font-bold text-ok">Active</span>
+              {% endif %}
+
+              <span class="rounded-full bg-brand-tint px-2.5 py-0.5 text-[11px] font-bold text-brand-dark">
+                {{ question.get_question_type_display }}
+              </span>
+
+              {% comment %}
+                Difficulty earns a colour because it is the one attribute an
+                admin scans for when balancing a bank — too much easy, not
+                enough hard.
+              {% endcomment %}
+              {% if question.question_difficulty == 'hard' %}
+                <span class="rounded-full bg-danger-tint px-2.5 py-0.5 text-[11px] font-bold text-danger">Hard</span>
+              {% elif question.question_difficulty == 'medium' %}
+                <span class="rounded-full bg-warn-tint px-2.5 py-0.5 text-[11px] font-bold text-warn">Medium</span>
+              {% else %}
+                <span class="rounded-full bg-surface px-2.5 py-0.5 text-[11px] font-bold text-muted">Easy</span>
+              {% endif %}
+            </div>
+
+            {% comment %}
+              line-clamp rather than truncate: a question runs to a sentence or
+              two, so two lines say far more than one ellipsised line, and the
+              full text is one click away regardless.
+            {% endcomment %}
+            <p class="mt-2 line-clamp-2 text-[15px] font-medium text-ink">
+              {{ question.question_text }}
+            </p>
+
+            <p class="mt-1.5 text-[13px] text-muted">
+              {{ question.question_subject.name }} ·
+              {{ question.marks }} mark{{ question.marks|pluralize }}
+              {% if question.question_tags %} · {{ question.question_tags }}{% endif %}
+            </p>
+          </button>
+
+          <div class="flex shrink-0 items-center gap-2">
+            {% comment %}
+              DELETE sits on the head as well as in the body so a question can
+              go without being opened first — the collapsed card already shows
+              enough to know it is the wrong question.
+            {% endcomment %}
+            <a href="#" aria-label="Delete this question"
+               class="inline-flex h-9 items-center rounded-lg border border-line px-3 text-[12px] font-bold tracking-[0.6px] text-muted hover:border-danger hover:bg-danger-tint hover:text-danger">
+              DELETE
+            </a>
+
+            <span @click="toggle({{ forloop.counter0 }})"
+                  class="grid size-9 cursor-pointer place-items-center rounded-lg text-zinc-400 hover:bg-surface hover:text-body">
+              <svg class="size-4 transition-transform duration-200"
+                   :class="open === {{ forloop.counter0 }} && 'rotate-180'"
+                   viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/>
+              </svg>
+            </span>
+          </div>
+        </div>
+
+        {# -------- Expanded body -------- #}
+        <div class="grid transition-[grid-template-rows] duration-200 ease-out"
+             :class="open === {{ forloop.counter0 }} ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
+             :aria-hidden="open !== {{ forloop.counter0 }}">
+          <div class="overflow-hidden">
+            <div class="border-t border-[#F0F1F3] px-5 py-5">
+
+              {# ---- Full question text ---- #}
+              <p class="text-[15px] leading-relaxed text-body">{{ question.question_text }}</p>
+
+              {# ---- Media ---- #}
+              {% if question.associated_image or question.associated_audio or question.associated_video %}
+                <div class="mt-4 grid gap-3">
+                  {% if question.associated_image %}
+                    <img src="{{ question.associated_image.image_file.url }}" alt=""
+                         class="max-h-64 w-auto rounded-lg border border-line">
+                  {% endif %}
+                  {% if question.associated_audio %}
+                    <audio controls src="{{ question.associated_audio.audio_file.url }}" class="w-full max-w-md"></audio>
+                  {% endif %}
+                  {% if question.associated_video %}
+                    <video controls src="{{ question.associated_video.video_file.url }}"
+                           class="max-h-64 w-auto rounded-lg border border-line"></video>
+                  {% endif %}
+                </div>
+              {% endif %}
+
+              {# ---- Answer options ---- #}
+              {% if question.question_type == 'objective' %}
+                <h2 class="mt-6 mb-3 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">
+                  Answer options
+                </h2>
+
+                {% comment %}
+                  AnswerOptions has no ordering field, so these come back in
+                  whatever order Postgres returns and that order can change
+                  between two reads. Harmless while the page is read-only, but
+                  it needs a `position` column before anything renders these to
+                  a candidate — an option list that reshuffles mid-exam is a
+                  bug they will report.
+                {% endcomment %}
+                <div class="grid gap-2">
+                  {% for option in question.answers.all %}
+                    <div class="flex items-start gap-3 rounded-lg border px-4 py-3
+                                {% if option.is_correct %}border-ok bg-ok-tint{% else %}border-line bg-white{% endif %}">
+                      {% if option.is_correct %}
+                        <svg class="mt-0.5 size-4 shrink-0 text-ok" viewBox="0 0 20 20" fill="none"
+                             stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+                             stroke-linejoin="round" aria-hidden="true">
+                          <path d="m4 10.5 4 4 8-9"/>
+                        </svg>
+                      {% else %}
+                        <span class="mt-0.5 size-4 shrink-0 rounded-full border border-zinc-300" aria-hidden="true"></span>
+                      {% endif %}
+
+                      <span class="text-sm {% if option.is_correct %}font-semibold text-ok{% else %}text-body{% endif %}">
+                        {{ option.answer_option_text }}
+                        {% if option.is_correct %}
+                          <span class="sr-only">(correct answer)</span>
+                        {% endif %}
+                      </span>
+                    </div>
+                  {% empty %}
+                    <p class="rounded-lg bg-danger-tint px-4 py-3 text-[13px] text-danger">
+                      This objective question has no answer options, so nothing
+                      can be marked correct. It should not be served.
+                    </p>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="mt-6 rounded-xl bg-surface px-5 py-4 text-[13px] text-muted">
+                  A subjective question has no options — an examiner reads the
+                  written answer and awards up to {{ question.marks }} marks.
+                </p>
+              {% endif %}
+
+              {# ---- Attached to ---- #}
+              <h2 class="mt-6 mb-2 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">
+                Attached to
+              </h2>
+
+              {% comment %}
+                Display, not input. It sits outside any <form> and carries no
+                `name`, so it posts nothing — a <select> purely because a
+                subject with a dozen exams would otherwise be a dozen lines of
+                list on every open card.
+
+                Nothing is attached by hand. Randomisation is the default
+                selection mode, so a question is drawable by every exam on its
+                subject; that is what this lists. Detaching is therefore not
+                offered — there is no attachment to undo. If manual selection
+                is ever built, this becomes a real relation and the dropdown
+                grows a remove action.
+              {% endcomment %}
+              <select aria-label="Exams that can draw this question"
+                      class="h-11 w-full max-w-md rounded-lg border border-zinc-300 bg-white px-3 text-sm text-body outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+                {% for exam in question.question_subject.exams.all %}
+                  <option>{{ exam.exam_name }} — {{ exam.get_exam_level_display }}</option>
+                {% empty %}
+                  <option>No exams on {{ question.question_subject.name }} yet</option>
+                {% endfor %}
+              </select>
+
+              {# ---- Footer ---- #}
+              <div class="mt-6 flex flex-wrap items-center gap-3 border-t border-[#F0F1F3] pt-5">
+                <a href="#"
+                   class="inline-flex h-11 items-center rounded-lg bg-danger px-6 text-[14.5px] font-bold text-white hover:bg-[#A83522]">
+                  DELETE
+                </a>
+                <p class="text-[13px] text-muted">
+                  Questions cannot be edited — the wording is the record of what
+                  candidates were asked.
+                </p>
+                <span class="ml-auto text-[13px] text-faint">
+                  Added {{ question.created_at|date:"j M Y" }}
+                  {% if question.created_by %} by {{ question.created_by }}{% endif %}
+                </span>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    {% empty %}
+      <div class="rounded-2xl border border-line bg-white px-5 py-12 text-center">
+        <p class="text-sm text-muted">
+          No questions yet. Add the first one from the sidebar.
+        </p>
+      </div>
+    {% endfor %}
+
+    {% if questions %}
+      <p x-show="term && matches === 0" x-cloak
+         class="rounded-2xl border border-line bg-white px-5 py-12 text-center text-sm text-muted">
+        No questions match “<span x-text="q.trim()"></span>”.
+      </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
