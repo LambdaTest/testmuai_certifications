@@ -359,7 +359,7 @@ def add_question(request):
     """
     This is for the page that will help create a new question for the admin."
     """
-    form = QuestionForm(request.POST or None)
+    form = QuestionForm(request.POST or None, request.FILES or None, user=request.user)
     if request.method == "POST" and form.is_valid():
         question = form.save(commit=False)
         question.created_by = request.user  # Set the creator of the question

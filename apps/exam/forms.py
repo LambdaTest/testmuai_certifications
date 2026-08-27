@@ -14,11 +14,14 @@ from datetime import timedelta
 
 from django import forms
 from django.conf import settings
+from django.core.validators import FileExtensionValidator
+from django.forms import inlineformset_factory
+from django.forms.models import BaseInlineFormSet
 from django.utils import timezone as dj_timezone
 from django.utils.text import slugify
 
 from . import timezones
-from .models import Exam, ExamBooking, Subject, Question
+from .models import AnswerOptions, Audio, Exam, ExamBooking, Image, Question, Subject, Video
 import math
 
 def occupied_minutes(exam):
@@ -398,91 +401,323 @@ class ExamForm(AuthoringForm):
 
         return cleaned
 
+# --- Question authoring ------------------------------------------------------
+#
+# One place each media rule is written. These feed the form fields, and the view
+# passes them to the template so the byline under each input states the number
+# actually enforced — a "under 5 MB" typed into the markup drifts the day the
+# limit changes.
+#
+# Video gets a larger ceiling than the other two because a screen recording of
+# any useful length runs to tens of megabytes; a limit an author cannot work
+# within just means they stop attaching video.
+MAX_IMAGE_MB = 5
+MAX_AUDIO_MB = 5
+MAX_VIDEO_MB = 50
 
-class QuestionForm(AuthoringForm):
+IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp"]
+AUDIO_EXTENSIONS = ["mp3", "m4a", "wav", "ogg"]
+#: MP4 and WebM only — what a browser can actually play. MOV, AVI and MKV upload
+#: happily and then fail silently in <video>, which a candidate discovers
+#: mid-exam. SVG is likewise absent from the image list: it is XML, it can carry
+#: a <script>, and MEDIA_URL is same-origin.
+VIDEO_EXTENSIONS = ["mp4", "webm"]
+
+
+def max_size(megabytes):
     """
-    This is the form for handling question creation and validation.
-    It is a model form connecting directly to the Question model, allowing for easy data handling and validation.
+    Builds a validator that rejects an upload larger than `megabytes`.
+
+    Size cannot be checked in the browser in any way that counts: `accept`
+    filters the file picker and nothing else, and Django applies no ceiling of
+    its own — FILE_UPLOAD_MAX_MEMORY_SIZE only chooses between memory and a
+    temp file, and DATA_UPLOAD_MAX_MEMORY_SIZE explicitly excludes file data.
+    This is the only place the limit is real.
+
+    A closure is fine here because the validator is attached to a *form* field.
+    Model-field validators are serialized into migrations by import path, which
+    is why a closure cannot be used there — a form is never serialized.
+    """
+    limit = megabytes * 1024 * 1024
+
+    def validate(upload):
+        if upload.size > limit:
+            raise forms.ValidationError(
+                f"That file is {upload.size / 1024 / 1024:.1f} MB. "
+                f"The limit is {megabytes} MB."
+            )
+
+    return validate
+
+
+def _upload_field(label, extensions, megabytes):
+    """One of the three media inputs: an upload, validated on both counts."""
+    return forms.FileField(
+        required=False,
+        label=label,
+        validators=[FileExtensionValidator(extensions), max_size(megabytes)],
+        widget=forms.ClearableFileInput(
+            attrs={
+                "accept": ",".join(f".{e}" for e in extensions),
+                "class": (
+                    "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 "
+                    "text-[13px] file:mr-3 file:rounded file:border-0 file:bg-surface "
+                    "file:px-2.5 file:py-1 file:text-[12.5px] file:font-semibold"
+                ),
+            }
+        ),
+    )
+
+
+class MediaUploadMixin:
+    """
+    Shared by any form whose model points at Image / Audio / Video by FK but
+    whose *input* is a file.
+
+    Subclasses declare MEDIA_UPLOADS as a tuple of
+    ``(form field, media model, file column, FK on the instance)`` and set
+    ``self.user`` before save. Written once rather than copied into both forms:
+    two copies of "create the row, then attach it" would eventually disagree
+    about which of those steps is allowed to fail.
     """
 
-    slug_source = "question_text"
+    #: (upload field, media model, its file column, FK on this form's model)
+    MEDIA_UPLOADS = ()
+
+    def attach_media(self, obj):
+        """Turns each upload into a row of its own model and points `obj` at it."""
+        for field, model, column, fk in self.MEDIA_UPLOADS:
+            upload = self.cleaned_data.get(field)
+            if not upload:
+                continue
+            media = model.objects.create(**{column: upload, "created_by": self.user})
+            setattr(obj, fk, media)
+
+
+class QuestionForm(MediaUploadMixin, AuthoringForm):
+    """
+    Authoring form for one question.
+
+    Subclasses AuthoringForm only for its widget styling. A question has no
+    slug, and that class guards its slug work on ``"slug" in self.fields``, so
+    none of it fires — there is deliberately no `slug_source` here.
+
+    **Media is uploaded, not chosen.** ``associated_image`` and its two
+    siblings are ForeignKeys, so listing them in Meta.fields makes a ModelForm
+    generate ModelChoiceFields — dropdowns of existing rows that expect a
+    primary key. Pointing a ClearableFileInput at one changes how it draws and
+    nothing else: the field still wants a pk, so an uploaded file either
+    vanishes (no request.FILES) or fails with "Select a valid choice".
+
+    So the three FKs stay out of Meta.fields, and three upload fields take
+    their place under *different names*. The names matter. A declared field
+    called ``associated_image`` would win the collision — declared fields beat
+    generated ones — but ``_post_clean`` would then hand an UploadedFile to
+    ``instance.associated_image``, which wants an Image. A separate name keeps
+    the upload out of ``construct_instance``'s reach entirely, and ``save()``
+    builds the row and attaches it.
+
+    **The extension validators are re-declared here on purpose.** They already
+    exist on Image.image_file and friends, but ``Model.save()`` does not call
+    ``full_clean()`` — so ``Image.objects.create(...)`` runs no validation at
+    all. A model-field validator only fires when a ModelForm validates that
+    model. This form creates those rows itself, so the check has to live here.
+
+    Requires `user`: Question.created_by is non-nullable, and so is created_by
+    on each of the three media models.
+    """
+
+    image_upload = _upload_field("Image", IMAGE_EXTENSIONS, MAX_IMAGE_MB)
+    audio_upload = _upload_field("Audio", AUDIO_EXTENSIONS, MAX_AUDIO_MB)
+    video_upload = _upload_field("Video", VIDEO_EXTENSIONS, MAX_VIDEO_MB)
+
+    MEDIA_UPLOADS = (
+        ("image_upload", Image, "image_file", "associated_image"),
+        ("audio_upload", Audio, "audio_file", "associated_audio"),
+        ("video_upload", Video, "video_file", "associated_video"),
+    )
 
     class Meta:
         model = Question
-        fields = ['question_text', 'associated_image','associated_audio', 'associated_video', 'question_tags', 'marks', 'status',
-                  'question_type', 'question_difficulty', 'question_subject', ]
+        # `status` is absent deliberately: a question is ACTIVE the moment it is
+        # written, and retiring one is an action on the bank listing, not a
+        # dropdown an author picks from while writing. `created_by` likewise —
+        # nobody chooses who authored a question.
+        fields = [
+            "question_text",
+            "question_subject",
+            "question_type",
+            "question_difficulty",
+            "marks",
+            "question_tags",
+        ]
         labels = {
-            'question_text': 'Question Text',
-            'associated_image': 'Associated Image',
-            'associated_audio': 'Associated Audio',
-            'associated_video': 'Associated Video',
-            'question_tags': 'Question Tags',
-            'marks': 'Marks',
-            'status': 'Status',
-            'question_type': 'Question Type',
-            'question_difficulty': 'Question Difficulty',
-            'question_subject': 'Question Subject',
+            "question_text": "Question",
+            "question_subject": "Subject",
+            "question_type": "Type",
+            "question_difficulty": "Difficulty",
+            "question_tags": "Tags",
         }
         help_texts = {
-            'question_tags': "Comma-separated tags for categorizing the question.",
-            'marks': "The number of marks allocated for this question. Default: 5",
-            'status': "Select whether the question is active or retired."
+            "question_tags": (
+                "Optional. Comma-separated — subject and difficulty are the real "
+                "filters, so use these only for what neither captures."
+            ),
         }
         widgets = {
-            "question_text": forms.Textarea(attrs={"rows": 4, "placeholder": "Enter the question text here."}),
-            "associated_image": forms.ClearableFileInput(attrs={"accept": ".jpg,.jpeg,.png,.gif, webp"}),
-            "associated_audio": forms.ClearableFileInput(attrs={"accept": ".mp3,.wav,.m4a,.ogg"}),
-            "associated_video": forms.ClearableFileInput(attrs={"accept": ".mp4,.avi,.mov"}),
-            "question_tags": forms.TextInput(attrs={"placeholder": "e.g. math, algebra, geometry"}),
-            "question_type": forms.Select(),
-            "question_difficulty": forms.Select(),
-            "question_subject": forms.Select(),
+            "question_text": forms.Textarea(
+                attrs={
+                    "rows": 4,
+                    "placeholder": "What does an explicit wait do in Selenium?",
+                }
+            ),
+            # x-model so the page reshapes as the type changes — objective
+            # questions take answer options and a fixed mark, subjective ones
+            # take neither. Django passes unknown widget attrs straight to the
+            # HTML, so framework hooks can live on a ModelForm widget.
+            "question_type": forms.Select(attrs={"x-model": "type"}),
+            "marks": forms.NumberInput(attrs={"min": 1}),
+            # A TextField renders as a Textarea by default. Tags are one line.
+            "question_tags": forms.TextInput(
+                attrs={"placeholder": "waits, locators, grid"}
+            ),
         }
 
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+        self.fields["question_subject"].empty_label = "Select subject"
+
+    def clean_question_tags(self):
+        """
+        Normalises the tag list rather than rejecting it.
+
+        The help text calls for comma-separated lowercase; nothing made that
+        true, so "Waits, Locators" and "waits,locators" were different strings
+        and any future tag filter would silently miss half the bank. A
+        clean_<field> method may transform: whatever it returns replaces the
+        value in cleaned_data, which is what save() reads.
+        """
+        tags = self.cleaned_data.get("question_tags", "")
+        parts = [part.strip().lower() for part in tags.split(",")]
+        return ", ".join(part for part in parts if part)
+
     def clean(self):
-            """
-            Validation for the QuestionForm to ensure that the data entered is valid and meets the requirements of the Question model.
-            """
-            cleaned = super().clean()  # AuthoringForm fills in a blank slug
-            associated_audio = cleaned.get("associated_audio")
-            associated_video = cleaned.get("associated_video")
-            associated_image = cleaned.get("associated_image")
-            file = []
-            media = []
-            if associated_audio:
-                media.append("audio")
-                file.append(associated_audio)
-            if associated_video:
-                media.append("video")
-                file.append(associated_video)
-            if associated_image:
-                media.append("image")
-                file.append(associated_image)
-            if len(media) > 1:
-                if not self.is_valid(file, media):
-                    raise forms.ValidationError(
-                        f"Media validation failed. Please upload correct type and within correct size limits."
-                    )
-            tag = cleaned.get("question_tags")
-            if tag:
-                for t in tag.split(","):
-                    t = t.lower()
+        cleaned = super().clean()
+
+        marks = cleaned.get("marks")
+
+        if cleaned.get("question_type") == Question.Type.OBJECTIVE:
+            # Overwritten rather than validated. The template shows objective
+            # marks as a fixed 5 and posts a hidden input to match, so there is
+            # nothing an author can get wrong and an error message would only
+            # confuse — but a hand-made post can send any number, and
+            # Exam.total_marks_for() *multiplies* count by MARKS_PER_QUESTION
+            # rather than summing real questions. One question worth 7 and
+            # every randomised paper's maximum_marks is a lie.
+            cleaned["marks"] = Exam.MARKS_PER_QUESTION
+        elif marks is not None and marks < 1:
+            # PositiveIntegerField permits 0, so this is the one marks case a
+            # subjective author really can get wrong.
+            self.add_error("marks", "A question must be worth at least one mark.")
+
+        return cleaned
+
+    def save(self, commit=True):
+        question = super().save(commit=False)
+        question.created_by = self.user
+
+        # Media rows are written whether or not `commit` is set, because a
+        # caller using commit=False still needs the FKs on the instance before
+        # it saves — that is exactly what the add_question view does. The cost
+        # is an orphan Image row if a caller then discards the question, which
+        # no caller does after is_valid().
+        self.attach_media(question)
+
+        if commit:
+            question.save()
+        return question
 
 
-    def is_valid(self, file, media):
-        """
-        Validates the uploaded media files based on their type and size.
-        Returns True if all files are valid, False otherwise.
-        """
-        for f, m in zip(file, media):
-            if m == "audio":
-                if f.size > 5 * 1024 * 1024 and f.split(".")[-1].lower() not in ["mp3", "wav", "m4a", "ogg"]:  # 5 MB limit for audio
-                    return False
-            elif m == "video":
-                if f.size > 50 * 1024 * 1024 and f.split(".")[-1].lower() not in ["mp4", "avi", "mov"]:  # 50 MB limit for video
-                    return False
-            elif m == "image":
-                if f.size > 5 * 1024 * 1024 and f.split(".")[-1].lower() not in ["jpg", "jpeg", "png", "gif", "webp"]:  # 5 MB limit for image
-                    return False
-        return True
+class BaseAnswerOptionFormSet(BaseInlineFormSet):
+    """
+    The rule a single AnswerOptions row cannot express: an objective question
+    needs at least two options, and exactly one of them marked correct.
 
+    It lives on the formset because it spans rows. It cannot be a field
+    validator — one option knows nothing about its siblings — and it cannot be
+    a database constraint, for the same reason: Postgres checks a row against
+    itself, not against a set.
+
+    A formset has its own clean() sitting above the individual forms, run once
+    they have all validated. `any(self.errors)` bails early because a child in
+    error has an incomplete cleaned_data, and counting correct answers across
+    half-cleaned forms reports a confusing second error on top of the real one.
+
+    Raising here produces a *non-form* error — the template renders it through
+    formset.non_form_errors, not through any single field.
+    """
+
+    def clean(self):
+        super().clean()
+
+        if any(self.errors):
+            return
+
+        # self.instance is the Question this formset hangs off — the same object
+        # QuestionForm populated in its _post_clean. So the type checked here is
+        # the one just submitted, not whatever the model defaults to.
+        filled = [f for f in self.forms if f.cleaned_data.get("answer_option_text")]
+
+        if self.instance.question_type != Question.Type.OBJECTIVE:
+            if filled:
+                raise forms.ValidationError(
+                    "A subjective question is marked by an examiner, so it "
+                    "cannot carry answer options. Clear them or switch the "
+                    "type back to objective."
+                )
+            return
+
+        if len(filled) < 2:
+            raise forms.ValidationError(
+                "An objective question needs at least two answer options."
+            )
+
+        correct = [f for f in filled if f.cleaned_data.get("is_correct")]
+        if len(correct) != 1:
+            raise forms.ValidationError("Mark exactly one option as correct.")
+
+
+#: Six slots, of which the template shows four and reveals the rest on demand.
+#:
+#: Rendering them up front rather than cloning markup in JavaScript is
+#: deliberate: adding a form client-side means incrementing TOTAL_FORMS in the
+#: management form by hand, and a formset whose management form disagrees with
+#: the posted data raises rather than validates. Empty slots cost nothing — a
+#: form left untouched has not changed, so Django skips it instead of saving a
+#: blank row.
+#:
+#: `is_correct` is a checkbox per row, because that is what the column actually
+#: is. The template makes the group behave like radio buttons; the formset's
+#: clean() is what enforces "exactly one", since a hand-made post can tick all
+#: six.
+AnswerOptionFormSet = inlineformset_factory(
+    Question,
+    AnswerOptions,
+    formset=BaseAnswerOptionFormSet,
+    fields=["answer_option_text", "is_correct"],
+    extra=6,
+    # Nothing to delete on an add page. Editing a question will want this, and
+    # turning it on means rendering the DELETE checkbox the factory then adds.
+    can_delete=False,
+    widgets={
+        "answer_option_text": forms.TextInput(
+            attrs={
+                "class": (
+                    "h-11 w-full rounded-lg border bg-white px-3 text-sm outline-none "
+                    "focus-visible:ring-3 focus-visible:ring-brand/30"
+                )
+            }
+        ),
+    },
+)
