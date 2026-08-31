@@ -440,11 +440,22 @@ def import_questions(request):
     """
     if request.method == "POST":
         csv_file = request.FILES.get("csv_file")
-        if csv_file:
-            # Implement your CSV parsing and question creation logic here
-            # For example, you can read the CSV file and create Question objects
-            # based on the data in the file.
-            # After processing, redirect to the question bank or show a success message.
+        if csv_file and iscsv(csv_file):
+            for row in csv_file.read().decode("utf-8").splitlines():
+                # Assuming the CSV has columns: question_text, question_type, question_difficulty, marks, options,
+                # correct_option, question_tags
+                question_text, question_type, question_difficulty, marks, options, correct_option, question_tags = row.split(",")
+                Question.objects.create(
+                    question_text=question_text,
+                    question_type=question_type,
+                    question_difficulty=question_difficulty,
+                    marks=marks,
+                    options=options,
+                    correct_option=correct_option,
+                    question_tags=question_tags,
+                    status=status,
+                    created_by=request.user
+                )
             return redirect("exam:question_bank")
         else:
             # Handle the case where no file was uploaded

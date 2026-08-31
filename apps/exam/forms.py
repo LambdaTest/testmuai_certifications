@@ -20,9 +20,19 @@ from django.forms.models import BaseInlineFormSet
 from django.utils import timezone as dj_timezone
 from django.utils.text import slugify
 
+from . import imports
 from . import timezones
 from .models import AnswerOptions, Audio, Exam, ExamBooking, Image, Question, Subject, Video
 import math
+
+#: The design-system classes every text input, select and textarea carries.
+#: Module scope rather than inside AuthoringForm, because ImportQuestionsForm is
+#: a plain Form and cannot inherit from a ModelForm to reach it.
+INPUT_CSS = (
+    "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm "
+    "outline-none focus-visible:border-brand focus-visible:ring-3 "
+    "focus-visible:ring-brand/30"
+)
 
 def occupied_minutes(exam):
     """
@@ -209,13 +219,8 @@ class AuthoringForm(forms.ModelForm):
             # it in from `slug_source`.
             self.fields["slug"].required = False
 
-        css = (
-            "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm "
-            "outline-none focus-visible:border-brand focus-visible:ring-3 "
-            "focus-visible:ring-brand/30"
-        )
         for field in self.fields.values():
-            field.widget.attrs.setdefault("class", css)
+            field.widget.attrs.setdefault("class", INPUT_CSS)
 
     def _available_slug(self, base):
         """`selenium`, else `selenium-2`, `selenium-3`… — first one free."""
@@ -780,3 +785,86 @@ AnswerOptionFormSet = inlineformset_factory(
     # turning it on means rendering the DELETE checkbox the factory then adds.
     can_delete=False,
 )
+
+
+class ImportQuestionsForm(forms.Form):
+    """
+    Phase one of the bulk import: which subject, and which file.
+
+    A plain Form, not a ModelForm. There is no single model behind it — the
+    file becomes many Questions and many more AnswerOptions — so there is
+    nothing for Meta.fields to generate from.
+
+    The file is *parsed* here rather than in the view, because a file that
+    cannot be read is a problem with this field, and raising in
+    clean_csv_file() puts the message under the file input where the author is
+    looking. The parsing itself lives in imports.py, which knows nothing about
+    forms, so the same code serves a management command.
+    """
+
+    subject = forms.ModelChoiceField(
+        queryset=Subject.objects.all(),
+        empty_label="Select subject",
+        widget=forms.Select(attrs={"class": INPUT_CSS}),
+        help_text="Every question in the file is added to this subject.",
+    )
+
+    #: The extension check is here rather than in imports.py because it is
+    #: about the upload, not the contents — and FileExtensionValidator is
+    #: case-insensitive, which a hand-rolled endswith(".csv") is not. Size and
+    #: everything else read_csv handles, so the limit is stated once.
+    csv_file = forms.FileField(
+        label="CSV file",
+        validators=[FileExtensionValidator(["csv"])],
+        widget=forms.ClearableFileInput(
+            attrs={
+                "accept": ".csv",
+                "class": (
+                    "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 "
+                    "text-[13px] file:mr-3 file:rounded file:border-0 "
+                    "file:bg-surface file:px-2.5 file:py-1 file:text-[12.5px] "
+                    "file:font-semibold"
+                ),
+            }
+        ),
+    )
+
+    #: Raw dicts straight from the CSV, and any header columns the parser did
+    #: not recognise. Both filled in by clean_csv_file, so only meaningful
+    #: after is_valid().
+    raw_rows = None
+    unknown_columns = ()
+
+    def clean_csv_file(self):
+        """
+        Reads the upload, and rejects it if it cannot be read.
+
+        Returns the file rather than the parsed rows. A clean_<field> method
+        may transform — clean_question_tags does — but cleaned_data["csv_file"]
+        holding a list of dicts would be a small trap for whoever reads this
+        next. The rows go on the form instead, where the name says what they
+        are.
+
+        Unrecognised columns are collected, not rejected: a team's working
+        spreadsheet often carries its own bookkeeping columns, and refusing the
+        file over an `author` column would be obnoxious. The preview page shows
+        them, so a misspelled `question_tag` gets noticed instead of silently
+        dropping every tag in the file.
+        """
+        upload = self.cleaned_data["csv_file"]
+        # read_csv raises ValidationError, which lands on this field.
+        self.raw_rows, self.unknown_columns = imports.read_csv(upload)
+        return upload
+
+    def parsed_rows(self):
+        """
+        The file as ParsedRow objects, ready for the preview template.
+
+        Row numbers start at 1 and count data rows, not file lines — the header
+        is not a row, and an author looking at row 14 in a spreadsheet counts
+        the same way.
+        """
+        return [
+            imports.parse_row(raw, number)
+            for number, raw in enumerate(self.raw_rows or [], start=1)
+        ]
