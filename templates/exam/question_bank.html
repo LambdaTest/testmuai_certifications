@@ -234,30 +234,39 @@
 
               {# ---- Attached to ---- #}
               <h2 class="mt-6 mb-2 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">
-                Attached to
+                Attached To Exams
               </h2>
 
               {% comment %}
-                Display, not input. It sits outside any <form> and carries no
-                `name`, so it posts nothing — a <select> purely because a
-                subject with a dozen exams would otherwise be a dozen lines of
-                list on every open card.
+                Pills, not a dropdown. This is information, and a select box
+                looks like an input — it promises that picking an entry does
+                something, when there is nothing here to set.
 
-                Nothing is attached by hand. Randomisation is the default
+                Nothing is attached by hand at all. Randomisation is the default
                 selection mode, so a question is drawable by every exam on its
-                subject; that is what this lists. Detaching is therefore not
-                offered — there is no attachment to undo. If manual selection
-                is ever built, this becomes a real relation and the dropdown
-                grows a remove action.
+                subject, and that is what this lists. The only way to change the
+                list is to create another exam on the subject. Detaching is not
+                offered because there is no attachment to undo.
+
+                The shape deliberately matches the status and difficulty badges
+                on the card head, so the whole card reads as one body of
+                read-only information. If manual selection is ever built this
+                becomes a real relation, and only then does it earn a control.
               {% endcomment %}
-              <select aria-label="Exams that can draw this question"
-                      class="h-11 w-full max-w-md rounded-lg border border-zinc-300 bg-white px-3 text-sm text-body outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+              <div class="flex flex-wrap gap-2">
                 {% for exam in question.question_subject.exams.all %}
-                  <option>{{ exam.exam_name }} — {{ exam.get_exam_level_display }}</option>
+                  <span class="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-[12.5px] text-body">
+                    {{ exam.exam_name }}
+                    <span class="text-faint">·</span>
+                    <span class="text-muted">{{ exam.get_exam_level_display }}</span>
+                  </span>
                 {% empty %}
-                  <option>No exams on {{ question.question_subject.name }} yet</option>
+                  <p class="text-[13px] text-muted">
+                    No exams on {{ question.question_subject.name }} yet, so nothing
+                    draws this question. It will appear here as soon as one exists.
+                  </p>
                 {% endfor %}
-              </select>
+              </div>
 
               {# ---- Footer ---- #}
               <div class="mt-6 flex flex-wrap items-center gap-3 border-t border-[#F0F1F3] pt-5">

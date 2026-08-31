@@ -1,0 +1,345 @@
+{% extends "base_staff.html" %}
+{% load static %}
+
+{% comment %}
+  Import Questions — TEMPLATE ONLY. No url, view or form yet.
+
+  Context it will need:
+    form      an import form: a subject picker and a CSV file field
+    preview   None on first load. After a file is uploaded it carries the
+              parsed result, and the page switches to its second phase:
+                .rows     list of parsed rows, each with
+                            .number      1-based row number in the file
+                            .text        the question
+                            .type        "objective" / "subjective"
+                            .difficulty  "easy" / "medium" / "hard"
+                            .marks
+                            .tags
+                            .options     list of option strings
+                            .correct     1-based index of the correct option
+                            .errors      list of strings; empty means importable
+                .valid    count of rows with no errors
+                .invalid  count of rows with errors
+                .token    opaque handle for the parsed upload (see below)
+
+  TWO PHASES, deliberately. Upload parses and shows what *would* happen; a
+  second submit commits it. A bulk import that writes on the first click gives
+  an author no way to notice they picked last month's file until 200 questions
+  are in the bank — and there is no bulk undo.
+
+  That needs the parsed rows to survive between the two requests, because a
+  browser cannot re-post a file the user picked earlier without them picking it
+  again. `preview.token` is the handle for wherever the view parks them —
+  session or cache, your call. Cache with a short TTL is the safer default; the
+  session cookie has a size limit a 500-row file will blow past.
+
+  NEEDS A DECISION, flagged where it appears: whether a row may name its own
+  subject. This page picks one subject for the whole file, which keeps the
+  per-row error surface small. A subject column would allow mixed files at the
+  cost of every row being able to name a subject that does not exist.
+
+  NOT SUPPORTED, and said so on the page: media. A CSV cannot carry an image or
+  an audio clip, so imported questions arrive without them and have to be
+  attached one at a time afterwards. Better to say that here than to let an
+  author discover it after importing 200 rows.
+
+  The template-download link points at a static file that does not exist yet —
+  static/imports/questions-template.csv. It needs writing, or the link 404s.
+{% endcomment %}
+
+{% block title %}Import Questions · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<div class="max-w-3xl">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-bold tracking-tight">Import Questions</h1>
+    <p class="mt-1.5 text-[15px] text-muted">
+      Add many questions at once from a CSV file. Nothing is saved until you
+      have seen what will be imported.
+    </p>
+  </header>
+
+  {% comment %}
+    `phase` is derived from the context rather than held in Alpine, because it
+    is a server fact: either the view parsed a file or it did not. Alpine here
+    only drives the two small conveniences — the format guide and the
+    errors-only filter.
+  {% endcomment %}
+  <div x-data="{ guide: {% if preview %}false{% else %}true{% endif %}, errorsOnly: false }">
+
+    {% if not preview %}
+
+      {# ================= Phase 1 — choose a file ================= #}
+      <form method="post" enctype="multipart/form-data"
+            class="rounded-2xl border border-line bg-white p-6">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+          <div class="mb-5 rounded-xl border border-danger bg-danger-tint p-4">
+            {% for error in form.non_field_errors %}
+              <p class="text-[13px] text-danger">{{ error }}</p>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% comment %}
+          NEEDS A DECISION. One subject for the whole file, rather than a
+          subject column per row. Fewer ways for a row to be wrong, and an
+          author importing questions is almost always working through one
+          subject at a time. If mixed files are wanted this becomes a column,
+          and every row gains a "no such subject" failure mode.
+        {% endcomment %}
+        <div class="grid gap-5 sm:grid-cols-2">
+          <div>
+            <label for="{{ form.subject.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+              Subject
+            </label>
+            {{ form.subject }}
+            <p class="mt-1.5 text-[13px] text-muted">
+              Every question in the file is added to this subject.
+            </p>
+            {% for error in form.subject.errors %}
+              <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+            {% endfor %}
+          </div>
+
+          <div>
+            <label for="{{ form.csv_file.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+              CSV file
+            </label>
+            {{ form.csv_file }}
+            {% comment %}
+              CSV only. XLSX would mean a third-party parser as a dependency,
+              and a spreadsheet's merged cells, formulas and hidden sheets are
+              all ways for an import to mean something the author did not see.
+              A CSV is what it looks like.
+            {% endcomment %}
+            <p class="mt-1.5 text-[13px] text-muted">
+              UTF-8 CSV · up to 500 rows
+            </p>
+            {% for error in form.csv_file.errors %}
+              <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="mt-7 flex flex-wrap items-center gap-3">
+          <button type="submit"
+                  class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
+            Preview import
+          </button>
+          <a href="{% static 'imports/questions-template.csv' %}" download
+             class="inline-flex h-11 items-center gap-2 rounded-lg border border-line px-4 text-[14.5px] font-semibold text-body hover:border-brand hover:text-brand">
+            <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                 stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 15.5h12"/>
+            </svg>
+            Download template
+          </a>
+          <a href="{% url 'exam:question_bank' %}"
+             class="ml-auto inline-flex h-11 items-center rounded-lg px-4 text-[14.5px] font-semibold text-muted hover:text-ink">
+            Cancel
+          </a>
+        </div>
+      </form>
+
+      {# ---------------- Format guide ---------------- #}
+      <div class="mt-6 rounded-2xl border border-line bg-white">
+        <button type="button" @click="guide = !guide" :aria-expanded="guide"
+                class="flex w-full items-center justify-between px-6 py-4 text-left">
+          <span class="text-[14.5px] font-semibold text-ink">File format</span>
+          <svg class="size-4 text-zinc-400 transition-transform duration-200"
+               :class="guide && 'rotate-180'" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+
+        <div class="grid transition-[grid-template-rows] duration-200 ease-out"
+             :class="guide ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
+          <div class="overflow-hidden">
+            <div class="border-t border-[#F0F1F3] px-6 py-5">
+
+              <p class="mb-4 text-[13px] text-muted">
+                First row is a header. Column names must match exactly; order does not matter.
+              </p>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-[13px]">
+                  <thead>
+                    <tr class="border-b border-line text-[11.5px] font-bold tracking-[1px] text-faint uppercase">
+                      <th class="pb-2 pr-4">Column</th>
+                      <th class="pb-2 pr-4">Required</th>
+                      <th class="pb-2">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody class="text-body">
+                    <tr class="border-b border-[#F5F6F8]">
+                      <td class="py-2 pr-4 font-mono text-[12.5px]">question_text</td>
+                      <td class="py-2 pr-4 text-danger">yes</td>
+                      <td class="py-2 text-muted">The question itself.</td>
+                    </tr>
+                    <tr class="border-b border-[#F5F6F8]">
+                      <td class="py-2 pr-4 font-mono text-[12.5px]">question_type</td>
+                      <td class="py-2 pr-4 text-muted">no</td>
+                      <td class="py-2 text-muted"><code>objective</code> or <code>subjective</code>. Blank means objective.</td>
+                    </tr>
+                    <tr class="border-b border-[#F5F6F8]">
+                      <td class="py-2 pr-4 font-mono text-[12.5px]">question_difficulty</td>
+                      <td class="py-2 pr-4 text-muted">no</td>
+                      <td class="py-2 text-muted"><code>easy</code>, <code>medium</code> or <code>hard</code>. Blank means easy.</td>
+                    </tr>
+                    <tr class="border-b border-[#F5F6F8]">
+                      <td class="py-2 pr-4 font-mono text-[12.5px]">marks</td>
+                      <td class="py-2 pr-4 text-muted">no</td>
+                      <td class="py-2 text-muted">Subjective only. Objective questions are always worth 5.</td>
+                    </tr>
+                    <tr class="border-b border-[#F5F6F8]">
+                      <td class="py-2 pr-4 font-mono text-[12.5px]">option_1 … option_6</td>
+                      <td class="py-2 pr-4 text-muted">objective</td>
+                      <td class="py-2 text-muted">At least two. Leave the rest blank.</td>
+                    </tr>
+                    <tr class="border-b border-[#F5F6F8]">
+                      <td class="py-2 pr-4 font-mono text-[12.5px]">correct_option</td>
+                      <td class="py-2 pr-4 text-muted">objective</td>
+                      <td class="py-2 text-muted">Which option is right, as a number: <code>1</code>–<code>6</code>.</td>
+                    </tr>
+                    <tr>
+                      <td class="py-2 pr-4 font-mono text-[12.5px]">question_tags</td>
+                      <td class="py-2 pr-4 text-muted">no</td>
+                      <td class="py-2 text-muted">Comma-separated. Lowercased on import.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <p class="mt-5 mb-2 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Example</p>
+              <pre class="overflow-x-auto rounded-lg bg-surface p-4 font-mono text-[12.5px] leading-relaxed text-body"><code>question_text,question_type,question_difficulty,option_1,option_2,option_3,correct_option,question_tags
+"What does an explicit wait do?",objective,easy,"Polls until a condition holds","Sleeps for a fixed time","Retries the whole test",1,"waits"
+"Explain the page object model.",subjective,hard,,,,,"design, patterns"</code></pre>
+
+              {% comment %}
+                Stated here rather than discovered later. A CSV has nowhere to
+                put a file, and inventing a path column would mean trusting a
+                string from a spreadsheet to name something on disk.
+              {% endcomment %}
+              <div class="mt-5 rounded-xl bg-warn-tint px-5 py-4">
+                <p class="text-[13px] font-semibold text-warn">Media cannot be imported</p>
+                <p class="mt-1 text-[13px] text-body">
+                  A CSV has nowhere to hold an image or an audio clip. Questions
+                  that need media must have it attached individually afterwards,
+                  from the Question Bank.
+                </p>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+    {% else %}
+
+      {# ================= Phase 2 — confirm ================= #}
+
+      {% comment %}
+        Counts first, and the import button is disabled when nothing is
+        importable — an author whose file was rejected wholesale should not have
+        to read a table to find that out.
+
+        Rows with errors are skipped, not fatal: a file of 200 with 3 bad rows
+        imports 197 and reports the 3. The alternative — refuse the whole file —
+        means fixing one typo costs a full re-upload, and authors respond to
+        that by deleting the awkward rows rather than fixing them.
+      {% endcomment %}
+      <div class="rounded-2xl border border-line bg-white p-6">
+        <div class="flex flex-wrap items-center gap-6">
+          <div>
+            <p class="text-3xl font-extrabold tracking-tight text-ok">{{ preview.valid }}</p>
+            <p class="text-[13px] text-muted">ready to import</p>
+          </div>
+          {% if preview.invalid %}
+            <div>
+              <p class="text-3xl font-extrabold tracking-tight text-danger">{{ preview.invalid }}</p>
+              <p class="text-[13px] text-muted">will be skipped</p>
+            </div>
+          {% endif %}
+          <div class="ml-auto flex items-center gap-3">
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="token" value="{{ preview.token }}">
+              <button type="submit" name="action" value="import"
+                      {% if not preview.valid %}disabled{% endif %}
+                      class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-[14.5px] font-bold text-white hover:bg-[#2A2B31] disabled:cursor-not-allowed disabled:bg-zinc-300">
+                Import {{ preview.valid }} question{{ preview.valid|pluralize }}
+              </button>
+            </form>
+            <a href="{% url 'exam:import_questions' %}"
+               class="inline-flex h-11 items-center rounded-lg px-4 text-[14.5px] font-semibold text-muted hover:text-ink">
+              Choose another file
+            </a>
+          </div>
+        </div>
+
+        {% if preview.invalid %}
+          <label class="mt-5 flex cursor-pointer items-center gap-2 text-[13px] text-body">
+            <input type="checkbox" x-model="errorsOnly" class="size-4 accent-[#C2402A]">
+            Show only rows with problems
+          </label>
+        {% endif %}
+      </div>
+
+      {# ---------------- The rows ---------------- #}
+      <div class="mt-4 grid gap-2">
+        {% for row in preview.rows %}
+          <div {% if row.errors %}x-show="true"{% else %}x-show="!errorsOnly" x-cloak{% endif %}
+               class="rounded-xl border px-5 py-4 {% if row.errors %}border-danger bg-danger-tint{% else %}border-line bg-white{% endif %}">
+
+            <div class="flex items-start gap-3">
+              <span class="mt-0.5 shrink-0 font-mono text-[12px] text-faint">{{ row.number }}</span>
+
+              <div class="min-w-0 flex-1">
+                <p class="text-[14.5px] font-medium text-ink">{{ row.text|default:"(no question text)" }}</p>
+
+                <p class="mt-1 text-[13px] text-muted">
+                  {{ row.type|default:"objective" }} ·
+                  {{ row.difficulty|default:"easy" }} ·
+                  {{ row.marks|default:5 }} mark{{ row.marks|default:5|pluralize }}
+                  {% if row.tags %} · {{ row.tags }}{% endif %}
+                </p>
+
+                {% if row.options %}
+                  <div class="mt-2 flex flex-wrap gap-1.5">
+                    {% for option in row.options %}
+                      <span class="rounded-full px-2.5 py-0.5 text-[12px]
+                                   {% if forloop.counter == row.correct %}bg-ok-tint font-semibold text-ok{% else %}bg-surface text-muted{% endif %}">
+                        {{ option }}
+                      </span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+
+                {% for error in row.errors %}
+                  <p class="mt-1.5 text-[13px] font-medium text-danger">{{ error }}</p>
+                {% endfor %}
+              </div>
+
+              <span class="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold
+                           {% if row.errors %}bg-white text-danger{% else %}bg-ok-tint text-ok{% endif %}">
+                {% if row.errors %}Skipped{% else %}Ready{% endif %}
+              </span>
+            </div>
+          </div>
+        {% empty %}
+          <div class="rounded-2xl border border-line bg-white px-5 py-12 text-center">
+            <p class="text-sm text-muted">
+              That file had no rows. Check it has a header row and at least one
+              question under it.
+            </p>
+          </div>
+        {% endfor %}
+      </div>
+
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

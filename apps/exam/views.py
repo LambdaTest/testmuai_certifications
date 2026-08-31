@@ -26,7 +26,7 @@ from .forms import (
     RescheduleForm,
     SubjectForm,
 )
-from .models import Exam, ExamBooking, Subject
+from .models import Exam, ExamBooking, Subject, Question, Audio, Video
 from apps.home.models import User
 from apps.home.decorators import role_required
 from django.db import transaction
@@ -432,3 +432,22 @@ def question_bank(request):
         "created_at"
     )
     return render(request, "exam/question_bank.html", {"questions": questions})
+
+@role_required(User.Role.ADMIN)
+def import_questions(request):
+    """
+    This function helps import questions and automatically populate the question bank. Only accessible to admins."
+    """
+    if request.method == "POST":
+        csv_file = request.FILES.get("csv_file")
+        if csv_file:
+            # Implement your CSV parsing and question creation logic here
+            # For example, you can read the CSV file and create Question objects
+            # based on the data in the file.
+            # After processing, redirect to the question bank or show a success message.
+            return redirect("exam:question_bank")
+        else:
+            # Handle the case where no file was uploaded
+            return render(request, "exam/import_questions.html", {"error": "Please upload a CSV file."})
+
+    return render(request, "exam/import_questions.html")

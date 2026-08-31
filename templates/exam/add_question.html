@@ -59,7 +59,7 @@
   <form method="post" enctype="multipart/form-data"
         class="rounded-2xl border border-line bg-white p-6"
         x-data="{
-          type: '{{ form.question_type.value|default:"objective"|escapejs }}',
+          type: '{{ form.question_type.value|default:'objective'|escapejs }}',
           correct: [{% for option_form in formset %}{{ option_form.is_correct.value|yesno:"1,0,0" }}{% if not forloop.last %},{% endif %}{% endfor %}].indexOf(1),
           slots: {{ formset|length }},
           visible: Math.max(4, [{% for option_form in formset %}{{ option_form.answer_option_text.value|yesno:"1,0,0" }}{% if not forloop.last %},{% endif %}{% endfor %}].lastIndexOf(1) + 1),
@@ -304,10 +304,15 @@
         Django applies no upload ceiling of its own. The enforcement is the
         max_size validator on each field.
 
-        SVG is deliberately absent from the image list: it is XML, it can carry a
-        <script>, and MEDIA_URL is same-origin. MP4 and WebM only for video —
-        MOV, AVI and MKV upload fine and then fail silently in <video>, which a
-        candidate would discover mid-exam.
+        SVG is deliberately absent from the image list: it is XML, it can carry
+        an inline script element, and MEDIA_URL is same-origin. MP4 and WebM
+        only for video — MOV, AVI and MKV upload fine and then fail silently in
+        the video player, which a candidate would discover mid-exam.
+
+        (Written without angle brackets on purpose. Django strips this block at
+        render, but an editor's HTML parser does not know that: a literal script
+        tag here puts it into raw-text mode and every line after it is reported
+        as broken.)
       {% endcomment %}
       <div class="grid gap-4 sm:grid-cols-3">
         <div>
