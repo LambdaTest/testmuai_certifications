@@ -432,7 +432,20 @@ def question_bank(request):
     This is for the page that will show all the questions available in the system.
     Only accessible to admins."
     """
-    questions = Question.objects.select_related("created_by", "associated_audio", "associated_video").order_by(
+    # select_related for the one-to-ones the card reads, prefetch_related for
+    # the two collections. Without them each card costs its own queries for its
+    # subject, its options and the exams in its "Attached to" list — and the
+    # list is unpaginated, so that grows with the bank.
+    questions = Question.objects.select_related(
+        "created_by",
+        "question_subject",
+        "associated_image",
+        "associated_audio",
+        "associated_video",
+    ).prefetch_related(
+        "answers",
+        "question_subject__exams",
+    ).order_by(
         Case(When(status=Question.Status.ACTIVE, then=0), default=1, output_field=IntegerField()),
         "created_at"
     )
