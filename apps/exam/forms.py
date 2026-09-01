@@ -865,6 +865,6 @@ class ImportQuestionsForm(forms.Form):
         the same way.
         """
         return [
-            imports.parse_row(raw, number)
-            for number, raw in enumerate(self.raw_rows or [], start=1)
+            imports.parse_row(cells, number)
+            for number, cells in enumerate(self.raw_rows or [], start=1)
         ]

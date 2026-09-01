@@ -10,7 +10,7 @@ in every decorator and every other view to use one parser.
 The division of labour:
 
   read_csv(file)      the file as a whole — is it text, is it ours?  Raises.
-  parse_row(raw, n)   one row — collects what is wrong rather than raising,
+  parse_row(cells, n) one row — collects what is wrong rather than raising,
                       so the preview page can report each row separately.
 
 Only read_csv raises. A bad *file* is one message and there is nothing to show;
@@ -167,19 +167,25 @@ class ParsedRow:
     errors: list[str] = field(default_factory=list)
 
 
-def _cell(raw, column):
+def _cell(cells, column):
     """
     One cell, as a clean string.
 
     csv.DictReader fills columns a short row omitted with None rather than "",
-    so `raw.get(col, "")` is not enough on its own.
+    so `cells.get(col, "")` is not enough on its own — the default only applies
+    when the key is absent, and here it is present holding None.
     """
-    return (raw.get(column) or "").strip()
+    return (cells.get(column) or "").strip()
 
 
-def parse_row(raw, number):
+def parse_row(cells, number):
     """
     Turns one CSV row into a ParsedRow, collecting problems rather than raising.
+
+    `cells` is the raw dict from csv.DictReader — column name to cell value,
+    every value a string. `row` is the object being built from it. Two names
+    because they are two different things: what came out of the file, and what
+    we made of it.
 
     Every check here is about the *shape* of the row — a type that is not one of
     the two, a correct_option pointing past the last option. Nothing here
@@ -192,8 +198,8 @@ def parse_row(raw, number):
     change a rule in forms.py, change it here too.
     """
     row = ParsedRow(number=number)
-    row.text = _cell(raw, "question_text")
-    row.tags = _cell(raw, "question_tags")
+    row.text = _cell(cells, "question_text")
+    row.tags = _cell(cells, "question_tags")
 
     if not row.text:
         row.errors.append("Question text is missing.")
@@ -201,7 +207,7 @@ def parse_row(raw, number):
     # --- type and difficulty -------------------------------------------------
     # Lowercased before matching, because a spreadsheet's autocapitalise turns
     # "objective" into "Objective" without anyone noticing.
-    row.type = _cell(raw, "question_type").lower() or Question.Type.OBJECTIVE
+    row.type = _cell(cells, "question_type").lower() or Question.Type.OBJECTIVE
     if row.type not in Question.Type.values:
         row.errors.append(
             f"question_type must be "
@@ -209,7 +215,7 @@ def parse_row(raw, number):
         )
         row.type = Question.Type.OBJECTIVE
 
-    row.difficulty = _cell(raw, "question_difficulty").lower() or Question.Difficulty.EASY
+    row.difficulty = _cell(cells, "question_difficulty").lower() or Question.Difficulty.EASY
     if row.difficulty not in Question.Difficulty.values:
         row.errors.append(
             f"question_difficulty must be "
@@ -222,7 +228,7 @@ def parse_row(raw, number):
     # here, so the two cannot drift. Objective rows are overwritten with
     # MARKS_PER_QUESTION by QuestionForm anyway; the column only means anything
     # for subjective questions.
-    marks = _cell(raw, "marks")
+    marks = _cell(cells, "marks")
     if not marks:
         row.marks = Question._meta.get_field("marks").default
     else:
@@ -240,9 +246,9 @@ def parse_row(raw, number):
     # rather than kept as "". That also means option_1,,option_3 collapses to
     # two options — and correct_option is checked against the collapsed list,
     # since that is what actually gets saved.
-    row.options = [o for o in (_cell(raw, c) for c in OPTION_COLUMNS) if o]
+    row.options = [o for o in (_cell(cells, c) for c in OPTION_COLUMNS) if o]
 
-    correct = _cell(raw, "correct_option")
+    correct = _cell(cells, "correct_option")
     if correct:
         try:
             row.correct = int(correct)
