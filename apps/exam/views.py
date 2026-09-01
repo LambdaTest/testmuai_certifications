@@ -501,7 +501,14 @@ def import_questions(request):
     return render(
         request,
         "exam/import_questions.html",
-        {"form": form, "preview": preview},
+        {
+            "form": form,
+            "preview": preview,
+            # Passed through rather than typed into the markup, so what the
+            # byline promises and what read_csv enforces cannot drift apart.
+            "max_rows": imports.MAX_ROWS,
+            "max_mb": imports.MAX_SIZE // 1024 // 1024,
+        },
     )
 
 

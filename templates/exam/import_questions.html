@@ -6,6 +6,8 @@
 
   Context it will need:
     form      an import form: a subject picker and a CSV file field
+    max_rows  }  the limits read_csv enforces, so the byline under the file
+    max_mb    }  input states the numbers actually applied
     preview   None on first load. After a file is uploaded it carries the
               parsed result, and the page switches to its second phase:
                 .rows     list of parsed rows, each with
@@ -43,8 +45,18 @@
   attached one at a time afterwards. Better to say that here than to let an
   author discover it after importing 200 rows.
 
-  The template-download link points at a static file that does not exist yet —
-  static/imports/questions-template.csv. It needs writing, or the link 404s.
+  The template-download link serves static/imports/questions-template.csv,
+  tracked in the repo. Header row plus one real objective question — enough to
+  show what belongs in each column without turning the file into a lecture.
+  An author downloads it, replaces the row, uploads it back.
+
+  Nothing stops them uploading it unmodified and importing that one question.
+  A deliberate call: the admins are in-house, it is an easy thing to spot and
+  retire from the Question Bank, and every guard against it made the file
+  harder to read than the mistake was worth.
+
+  If the columns here change, change that file too — it is the only
+  documentation most authors will actually read.
 {% endcomment %}
 
 {% block title %}Import Questions · TestMu AI Certifications{% endblock %}
@@ -116,7 +128,7 @@
               A CSV is what it looks like.
             {% endcomment %}
             <p class="mt-1.5 text-[13px] text-muted">
-              UTF-8 CSV · up to 500 rows
+              UTF-8 CSV · up to {{ max_rows }} rows · under {{ max_mb }}&nbsp;MB
             </p>
             {% for error in form.csv_file.errors %}
               <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>

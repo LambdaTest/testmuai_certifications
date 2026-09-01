@@ -1,0 +1,2 @@
+question_text,question_type,question_difficulty,marks,option_1,option_2,option_3,option_4,correct_option,question_tags
+"What does an explicit wait do that an implicit wait does not?",objective,easy,,"Waits for a specific condition on a specific element","Pauses the whole thread for a fixed number of seconds","Applies globally to every findElement call for the life of the driver","Retries the entire test method on failure",1,"waits, synchronisation"

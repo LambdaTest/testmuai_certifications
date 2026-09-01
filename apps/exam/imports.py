@@ -31,8 +31,9 @@ from .models import Question
 #: Ceiling on the upload. Django applies none of its own —
 #: FILE_UPLOAD_MAX_MEMORY_SIZE only chooses memory over a temp file, and
 #: DATA_UPLOAD_MAX_MEMORY_SIZE explicitly excludes file data — so this is the
-#: only limit there is. A megabyte is thousands of question rows.
-MAX_SIZE = 1 * 1024 * 1024
+#: only limit there is. Two megabytes is far more than MAX_ROWS of text, so
+#: in practice the row cap is what an author actually meets.
+MAX_SIZE = 2 * 1024 * 1024
 
 #: Rows beyond this are refused rather than truncated. Silently importing the
 #: first 500 of a 900-row file is the worst of the options.
@@ -132,7 +133,18 @@ def read_csv(file):
             f"Download the template to see the expected header row."
         )
 
-    rows = list(reader)
+    # csv raises rather than returns on malformed input, and its errors are not
+    # ValidationErrors — uncaught, they are a 500 rather than a message. The
+    # common cause is an unclosed quote: everything after it becomes one field,
+    # which then trips the module's 128 KB field cap.
+    try:
+        rows = list(reader)
+    except csv.Error as exc:
+        raise ValidationError(
+            f"That file could not be read as CSV ({exc}). A likely cause is a "
+            f'quotation mark that was opened and never closed.'
+        )
+
     if len(rows) > MAX_ROWS:
         raise ValidationError(
             f"That file has {len(rows)} rows. The limit is {MAX_ROWS}. "
