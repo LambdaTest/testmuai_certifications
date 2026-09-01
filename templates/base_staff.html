@@ -163,6 +163,29 @@
 
     {# ---------------- Page ---------------- #}
     <div class="min-w-0 flex-1">
+      {% comment %}
+        Flash messages, rendered once here so no staff page has to think about
+        them. django.contrib.messages was already fully configured — app,
+        middleware and context processor — but nothing displayed it, so
+        anything a view added was silently discarded.
+
+        Iterating `messages` is what marks them read; they survive exactly one
+        response, which is why a view can add one and then redirect.
+      {% endcomment %}
+      {% if messages %}
+        <div class="mb-5 grid gap-2">
+          {% for message in messages %}
+            <div class="rounded-xl border px-5 py-3.5 text-[13.5px]
+                        {% if message.level_tag == 'success' %}border-ok bg-ok-tint text-ok
+                        {% elif message.level_tag == 'warning' %}border-warn bg-warn-tint text-warn
+                        {% elif message.level_tag == 'error' %}border-danger bg-danger-tint text-danger
+                        {% else %}border-line bg-surface text-body{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
       {% block staff_content %}{% endblock %}
     </div>
   </div>

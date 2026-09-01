@@ -7,14 +7,18 @@ picks their own date and time.
 """
 
 import json
+import secrets
+from dataclasses import asdict
 
 from django.conf import settings
+from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, request
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
+from . import imports
 from . import timezones
 from .calendar import build_ics
 from . import forms as exam_forms
@@ -25,6 +29,7 @@ from .forms import (
     QuestionForm,
     RescheduleForm,
     SubjectForm,
+    ImportQuestionsForm
 )
 from .models import Exam, ExamBooking, Subject, Question, Audio, Video
 from apps.home.models import User
@@ -433,32 +438,121 @@ def question_bank(request):
     )
     return render(request, "exam/question_bank.html", {"questions": questions})
 
+#: Where a parsed-but-unconfirmed import waits between the two requests.
+#:
+#: The session, not the cache. A browser cannot re-post a file the author
+#: picked a request ago without them picking it again, so the rows have to be
+#: kept somewhere — and SESSION_ENGINE here is the database backend, so this is
+#: a row in Postgres, not anything in the cookie. LocMemCache would have been
+#: wrong: it is per-process, so with more than one worker the confirm can land
+#: somewhere that has never seen the upload.
+IMPORT_SESSION_KEY = "question_import"
+
+
 @role_required(User.Role.ADMIN)
 def import_questions(request):
     """
-    This function helps import questions and automatically populate the question bank. Only accessible to admins."
-    """
-    if request.method == "POST":
-        csv_file = request.FILES.get("csv_file")
-        if csv_file and iscsv(csv_file):
-            for row in csv_file.read().decode("utf-8").splitlines():
-                # Assuming the CSV has columns: question_text, question_type, question_difficulty, marks, options,
-                # correct_option, question_tags
-                question_text, question_type, question_difficulty, marks, options, correct_option, question_tags = row.split(",")
-                Question.objects.create(
-                    question_text=question_text,
-                    question_type=question_type,
-                    question_difficulty=question_difficulty,
-                    marks=marks,
-                    options=options,
-                    correct_option=correct_option,
-                    question_tags=question_tags,
-                    status=status,
-                    created_by=request.user
-                )
-            return redirect("exam:question_bank")
-        else:
-            # Handle the case where no file was uploaded
-            return render(request, "exam/import_questions.html", {"error": "Please upload a CSV file."})
+    Bulk import, in two phases against one URL.
 
-    return render(request, "exam/import_questions.html")
+    Uploading parses the file and shows what *would* happen; a second submit
+    commits it. Importing on the first click gives an author no way to notice
+    they picked last month's file until two hundred questions are in the bank,
+    and there is no bulk undo.
+
+    The parsing lives in imports.py, which knows nothing about requests. This
+    view only decides which phase it is in, and where the rows wait in between.
+    """
+    # Phase 2 first. The confirm posts only `action` and `token`, never a file,
+    # so it would fail ImportQuestionsForm validation if it fell through to the
+    # upload handling below.
+    if request.method == "POST" and request.POST.get("action") == "import":
+        return _commit_question_import(request)
+
+    # Phase 1 — a file has just been uploaded, or this is a fresh page.
+    #
+    # One form object, used for both. Re-rendering with a *new* unbound form
+    # would throw away the author's errors and their subject choice.
+    form = ImportQuestionsForm(request.POST or None, request.FILES or None)
+    preview = None
+
+    if request.method == "POST" and form.is_valid():
+        rows = form.parsed_rows()
+
+        # A token, so a stale preview cannot be confirmed. Two tabs, or the
+        # back button onto an earlier preview, would otherwise import whatever
+        # the session happens to hold rather than what is on screen.
+        token = secrets.token_urlsafe(8)
+        request.session[IMPORT_SESSION_KEY] = {
+            "token": token,
+            "subject": form.cleaned_data["subject"].pk,
+            # asdict, because the session serialises as JSON and a dataclass is
+            # not JSON. _commit_question_import rebuilds them on the way out.
+            "rows": [asdict(row) for row in rows],
+        }
+
+        preview = {
+            "rows": rows,
+            "valid": sum(1 for row in rows if not row.errors),
+            "invalid": sum(1 for row in rows if row.errors),
+            "unknown": form.unknown_columns,
+            "token": token,
+        }
+
+    return render(
+        request,
+        "exam/import_questions.html",
+        {"form": form, "preview": preview},
+    )
+
+
+def _commit_question_import(request):
+    """
+    Writes the rows the author has just seen and confirmed.
+
+    Not a view of its own — no URL points here. Split out because
+    import_questions() would otherwise do two unrelated jobs in one body, and
+    the confirm path shares none of the upload path's logic.
+    """
+    stashed = request.session.get(IMPORT_SESSION_KEY)
+
+    if not stashed or stashed.get("token") != request.POST.get("token"):
+        messages.error(
+            request,
+            "That import is no longer available — it may have expired, or been "
+            "confirmed already. Upload the file again.",
+        )
+        return redirect("exam:import_questions")
+
+    subject = get_object_or_404(Subject, pk=stashed["subject"])
+    rows = [imports.ParsedRow(**row) for row in stashed["rows"]]
+
+    # Dropped before the write, not after. A reload of the redirect must not
+    # import everything a second time, and if the write fails halfway the
+    # author should re-upload rather than retry a half-applied import.
+    del request.session[IMPORT_SESSION_KEY]
+
+    created, failures = imports.import_rows(rows, subject, request.user)
+    skipped = sum(1 for row in rows if row.errors)
+
+    if created:
+        messages.success(
+            request,
+            f"Imported {created} question{'' if created == 1 else 's'} "
+            f"into {subject.name}.",
+        )
+    else:
+        messages.error(request, "Nothing was imported.")
+
+    if skipped:
+        messages.warning(
+            request,
+            f"{skipped} row{'' if skipped == 1 else 's'} had problems and "
+            f"{'was' if skipped == 1 else 'were'} skipped.",
+        )
+
+    # Rows that looked fine on the preview and failed anyway. parse_row never
+    # touches the database, so anything that needs one only surfaces here.
+    for number, problems in failures:
+        messages.warning(request, f"Row {number}: {' '.join(problems)}")
+
+    return redirect("exam:question_bank")

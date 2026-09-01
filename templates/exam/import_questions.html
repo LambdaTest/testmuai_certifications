@@ -280,6 +280,21 @@
           </div>
         </div>
 
+        {% comment %}
+          Columns the parser did not recognise. A warning, never a rejection —
+          a team's working spreadsheet often carries its own bookkeeping
+          columns, and refusing the file over an `author` column would be
+          obnoxious. But a misspelled `question_tag` would otherwise import
+          cleanly with every tag silently dropped, which is worth a line.
+        {% endcomment %}
+        {% if preview.unknown %}
+          <p class="mt-5 rounded-xl bg-warn-tint px-5 py-3.5 text-[13px] text-body">
+            <span class="font-semibold text-warn">Ignored column{{ preview.unknown|pluralize }}:</span>
+            {{ preview.unknown|join:", " }} — not recognised, so
+            {{ preview.unknown|pluralize:"its,their" }} values will not be imported.
+          </p>
+        {% endif %}
+
         {% if preview.invalid %}
           <label class="mt-5 flex cursor-pointer items-center gap-2 text-[13px] text-body">
             <input type="checkbox" x-model="errorsOnly" class="size-4 accent-[#C2402A]">
