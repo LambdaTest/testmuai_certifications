@@ -761,6 +761,36 @@ class BaseAnswerOptionFormSet(BaseInlineFormSet):
         if len(correct) != 1:
             raise forms.ValidationError("Mark exactly one option as correct.")
 
+    def save(self, commit=True):
+        """
+        Numbers the options as they were submitted, then saves them.
+
+        Position lives here rather than in AnswerOptionForm.save() because it
+        depends on an option's siblings — one form has no idea it is the third
+        one. created_by is the opposite case and stays on the form.
+
+        Blank slots leave no gaps: save(commit=False) returns only the forms
+        that changed, so filling slots 1, 2 and 4 yields positions 1, 2, 3.
+
+        Both callers get this for free. The Add Question page submits the
+        options top to bottom; imports.py builds answers-0, answers-1 … from a
+        row's option_1..option_6 columns. Same formset, same numbering.
+
+        EDITING WILL NEED MORE. save(commit=False) returns new and changed
+        objects but not untouched ones, so on an edit page this would renumber
+        only part of the set. There is no edit page for questions by design, so
+        it does not arise today — but whoever builds one has to handle it.
+        """
+        options = super().save(commit=False)
+
+        for index, option in enumerate(options, start=1):
+            option.position = index
+
+        if commit:
+            for option in options:
+                option.save()
+        return options
+
 
 #: Six slots, of which the template shows four and reveals the rest on demand.
 #:

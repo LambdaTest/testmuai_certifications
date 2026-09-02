@@ -68,6 +68,28 @@ class AnswerOptions(models.Model):
     associated_image = models.ForeignKey("Image", on_delete=models.PROTECT, related_name="answers", blank=True, null=True)
     associated_audio = models.ForeignKey("Audio", on_delete=models.PROTECT, related_name="answers", blank=True, null=True)
 
+    #: Where this option appears in the list, 1-based, in the order the author
+    #: wrote it. Without it, options come back in whatever order Postgres
+    #: returns, and that order can differ between two reads of the same rows —
+    #: so a candidate could watch the answers rearrange between page loads.
+    #:
+    #: Assigned by BaseAnswerOptionFormSet.save(), which numbers the filled
+    #: slots as they were submitted. Both the authoring page and the CSV
+    #: importer go through that formset, so the form's top-to-bottom order and
+    #: the option_1..option_6 column order land the same way.
+    #:
+    #: Defaulted to 0 rather than made required, because rows written before
+    #: this column existed have no order to recover. They sort first, together,
+    #: which is no worse than the arbitrary order they had.
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        # No db_table here, unlike the other models in this file. Setting one
+        # now would rename a table that already holds rows — a change worth
+        # making deliberately, not as a side effect of adding a column.
+        ordering = ["position"]
+
+
 class Audio(models.Model):
     """
     An audio file is a file that contains audio. It is associated with a question.
@@ -359,3 +381,166 @@ class Certificates(models.Model):
     class Meta:
         db_table = "certificates"
         ordering = ["-issued_at"]
+
+
+class ExamSheet(models.Model):
+    """
+    The paper one candidate actually sat: the questions drawn for them, in the
+    order they were shown, plus their answers.
+
+    Created when they press Start Test, never at booking. Between booking and
+    sitting the bank changes — questions get added and retired — and a paper
+    fixed weeks ahead could hand somebody a question that has since been pulled.
+
+    Fixing the paper at the start is also what makes a reconnect safe. A
+    candidate whose connection drops comes back to the same twenty questions in
+    the same order, at the position they left, with the same deadline. Drawing
+    questions lazily as they press Next would re-randomise on a reload, make
+    "question 3 of 20" a promise we cannot keep, and turn a double-clicked Next
+    into a race.
+
+    Results are not here. ExamBooking already carries marks_obtained,
+    maximum_marks, passing_marks, graded_by, graded_at and feedback; a second
+    home for a score is a second answer to "did they pass".
+    """
+
+    booking = models.OneToOneField(
+        ExamBooking,
+        on_delete=models.PROTECT,
+        related_name="sheet",
+    )
+
+    started_at = models.DateTimeField(auto_now_add=True)
+
+    #: When the paper closes. Stored rather than derived from started_at, so
+    #: granting extra time to a candidate whose connection failed is an update
+    #: to one column rather than a special case wherever the deadline is read.
+    #:
+    #: The server owns this. A deadline the browser can report is a deadline a
+    #: candidate can extend.
+    expires_at = models.DateTimeField()
+
+    #: Which question the candidate is on, 1-based. Their bookmark, nothing to
+    #: do with the questions themselves — a reconnect resumes here instead of
+    #: starting again.
+    #:
+    #: Explicit rather than inferred from "first unanswered", because a
+    #: candidate who deliberately skips question 3 to come back to it would
+    #: otherwise be thrown backwards on every reload.
+    current_position = models.PositiveSmallIntegerField(default=1)
+
+    #: Null while the sitting is open; set when it ends, however it ends.
+    #:
+    #: One timestamp rather than a state machine, on purpose. Pressing Submit,
+    #: running out of time and being stopped by an admin are all just "this
+    #: paper is finished", and the score is the same in each case.
+    #:
+    #: Set it with min(timezone.now(), expires_at). For a normal submit that is
+    #: a no-op; for a paper abandoned at 10:00 and swept up at 14:00 it records
+    #: the exam as ending when it actually did.
+    submitted_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = "exam_sheets"
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"Sheet for {self.booking}"
+
+    @property
+    def is_open(self):
+        """Whether answers may still be written to this sheet."""
+        return self.submitted_at is None
+
+
+class ExamSheetQuestion(models.Model):
+    """
+    One question as served to one candidate, and what they answered.
+
+    The row is both the question slot and the response. A response cannot exist
+    without the question having been served, so a separate Response model would
+    only add a join.
+
+    No snapshot of the question text. Questions are immutable by design — the
+    Question Bank has no edit page — so the foreign key always resolves to what
+    the candidate saw, and PROTECT means the row can never be deleted out from
+    under a past paper. The one hole left is media: replacing the file on an
+    Image row would change what an old paper appears to have shown. Tracked
+    separately; the fix is to treat media rows as immutable too.
+    """
+
+    sheet = models.ForeignKey(
+        ExamSheet,
+        on_delete=models.CASCADE,
+        related_name="questions",
+    )
+
+    #: PROTECT, and this is what makes deleting a served question impossible at
+    #: the database level rather than only in a view. A question a candidate has
+    #: been asked is the record of what they were asked; grading and appeals
+    #: rest on it. Questions never served stay freely deletable.
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.PROTECT,
+        related_name="sheet_entries",
+    )
+
+    #: Where this question sits on the paper, 1-based. Fixed at Start Test, so
+    #: the order cannot change under a candidate between page loads.
+    #:
+    #: There is no equivalent for the answer options, deliberately. Every
+    #: candidate sees them in the authored order, which AnswerOptions.position
+    #: fixes for every page at once — the bank, the authoring form and the
+    #: player. Shuffling per candidate would need the order recorded here as
+    #: well, and it buys little: drawing 20 questions from a pool of several
+    #: hundred already means two candidates share barely one question. It also
+    #: breaks any option that depends on where it sits, "All of the above"
+    #: being the obvious one.
+    position = models.PositiveSmallIntegerField()
+
+    #: What this question is worth on *this* paper. A snapshot, because
+    #: Exam.total_marks_for() multiplies by Exam.MARKS_PER_QUESTION — if that
+    #: constant ever changes, every past paper would silently re-total.
+    marks = models.PositiveIntegerField()
+
+    #: Objective answer. PROTECT so an answer can never point at an option that
+    #: has been deleted, which would quietly turn a graded response into a blank.
+    selected_option = models.ForeignKey(
+        AnswerOptions,
+        on_delete=models.PROTECT,
+        related_name="chosen_on",
+        blank=True,
+        null=True,
+    )
+
+    #: Subjective answer. Written incrementally by autosave, not only at submit
+    #: — a closed tab must not lose work, and an abandoned paper should grade on
+    #: what was actually written.
+    written_answer = models.TextField(blank=True)
+
+    #: Filled by auto-grading for objective questions, by an examiner for
+    #: subjective ones. Null means not yet graded, which is why it is not
+    #: defaulted to 0 — unanswered and ungraded are different states.
+    marks_awarded = models.PositiveIntegerField(blank=True, null=True)
+
+    class Meta:
+        db_table = "exam_sheet_questions"
+        ordering = ["position"]
+        constraints = [
+            # Two questions cannot occupy the same slot on one paper.
+            models.UniqueConstraint(
+                fields=["sheet", "position"],
+                name="one_question_per_sheet_position",
+            ),
+            # The draw is without replacement. Enforced here rather than trusted
+            # to the code that shuffles, because a candidate seeing the same
+            # question twice is the kind of bug nobody notices until a
+            # candidate reports it.
+            models.UniqueConstraint(
+                fields=["sheet", "question"],
+                name="no_duplicate_question_on_sheet",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Q{self.position} of {self.sheet_id}"
