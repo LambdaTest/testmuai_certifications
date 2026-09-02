@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% load tz %}
+
+{% comment %}
+  The last page before the exam starts. Read the rules, tick the box, begin.
+
+  Context it will need from apps.exam.views.start_exam_termsandconditions:
+    booking – the ExamBooking, with exam and subject already selected
+
+  Nothing is wired yet: the view renders this with no context and the button is
+  a plain <button> outside any form. When it is bound, "I'm ready to begin"
+  must be a POST — it creates the ExamSheet, draws the paper and starts the
+  clock, and a GET that does any of that is one browser prefetch away from
+  starting somebody's exam without them.
+
+  WHAT THIS PAGE IS FOR. Not decoration and not legal cover: it is the last
+  moment a candidate can find out something that would change how they sit the
+  exam. The vendor's version lists four facts and wishes you luck. The
+  questions candidates actually ask — can I pause it, what happens if my wifi
+  drops, does the clock keep running if I close the tab — are the ones it never
+  answers, so they get answered here.
+
+  Everything below reads from the booking. Nothing is hardcoded except negative
+  marking, which is stated because candidates ask and there is no field for it:
+  we do not do negative marking at all.
+{% endcomment %}
+
+{% block title %}Before you begin · {{ booking.exam.exam_name }}{% endblock %}
+
+{% block content %}
+{% comment %}
+  `ready` gates the begin button. A convenience, not a control: the same rule
+  has to hold on the server, because the button can be re-enabled from devtools
+  and Alpine is a CDN script that may not load at all — in which case every
+  x-bind here is inert and the button would otherwise be live from the start.
+  Hence :disabled rather than an x-show that hides it.
+{% endcomment %}
+<div class="mx-auto max-w-3xl px-4 py-10" x-data="{ ready: false }">
+
+  <p class="text-[13px] font-bold tracking-[1.4px] text-faint uppercase">Before You Begin Your Exam</p>
+
+  <header class="mt-2 mb-7">
+    <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">{{ booking.exam.exam_name }}</h1>
+    <p class="mt-2 text-[15px] text-muted">
+      {{ booking.exam.subject.name }} ·
+      {{ booking.exam.get_exam_level_display }} ·
+      {{ booking.exam.get_exam_type_display }}
+    </p>
+  </header>
+  <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div class="rounded-xl border border-line bg-white px-4 py-3.5">
+      <p class="text-2xl font-extrabold tracking-tight">{{ booking.exam.question_count|default:"—" }}</p>
+      <p class="mt-0.5 text-[13px] text-muted">Questions</p>
+    </div>
+    <div class="rounded-xl border border-line bg-white px-4 py-3.5">
+      <p class="text-2xl font-extrabold tracking-tight">
+        {% if booking.exam.duration_minutes == 2160 %}36<span class="text-base font-bold"> hrs</span>
+        {% else %}{{ booking.exam.duration_minutes }}<span class="text-base font-bold"> min</span>{% endif %}
+      </p>
+      <p class="mt-0.5 text-[13px] text-muted">
+        {% if booking.exam.duration_minutes == 2160 %}To submit{% else %}Time limit{% endif %}
+      </p>
+    </div>
+    <div class="rounded-xl border border-line bg-white px-4 py-3.5">
+      <p class="text-2xl font-extrabold tracking-tight">
+        {{ booking.exam.passing_marks }}<span class="text-base font-bold text-muted">/{{ booking.exam.maximum_marks }}</span>
+      </p>
+      <p class="mt-0.5 text-[13px] text-muted">To pass</p>
+    </div>
+    <div class="rounded-xl border border-line bg-white px-4 py-3.5">
+      <p class="text-2xl font-extrabold tracking-tight text-ok">None</p>
+      <p class="mt-0.5 text-[13px] text-muted">Negative marking</p>
+    </div>
+  </div>
+
+  {# ---------- What happens when you press begin ---------- #}
+  <section class="mt-7 rounded-2xl border border-line bg-white p-6">
+    <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">
+      What happens when you press begin
+    </h2>
+
+    {% comment %}
+      Ordered, because it is a sequence and the order is the point: the clock
+      starts before the first question is on screen, which is exactly the thing
+      candidates assume is not true.
+    {% endcomment %}
+    <ol class="mt-4 grid gap-4">
+      <li class="flex gap-3.5">
+        <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">1</span>
+        <p class="text-[14.5px] leading-relaxed text-body">
+          <span class="font-semibold text-ink">Your paper is drawn and fixed from the pool.</span>
+        </p>
+      </li>
+      <li class="flex gap-3.5">
+        <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">2</span>
+        <p class="text-[14.5px] leading-relaxed text-body">
+          <span class="font-semibold text-ink">The clock starts immediately</span> and does not
+          pause. Closing the tab, losing your connection or walking away does not stop or pause it.
+        </p>
+      </li>
+      <li class="flex gap-3.5">
+        <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">3</span>
+        <p class="text-[14.5px] leading-relaxed text-body">
+          <span class="font-semibold text-ink">Every answer saves as you give it.</span>
+          If your connection drops, sign back in and you will be on the question you left,
+          with everything you had answered still there.
+        </p>
+      </li>
+      <li class="flex gap-3.5">
+        <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">4</span>
+        <p class="text-[14.5px] leading-relaxed text-body">
+          <span class="font-semibold text-ink">When time runs out it submits itself</span>
+          with whatever you have answered. Unanswered questions score zero — they are not
+          penalised.
+        </p>
+      </li>
+    </ol>
+  </section>
+
+  {# ---------- How to move around ---------- #}
+  <section class="mt-4 rounded-2xl border border-line bg-white p-6">
+    <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">
+      Moving through the paper
+    </h2>
+    <div class="mt-4 grid gap-3.5 sm:grid-cols-2">
+      <p class="text-[14.5px] leading-relaxed text-body">
+        <span class="font-semibold text-ink">One question at a time.</span>
+        Move forward and back freely — nothing is locked once you have passed it.
+      </p>
+      <p class="text-[14.5px] leading-relaxed text-body">
+        <span class="font-semibold text-ink">Skip anything you are unsure of.</span>
+        Flag it for review and the panel will show you what is still open.
+      </p>
+      <p class="text-[14.5px] leading-relaxed text-body">
+        <span class="font-semibold text-ink">Change an answer any time</span>
+        before you submit. Only your last answer counts.
+      </p>
+      <p class="text-[14.5px] leading-relaxed text-body">
+        <span class="font-semibold text-ink">Submitting is final.</span>
+        You cannot reopen the paper, and this test is a single attempt.
+      </p>
+    </div>
+  </section>
+
+  {# ---------- Rules ---------- #}
+  <section class="mt-4 rounded-2xl border border-warn bg-warn-tint p-6">
+    <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-warn uppercase">Rules</h2>
+    <ul class="mt-3 grid gap-2 text-[14.5px] leading-relaxed text-body">
+      <li>Sit the exam alone, in one sitting, without help from anyone.</li>
+      <li>Exiting the full screen mode is not allowed.</li>
+      <li>Right-click and copy command is disabled for security reasons.</li>
+      <li>Second devices or switching tabs is not allowed.</li>
+      <li>Taking photographs of the questions or copying questions to external medium is strictly prohibited.</li>
+      <li>This is a single attempt test. Re-test will required another exam booking from your end.</li>
+    </ul>
+    <p class="mt-3.5 text-[13px] text-body">
+      Breaking these rules ends the exam automatically and forfeits the attempt. You can raise a support ticket if you think this was in error, but the exam will not be re-opened and the attempt will not be restored.
+    </p>
+  </section>
+
+  {# ---------- Your booking ---------- #}
+  {% comment %}
+    scheduled_at is stored UTC. Rendered inside {% timezone %} so it shows in
+    the zone the candidate booked in — a `date` filter on a datetime already
+    converted in Python silently converts it back to UTC. See rule 3 in the
+    README.
+  {% endcomment %}
+  {% comment %}
+    Guarded on `booking` because {% templatetag openblock %} timezone {% templatetag closeblock %}
+    raises ValueError on an empty zone name rather than rendering blank — so
+    without this the whole page 500s until the view passes a booking, which it
+    does not yet.
+  {% endcomment %}
+  {% if booking %}
+  <section class="mt-4 rounded-2xl bg-surface px-6 py-5">
+    <div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+      <div>
+        <p class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Your booking</p>
+        {% timezone booking.booked_timezone %}
+          <p class="mt-1.5 text-[14.5px] font-semibold text-ink">
+            {{ booking.scheduled_at|date:"l, F j, Y" }} at {{ booking.scheduled_at|date:"g:i A" }}
+          </p>
+        {% endtimezone %}
+        <p class="mt-0.5 text-[13px] text-muted">{{ booking.booked_timezone }}</p>
+      </div>
+      <div class="text-right">
+        <p class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Reference</p>
+        <p class="mt-1.5 font-mono text-[13px] text-body">{{ booking.booking_id }}</p>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {# ---------- Consent and begin ---------- #}
+  <div class="mt-7 rounded-2xl border border-line bg-white p-6">
+    <label class="flex cursor-pointer items-start gap-3">
+      <input type="checkbox" x-model="ready"
+             class="mt-0.5 size-4.5 shrink-0 rounded accent-[#2C86EE]">
+      <span class="text-[14.5px] leading-relaxed text-body">
+        I have read the instructions and promise to adhere to the rules. I am ready to start, and I understand
+        that the clock begins as soon as I press the button below.
+      </span>
+    </label>
+
+    <div class="mt-5 flex flex-wrap items-center gap-3">
+      {% comment %}
+        Disabled rather than hidden, so a candidate can see the action exists
+        and work out why it is not available yet. A hidden button reads as a
+        page that has not finished loading.
+      {% endcomment %}
+      <button type="submit" :disabled="!ready"
+              class="inline-flex h-12 items-center rounded-lg bg-[#111] px-7 text-[15px] font-bold text-white
+                     hover:bg-[#2A2B31] disabled:cursor-not-allowed disabled:bg-zinc-300">
+        I'm ready to begin
+      </button>
+
+      <p x-show="!ready" x-cloak class="text-[13px] text-muted">
+        Tick the box above to start.
+      </p>
+
+      <a href="{% url 'home:dashboard' %}"
+         class="ml-auto inline-flex h-12 items-center rounded-lg px-4 text-[14.5px] font-semibold text-muted hover:text-ink">
+        Not now
+      </a>
+    </div>
+  </div>
+
+  <p class="mt-6 text-center text-[14.5px] text-muted">Good luck!</p>
+
+</div>
+{% endblock %}

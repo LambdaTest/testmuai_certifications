@@ -11,6 +11,7 @@ Four layers. The right one depends on **what could bypass it**:
 | **Database constraint** | Everything — shell, admin, `bulk_create`, raw SQL | `exam_duration_matches_type`, `one_open_booking_per_exam` |
 | **Model `clean()` / `save()`** | Anything through the ORM, admin included | `Exam.save()` filling `duration_minutes` |
 | **Form `clean()`** | Form submissions, with a readable error | lead time, booking horizon, clash detection |
+| **Formset `clean()`** | Rules spanning several rows of the same form | exactly one correct answer option |
 | **View** | This request only | ownership checks, redirects, context |
 
 > The further down you push a rule, the harder it is to bypass — and the worse the error message
@@ -19,6 +20,12 @@ Four layers. The right one depends on **what could bypass it**:
 The duration rule sits at three levels deliberately: `save()` fills it in, `clean()` gives a
 readable error, and the `CheckConstraint` catches what skips both — `bulk_create` bypasses
 `save()` entirely.
+
+**A rule that spans rows belongs on the formset, not the form.** "An objective question needs at
+least two options and exactly one correct" cannot be a field validator — one option knows nothing
+about its siblings — and cannot be a `CheckConstraint`, because Postgres checks a row against
+itself, not against a set. `BaseAnswerOptionFormSet.clean()` is the only place it can live.
+Raising there produces a non-form error, rendered through `formset.non_form_errors`.
 
 **Forms validate; views orchestrate.** The test: *could this rule be checked without an HTTP
 request?* If yes it belongs in the form. If a form rule needs something request-derived, pass it
@@ -71,6 +78,31 @@ response, or a rendered payload.
 A leaked answer key invalidates every credential issued from that question. It is the most
 serious defect class in this codebase, and it needs a test rather than a review checklist.
 
+## File uploads
+
+**A model-field validator does not run on `objects.create()`.** `Model.save()` never calls
+`full_clean()`, so the `FileExtensionValidator` on `Image.image_file` fires only when a ModelForm
+validates an `Image`. Any form that creates a media row itself must **re-declare** the validator
+on its own field. This is not a Django quirk to work around — it is why `QuestionForm` carries the
+extension list a second time.
+
+**Django imposes no upload size limit.** `FILE_UPLOAD_MAX_MEMORY_SIZE` only decides between memory
+and a temp file; `DATA_UPLOAD_MAX_MEMORY_SIZE` explicitly excludes file data. If a size limit
+matters, it is a form validator and nothing else.
+
+**`accept` on a file input is a hint to the file picker.** It filters what the dialog shows and is
+ignored by any direct post. So is a byline stating a limit. Neither is a check.
+
+**Files arrive in `request.FILES`, not `request.POST`** — a `FileInput` widget reads only from
+`files`. A form constructed as `Form(request.POST)` drops every upload *silently*, because a
+`required=False` file field cleans an absent value to `None` without complaint. Both dicts, always:
+`Form(request.POST or None, request.FILES or None)`. The `<form>` needs
+`enctype="multipart/form-data"` or the browser posts filenames instead of files, also silently.
+
+**Uploads live under `MEDIA_ROOT`, never `STATIC_ROOT`.** Static files ship with the code; media
+arrives at runtime and must survive a deploy. Local disk is development-only — an instance that
+gets replaced loses every upload.
+
 ## HTTP
 
 - **Anything that mutates is a POST** with a CSRF token. A destructive GET can be triggered by
@@ -90,13 +122,20 @@ serious defect class in this codebase, and it needs a test rather than a review 
 - Public identifiers — credential ids above all — must be **unguessable**. Never sequential.
 - Migrations are forward-only. Never edit one that has been applied. Resetting the history is free
   now and impossible after launch.
-- Soft-delete anything referenced by a historical attempt. Questions and exams must stay readable
-  forever.
+- Anything a past paper references must stay readable forever. Prefer `PROTECT` on the reference
+  over remembering to soft-delete: `ExamSheetQuestion.question` is what stops a served question
+  being deleted, and it holds against the shell and the admin, not just a view.
 
 ## Immutability where it matters
 
-- A **published exam** is frozen once someone has attempted it. Edits create a new version.
-- A **submitted attempt** is never mutated. Grading writes alongside it.
+- **Questions are never edited.** The Question Bank has no edit page and will not get one. That is
+  what lets `ExamSheetQuestion` reference a question by foreign key rather than snapshotting its
+  text, and it replaces the earlier plan of versioning published exams — versioning was needed
+  because questions were assumed editable.
+- **A served question cannot be deleted.** `ExamSheetQuestion.question` is `PROTECT`, so the
+  database refuses. Questions in circulation are withdrawn by setting `status` to `retired`, never
+  removed. Questions never served stay freely deletable.
+- A **submitted sheet** is never mutated. Grading writes alongside it, into `marks_awarded`.
 - The **audit log is append-only.**
 - `credentials.holder_name` is a **snapshot at issuance** — it must not follow later changes to
   `display_name`, or a name change silently rewrites every credential someone holds.
@@ -108,7 +147,9 @@ answered, and how it was scored. Design for that conversation.
 
 - Python: `snake_case`. Templates and static files: `snake_case.html`, `kebab-case.css`.
 - Database tables and columns: `snake_case`, tables plural — set `db_table` explicitly rather than
-  accepting Django's `app_model` default.
+  accepting Django's `app_model` default. `AnswerOptions` is the one exception, still on
+  `exam_answeroptions`: renaming a table that already holds rows is a change worth making on its
+  own, not as a side effect of adding a column.
 - Booleans read as assertions: `is_published`, `has_expired`.
 - Timestamps end in `_at`; **durations state their unit**: `duration_minutes`, never `duration`.
 
@@ -119,6 +160,17 @@ answered, and how it was scored. Design for that conversation.
   `static/css/input.css` for the production build. No one-off hex values.
 - `{# … #}` comments a **single line only**. Multi-line needs `{% comment %}…{% endcomment %}`,
   or it renders as visible text on the page.
+- **Never write a literal `<script>` inside a `{% comment %}` block.** Django strips the block, so
+  the page is fine — but an editor's HTML parser does not know that. It sees an unclosed `script`,
+  switches to raw-text mode, and reports every line after it as broken. Write "script element"
+  instead. Other unclosed tags in comments are harmless; `script` is the one that swallows the
+  rest of the file.
+- **No `"` inside a `"`-delimited attribute**, even inside `{{ }}`. `|default:"objective"` within
+  `x-data="…"` closes the attribute as far as any parser is concerned. Django accepts single-quoted
+  filter arguments: `|default:'objective'`.
+- A missing template variable renders as **empty string, silently**. Inside an Alpine expression
+  that is not empty output but a syntax error, which kills the whole `x-data` and leaves the page
+  inert.
 - Reverse URLs by name — `{% url 'exam:book' %}` — never hardcode a path.
 
 ## Git

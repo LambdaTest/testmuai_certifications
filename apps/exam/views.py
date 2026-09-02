@@ -581,6 +581,13 @@ def _commit_question_import(request):
 def delete_question(request, question_id):
     pass
 
+def start_exam_termsandconditions(request):
+    """
+    The first page on the exam player that displays the terms and conditions and 
+    and takes the candidate to the actual exam player after accepting the terms and conditions.
+    """
+    return render(request, "exam/start_exam_termsandconditions.html")
+
 def exam_player(request, booking_id):
     """
     This is the actual exam player on which a candidate will take the exam.
@@ -590,4 +597,4 @@ def exam_player(request, booking_id):
     and proceed to the next question. The candidate can also put down a question on review by choosing the review option
     on the question. 
     """
-    
+    pass

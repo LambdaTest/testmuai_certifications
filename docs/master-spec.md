@@ -1,6 +1,6 @@
 # TestMu AI Certifications — Master Specification
 
-**Status:** Living document · **Owner:** Harish Rajora · **Last updated:** 19 August 2026
+**Status:** Living document · **Owner:** Harish Rajora · **Last updated:** 2 September 2026
 
 This is the top-level specification. It states what we are building and why, fixes the technology
 and the architectural rules, and indexes every module. **Detailed specs live with their modules**
@@ -121,23 +121,43 @@ why there is no SQLite fallback: it emulates JSONB as text.
 
 These are binding. Deviating from them is a review-blocking issue.
 
-**Dependencies point one way: `app/ → core/ → db/`.** `core/` contains all business logic and may
-not import React, `next/*`, or anything from `app/`. This keeps the grading engine unit-testable
-without HTTP, and leaves open the option of lifting `core/` into a standalone service later.
+**Dependencies point one way: `apps.exam` never imports `apps.home`.** The exam app reaches the
+user only through `settings.AUTH_USER_MODEL`, which is a string, so there is no import at all.
+`apps.home` may import from `apps.exam`.
 
-**Answer keys never reach the client.** Not in a prop, a payload, a serialised server component,
-or a source map. Candidate-facing and grading-facing read models are separate types, so the
-mistake is a compile error rather than a leak. A leaked key invalidates every credential issued
-from that question.
+**Business logic does not require an HTTP request.** Anything that can be expressed as data in,
+data out, lives in a module of plain functions — `timezones.py`, `calendar.py`, `imports.py` —
+rather than inside a view. That is what lets the CSV importer serve both a web page and a
+management command, and it is how the grading engine should be written when it arrives.
 
-**Published exam versions are immutable.** Edits create a new version. A candidate disputing a
-result years later must see the exam exactly as it was served.
+**Answer keys never reach the candidate.** `AnswerOptions.is_correct` is the key. It must not
+appear in a context variable, a template, or a payload on any candidate-facing surface. The exam
+player is the highest-risk one: it renders questions and their options to the person being tested.
+Use separate read paths for candidates and for grading rather than relying on remembering to strip
+a field. A leaked key invalidates every credential issued from that question.
 
-**The exam timer is server-authoritative.** Deadlines live in Postgres; the client countdown is
-display only.
+**Served questions are immutable, and enforced structurally.** The Question Bank has no edit page
+by design, so a question's wording is fixed once written. `ExamSheetQuestion.question` is
+`PROTECT`, so a question that has appeared on any paper cannot be deleted — the database refuses,
+not a view. Questions that were never served stay freely deletable, and anything in circulation is
+withdrawn by setting `Question.status` to `retired` rather than removed.
 
-**No long-running processes, no module-level state.** Our hosting is serverless. Anything
-outliving a request is a durable workflow or a cron route. Everything that mutates is idempotent.
+> This replaces the earlier plan of versioning published exams. Versioning was needed because
+> questions were assumed to be editable; making them immutable removes the problem rather than
+> managing it, and removes the JSON snapshot per served question along with it.
+
+**The exam timer is server-authoritative.** `ExamSheet.expires_at` lives in Postgres; the client
+countdown is display only. A deadline the browser can report is a deadline a candidate can extend.
+
+**The client is display only, generally.** Alpine loads from a CDN, so if that request fails every
+binding on the page is inert and the markup renders as-is. A disabled button, a capped date picker
+and a greyed-out Publish are explanations, never enforcement. Every rule that must hold of a
+stored row is re-checked server-side.
+
+**Everything that mutates is a POST, and idempotent where possible.** Users double-click and
+clients retry. `cancel_booking` filters on `status=BOOKED` in its lookup, so a second POST 404s
+instead of acting twice; the import confirm clears its session key before writing, so a reload
+cannot import the same file again.
 
 **All timestamps are `timestamptz` in UTC**, converted only for display, always with the timezone
 labelled. Booking times are the product; a timezone bug means someone misses their exam.
@@ -177,10 +197,23 @@ Unresolved. Each blocks specific work; owner is the project lead unless stated.
 | 2 | **Code-execution question types** — do candidates write and run code? | Question model, grading, sandbox | High |
 | 3 | **Objective result release timing** — instantly on submit, or after a delay that leaves room to catch a mis-keyed answer? | Grading | High |
 | 4 | **Payment** — is there a paid step? Booking is enrolment, so it happens here | Booking flow | Medium |
-| 5 | **Question pool size** — self-scheduling lets candidates share questions, so each paper must draw from a much larger pool | Content, exam player | Medium |
+| 5 | **Question pool size** — a paper is 20 questions; the pool needs to be several times that. Nobody is assigned to write them | Content, exam player | Medium |
 | 6 | **Proctoring** — identity verification, webcam, lockdown browser | Exam player | Medium |
 | 7 | **Minimum lead time in hours** — the day-based rule allows 11pm for 00:15 | Booking | Low |
 | 8 | **`role` as a single field** — an examiner cannot currently also sit an exam | Auth | Low now |
+
+**Decided since the last revision**, and no longer open:
+
+- **Manual question selection** is deferred, not built. The team confirmed it has never been used
+  on the vendor platform, so publishing a manual exam is refused rather than half-supported.
+- **Questions are immutable** — no edit page, ever. That is what lets a served question be a
+  foreign key instead of a snapshot.
+- **The paper is drawn at Start Test**, not at booking and not lazily as the candidate advances.
+- **Options are not shuffled per candidate.** Question randomisation already does the work, and
+  shuffling breaks any option that depends on its position.
+- **Bulk import is CSV only.** PDF and Word have no structure to rely on; a spreadsheet converts
+  to CSV for free.
+- **A reload resumes, it does not cancel.** `ExamSheet.current_position` is the bookmark.
 
 Retakes are **out of scope**: a second attempt means a new booking. Slots and capacity were
 removed from the design — booking is self-scheduled.
@@ -197,13 +230,17 @@ keep this row current.
 | Routes | URL inventory and the rules for new ones | [`routes.md`](routes.md) | Current |
 | Authentication | Handoff from the TestMu AI login | [`auth.md`](auth.md) | Current, not built |
 | Conventions | Binding rules for the repo | [`conventions.md`](conventions.md) | Current |
-| Models | Users, subjects, exams, questions, bookings | `apps/home/models.py`, `apps/exam/models.py` | Built |
+| Models | Users, subjects, exams, questions, bookings, exam sheets | `apps/home/models.py`, `apps/exam/models.py` | Built |
 | Booking | Selector, calendar, clash rules, reschedule, cancel | `apps/exam/` | Built |
 | Calendar invites | `.ics` generation and Google links | `apps/exam/calendar.py` | Built |
+| Subject Center | Create, edit and browse subjects | `apps/exam/views.py` | Built |
+| Exam Center | Create and edit exams, derived marks and duration, draft/publish | `apps/exam/views.py`, `forms.py` | Built |
+| Question Center | Bank, authoring with answer options and media, CSV import | `apps/exam/views.py`, `forms.py`, `imports.py` | Built — delete is routed but stubbed |
 | Candidate dashboard | Upcoming exam, assessments | `templates/home/dashboard_candidate.html` | Partly — badges and profile still static |
 | Admin dashboard | Sections and quick actions | `templates/home/dashboard_admin.html` | UI only, unlinked |
 | Examiner dashboard | Pending evaluations, grading history | — | Designed, not built |
-| Attempts and exam player | Timed delivery, autosave | — | Not started |
+| Exam sheets | The frozen paper and the candidate's answers | `apps/exam/models.py` | Models built |
+| Exam player | Timed delivery, autosave, resume | `templates/exam/start_exam_termsandconditions.html` | Instructions page built; player is a stub |
 | Grading | Assignment, evaluation, release | — | Not started |
 | Credentials | Issuance, verification, revocation | — | Not started |
 
@@ -214,7 +251,8 @@ keep this row current.
 | **Subject** | A field of study — e.g. Selenium, Accessibility Testing |
 | **Exam** | An assessment for a subject: type, duration, pass mark. Objective (45 min) or subjective (36 h). |
 | **Booking** | A candidate's chosen date and time for an exam. Booking is enrolment. |
-| **Attempt** | One candidate's sitting of an exam, from start to submission |
-| **Response** | A candidate's answer to one question within an attempt |
+| **Exam sheet** | The paper one candidate sat — the questions drawn for them, in order, plus their answers. Modelled as `ExamSheet`; "attempt" is the same idea in earlier drafts. |
+| **Served question** | One question as it appeared on one sheet, with that candidate's answer. Modelled as `ExamSheetQuestion`; "response" in earlier drafts. |
+| **Question bank** | Every question for a subject. Questions belong to subjects, not to exams, so any exam on that subject draws from the pool. |
 | **Complete Evaluation** | The examiner action that records the mark, releases the result and emails the candidate. |
 | **Credential** | The credential earned by passing. Canonically a public web page, not a PDF. |
