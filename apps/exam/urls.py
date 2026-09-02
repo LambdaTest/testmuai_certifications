@@ -22,4 +22,5 @@ urlpatterns = [
     path("question_center/add_question/", views.add_question, name="add_question"),
     path("question_center/question_bank/", views.question_bank, name="question_bank"),
     path("question_center/import_questions/", views.import_questions, name="import_questions"),
+    path("question_center/delete_question/<int:question_id>/", views.delete_question, name="delete_question"),
 ]

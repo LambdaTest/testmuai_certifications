@@ -576,3 +576,7 @@ def _commit_question_import(request):
         messages.warning(request, f"Row {number}: {' '.join(problems)}")
 
     return redirect("exam:question_bank")
+
+@role_required(User.Role.ADMIN)
+def delete_question(request, question_id):
+    pass

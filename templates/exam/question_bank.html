@@ -140,7 +140,7 @@
               go without being opened first — the collapsed card already shows
               enough to know it is the wrong question.
             {% endcomment %}
-            <a href="#" aria-label="Delete this question"
+            <a href="{% url 'exam:delete_question' question.pk %}" aria-label="Delete this question"
                class="inline-flex h-9 items-center rounded-lg border border-line px-3 text-[12px] font-bold tracking-[0.6px] text-muted hover:border-danger hover:bg-danger-tint hover:text-danger">
               DELETE
             </a>
@@ -270,7 +270,7 @@
 
               {# ---- Footer ---- #}
               <div class="mt-6 flex flex-wrap items-center gap-3 border-t border-[#F0F1F3] pt-5">
-                <a href="#"
+                <a href="{% url 'exam:delete_question' question.pk %}" aria-label="Delete this question"
                    class="inline-flex h-11 items-center rounded-lg bg-danger px-6 text-[14.5px] font-bold text-white hover:bg-[#A83522]">
                   DELETE
                 </a>
