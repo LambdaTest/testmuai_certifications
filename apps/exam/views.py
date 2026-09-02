@@ -580,3 +580,14 @@ def _commit_question_import(request):
 @role_required(User.Role.ADMIN)
 def delete_question(request, question_id):
     pass
+
+def exam_player(request, booking_id):
+    """
+    This is the actual exam player on which a candidate will take the exam.
+    The exam player will list down questions one at a time with its options in case of Objective
+    or a text field in case of Subjective. The candidate can navigate on the player on any question
+    using the question bookmark panel located on the right. They can answer or leave the options blank
+    and proceed to the next question. The candidate can also put down a question on review by choosing the review option
+    on the question. 
+    """
+    
