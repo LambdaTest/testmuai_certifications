@@ -1,26 +1,34 @@
 {% load static %}<!doctype html>
 <html lang="en" class="h-full">
 {% comment %}
-  The exam player. DUMMY DATA — every question below is hardcoded in Alpine so
-  the screen can be driven and reviewed before the sheet is wired up.
+  The exam player: the candidate's paper, one question at a time.
 
-  Context it will need from apps.exam.views.exam_player:
-    sheet – the ExamSheet, with .questions prefetched and .booking.exam selected
+  Context from apps.exam.views.exam_player:
+    booking            the ExamBooking, with exam and subject selected
+    sheet              their ExamSheet
+    questions_json     the paper, rendered through json_script below
+    remaining_seconds  seconds left, for the countdown
+    start_position     which question to open on, so a reconnect resumes
 
   DELIBERATELY NOT EXTENDING base.html. That template carries a sticky nav, a
   sign-out link and a footer. A nav bar mid-exam is an invitation to leave, and
   it muddies "did the candidate navigate away" as a signal. Nothing on this
   page navigates anywhere except Submit.
 
-  WHAT IS FAKE AND MUST BE REPLACED:
-    · `questions` — the array in x-data. Becomes {{ sheet.questions.all }}.
-    · `remaining` — counts down in the browser. The real deadline is
-      ExamSheet.expires_at, checked server-side on every write; this countdown
-      is display only. A candidate who changes it in devtools gains nothing.
-    · Answers live in Alpine and vanish on reload. Real autosave POSTs each
-      answer as it is given — that, not the countdown, is what protects work.
-    · `current` becomes ExamSheet.current_position, written on every move, so a
-      reconnect resumes here rather than at question 1.
+  STILL NOT WIRED:
+    · Answers live in Alpine and vanish on reload. Autosave is a POST per
+      answer, writing selected_option / written_answer on the
+      ExamSheetQuestion. That, not the countdown, is what protects their work.
+    · Moving between questions does not write current_position, so a reconnect
+      resumes at wherever the page last loaded rather than where they got to.
+    · Submit ends the sitting in the browser only. It has to stamp
+      ExamSheet.submitted_at and move the booking on.
+
+  The countdown stays display-only by design. ExamSheet.expires_at on the
+  server is the deadline; a candidate editing this number gains nothing.
+
+  NO ANSWER KEY REACHES THIS PAGE. The view builds the payload field by field
+  and is_correct is not among them.
 
   LOCKDOWN. Full screen, no right-click, no copy. All three are deterrent and
   audit trail, never enforcement — each is trivially defeated from devtools and
@@ -32,7 +40,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ sheet.booking.exam.exam_name|default:"Selenium 101" }} · Exam in progress</title>
+  <title>{{ booking.exam.exam_name }} · Exam in progress</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -59,11 +67,13 @@
       @cut.prevent
       x-data="player()" x-init="start()">
 
+  {{ questions_json|json_script:"paper-data" }}
+
   {# ================= Top bar ================= #}
   <header class="flex h-16 shrink-0 items-center gap-4 border-b border-line bg-white px-4 sm:px-6">
     <div class="min-w-0">
       <p class="truncate text-[15px] font-bold tracking-tight">
-        {{ sheet.booking.exam.exam_name|default:"Selenium 101" }}
+        {{ booking.exam.exam_name }}
       </p>
       <p class="text-[12.5px] text-muted">
         Question <span x-text="current + 1"></span> of <span x-text="questions.length"></span>
@@ -106,26 +116,54 @@
     </div>
   </header>
 
-  {# ================= Full-screen nag ================= #}
+  {# ================= Full-screen guard ================= #}
   {% comment %}
-    A banner, not a modal. Blocking the paper because someone tabbed away is
-    punishing an accident; the clock is already running and they need to get
-    back to work. The exit is what gets recorded, not what gets prevented.
+    Opaque white, not a translucent backdrop, and covering everything. The
+    point is that the paper is not readable while the candidate is out of full
+    screen — a dimmed overlay still shows the questions underneath, which is
+    exactly what someone would window the tab to do.
+
+    One way out, and it goes back into the exam. There is deliberately no
+    "leave" button here: the clock is still running, so an exit at this moment
+    would abandon a live attempt with no way back in. Leaving is a decision
+    that belongs on the submit dialog, where the consequences are spelled out.
+
+    The exit is still only recorded, never punished. An accidental Escape is
+    not cheating, and the audit trail is what makes a pattern visible to
+    whoever reviews a suspicious attempt.
   {% endcomment %}
   <div x-show="!isFull && started" x-cloak
-       class="flex shrink-0 items-center gap-3 border-b border-warn bg-warn-tint px-4 py-2.5 sm:px-6">
-    <svg class="size-4 shrink-0 text-warn" viewBox="0 0 20 20" fill="none" stroke="currentColor"
-         stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-      <path d="M10 6.5v4M10 13.5v.5"/><circle cx="10" cy="10" r="7.5"/>
-    </svg>
-    <p class="text-[13.5px] text-body">
-      <span class="font-semibold text-warn">You have left full screen.</span>
-      This is recorded against your attempt. The clock is still running.
-    </p>
-    <button type="button" @click="enterFullscreen()"
-            class="ml-auto shrink-0 rounded-lg bg-warn px-3 py-1.5 text-[12.5px] font-bold text-white">
-      Return to full screen
-    </button>
+       class="fixed inset-0 z-[70] grid place-items-center bg-white p-6"
+       role="dialog" aria-modal="true" aria-label="Full screen required">
+    <div class="w-full max-w-md text-center">
+
+      <div class="mx-auto grid size-14 place-items-center rounded-2xl bg-warn-tint">
+        <svg class="size-7 text-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"/>
+        </svg>
+      </div>
+
+      <h2 class="mt-5 text-2xl font-bold tracking-tight">Full screen required</h2>
+
+      <p class="mt-2.5 text-[15px] leading-relaxed text-muted">
+        Your exam is hidden until you return to full screen. This has been
+        recorded against your attempt.
+      </p>
+
+      <p class="mt-4 inline-flex items-center gap-2 rounded-lg bg-danger-tint px-4 py-2.5 text-[13.5px] font-semibold text-danger">
+        <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <circle cx="10" cy="10.5" r="6.5"/><path d="M10 7v3.5l2 1.5"/>
+        </svg>
+        Your time is still running — <span class="font-mono" x-text="clock"></span> left
+      </p>
+
+      <button type="button" @click="enterFullscreen()"
+              class="mt-7 inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#111] px-6 text-[15px] font-bold text-white hover:bg-[#2A2B31]">
+        Return to full screen
+      </button>
+    </div>
   </div>
 
   {# ================= Body ================= #}
@@ -403,42 +441,25 @@
       with what replaces it.
     {% endcomment %}
     function player() {
-      const DUMMY = [
-        ["Which browser is required for running Selenium IDE?",
-         ["Chrome", "Firefox", "Edge", "All of these"]],
-        ["What does an explicit wait do that an implicit wait does not?",
-         ["Waits for a condition on a specific element", "Pauses the thread for a fixed time",
-          "Applies to every findElement call", "Retries the whole test"]],
-        ["Which exception does findElement throw when nothing matches?",
-         ["NoSuchElementException", "TimeoutException",
-          "StaleElementReferenceException", "ElementNotInteractableException"]],
-        ["What causes a StaleElementReferenceException?",
-         ["The element is no longer attached to the DOM", "The element is hidden",
-          "The page loaded slowly", "The locator is unsupported"]],
-        ["Recommended way to handle dynamic elements?",
-         ["Using CSS locators", "Using relative XPath locators",
-          "Using regular expressions", "All of these"]],
-        ["Which protocol does Selenium 4 use to talk to the browser driver?",
-         ["JSON Wire Protocol", "W3C WebDriver Protocol", "DevTools Protocol only", "gRPC"]],
-        ["What is the difference between driver.close() and driver.quit()?",
-         ["close() closes the current window; quit() ends the session",
-          "close() ends the session; quit() closes a tab",
-          "They are the same", "close() clears cookies"]],
-        ["In the test automation pyramid, which layer holds the most tests?",
-         ["Unit tests", "Integration tests", "End-to-end UI tests", "Manual tests"]],
-      ];
-
-      const questions = [];
-      for (let n = 1; n <= 20; n++) {
-        const [text, options] = DUMMY[(n - 1) % DUMMY.length];
-        questions.push({ n, type: "objective", marks: 5, text, options,
-                         answer: null, written: "", flagged: false, seen: false });
-      }
+      // The real paper, serialised by the view. json_script escapes it safely
+      // and keeps it out of an inline expression, so a question containing a
+      // quote or a closing script tag cannot break the page.
+      //
+      // Written in words, not symbols, on purpose: an HTML parser ends a
+      // script at the first closing tag it sees, comment or not. Writing the
+      // literal here is what broke this page once already.
+      const questions = JSON.parse(
+        document.getElementById("paper-data").textContent
+      );
 
       return {
         questions,
-        current: 0,
-        remaining: 45 * 60,
+        // Resumes where they were. A reconnect returns the candidate to the
+        // question they left, not to the start.
+        current: {{ start_position }} - 1,
+        // Display only. The deadline that counts is ExamSheet.expires_at, on
+        // the server; changing this number in devtools buys nothing.
+        remaining: {{ remaining_seconds }},
         started: false,
         isFull: false,
         saved: false,
@@ -447,7 +468,22 @@
 
         start() {
           this.started = true;
+
+          // Asking on load usually fails: the Fullscreen API needs a user
+          // gesture, and arriving via a redirect is not one. It is worth trying
+          // anyway — if the browser carried full screen through the navigation
+          // from the instructions page, this is a no-op and the banner never
+          // appears.
           this.enterFullscreen();
+
+          // The fallback that actually works. The first thing the candidate
+          // touches is a gesture, so full screen engages then. `once` so it
+          // stops fighting them if they deliberately leave — that is what the
+          // banner and the audit trail are for, not a loop.
+          const onFirstGesture = () => this.enterFullscreen();
+          document.addEventListener("pointerdown", onFirstGesture, { once: true });
+          document.addEventListener("keydown", onFirstGesture, { once: true });
+
           document.addEventListener("fullscreenchange", () => {
             this.isFull = !!document.fullscreenElement;
           });
@@ -496,9 +532,16 @@
         },
 
         enterFullscreen() {
+          if (document.fullscreenElement) { this.isFull = true; return; }
           const el = document.documentElement;
-          if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
-          this.isFull = !!document.fullscreenElement;
+          if (el.requestFullscreen) {
+            // .then, not a bare call: the promise is what tells us whether it
+            // was granted. Reading document.fullscreenElement straight after
+            // asking reports the old state, because the request is async.
+            el.requestFullscreen()
+              .then(() => { this.isFull = true; })
+              .catch(() => { this.isFull = false; });
+          }
         },
 
         toggleFullscreen() {

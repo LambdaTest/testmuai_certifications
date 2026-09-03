@@ -24,5 +24,5 @@ urlpatterns = [
     path("question_center/import_questions/", views.import_questions, name="import_questions"),
     path("question_center/delete_question/<int:question_id>/", views.delete_question, name="delete_question"),
     path("exam/player/<uuid:booking_id>/", views.exam_player, name="exam_player"),
-    path("exam/player/<uuid:booking_id>/start/", views.start_exam_termsandconditions, name="start_exam_termsandconditions"),
+    path("exam/player/<uuid:booking_id>/termsandconditions/", views.start_exam_termsandconditions, name="start_exam_termsandconditions"),
 ]

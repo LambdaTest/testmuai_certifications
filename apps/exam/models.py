@@ -14,6 +14,7 @@ re-exported from ``models/__init__.py`` — not into another app.
 """
 
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -362,6 +363,39 @@ class ExamBooking(models.Model):
 
     def __str__(self):
         return f"{self.exam} @ {self.scheduled_at:%Y-%m-%d %H:%M} UTC"
+
+    @property
+    def stage(self):
+        """
+        Where an open booking sits against the clock: "upcoming", "underway" or
+        "lapsed". None for any other status, which already describes itself.
+
+        Status alone cannot answer this. A booking stays BOOKED until something
+        changes it, and nothing does — NO_SHOW exists in Status and is never
+        set, because the job that would set it is the Celery work that is not
+        wired up yet. So a page labelling itself from `status` says "Upcoming"
+        about an exam that finished last week.
+
+        Derived rather than stored, deliberately. A stored value would need the
+        same missing job to keep it true, and would then be wrong in the
+        database rather than only on screen.
+
+        "lapsed" is a display word, not a verdict. Whether a candidate may still
+        start late — and whether the paper then runs a full duration or only to
+        the original end — is an open decision in docs/master-spec.md. Nothing
+        here forecloses it.
+        """
+        if self.status != self.Status.BOOKED:
+            return None
+
+        from django.utils import timezone as dj_tz
+
+        now = dj_tz.now()
+        if now < self.scheduled_at:
+            return "upcoming"
+        if now < self.scheduled_at + timedelta(minutes=self.exam.duration_minutes):
+            return "underway"
+        return "lapsed"
 
     @property
     def local_scheduled_at(self):

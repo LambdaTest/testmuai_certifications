@@ -27,8 +27,18 @@
     </div>
     <div class="flex flex-wrap items-center gap-3">
       <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">{{ booking.exam.exam_name }}</h1>
-      {% if booking.status == 'booked' %}
+      {% comment %}
+        Reads booking.stage, not booking.status, for an open booking. Status
+        stays BOOKED until something changes it and nothing does yet, so a
+        status-only badge went on saying "Upcoming" about an exam that had
+        already finished.
+      {% endcomment %}
+      {% if booking.stage == 'upcoming' %}
         <span class="rounded-full bg-brand-tint px-3 py-1 text-xs font-bold text-brand-dark">Upcoming</span>
+      {% elif booking.stage == 'underway' %}
+        <span class="rounded-full bg-ok-tint px-3 py-1 text-xs font-bold text-ok">Ready to join</span>
+      {% elif booking.stage == 'lapsed' %}
+        <span class="rounded-full bg-warn-tint px-3 py-1 text-xs font-bold text-warn">Time has passed</span>
       {% elif booking.status == 'attended' %}
         <span class="rounded-full bg-ok-tint px-3 py-1 text-xs font-bold text-ok">Attended</span>
       {% elif booking.status == 'cancelled' %}
@@ -99,15 +109,33 @@
           </a>
         </div>
       </div>
+
+      {% comment %}
+        Solid black against two outlined buttons, so the one action that starts
+        something irreversible is the one the eye lands on.
+
+        It goes to the instructions, never straight into the paper: the clock
+        starts on the begin button there, so linking directly to the player
+        would start the exam for them.
+      {% endcomment %}
+      <a href="{% url 'exam:start_exam_termsandconditions' booking.booking_id %}"
+         class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31]">
+        Join exam →
+      </a>
     </div>
+
   {% elif booking.status == 'attended' %}
-  <div class="mt-6 flex flex-wrap items-center gap-3">
+    <div class="mt-6 flex flex-wrap items-center gap-3">
+      {% comment %}
+        NEEDS A ROUTE. This points at reschedule, which is wrong — there is no
+        results view yet. Rescheduling an attended booking is not a thing.
+      {% endcomment %}
       <a href="{% url 'exam:reschedule' booking.booking_id %}"
          class="inline-flex h-11 items-center rounded-lg border border-line px-5 text-sm font-semibold text-body hover:border-[#B9BFC9]">
         Show Results
       </a>
+    </div>
   {% endif %}
-  </div>
   <p class="mt-6 text-xs text-faint">Exam ID for reference · {{ booking.booking_id }}</p>
 </div>
 {% endblock %}

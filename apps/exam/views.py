@@ -31,9 +31,13 @@ from .forms import (
     SubjectForm,
     ImportQuestionsForm
 )
-from .models import Exam, ExamBooking, Subject, Question, Audio, Video
+from .models import (Exam, ExamBooking, ExamSheet, ExamSheetQuestion,
+                     Subject, Question, Audio, Video)
 from apps.home.models import User
 from apps.home.decorators import role_required
+from datetime import timedelta
+
+from django.utils import timezone
 from django.db import transaction
 from django.db.models import Case, When, IntegerField
 
@@ -600,19 +604,158 @@ def start_exam_termsandconditions(request, booking_id):
         candidate=request.user,
         status=ExamBooking.Status.BOOKED,
     )
+
+    # POST is the begin button. It has to be a POST: it draws the paper and
+    # starts the clock, and a GET that does that is one browser prefetch or one
+    # link preview away from starting somebody's exam without them.
+    if request.method == "POST":
+        try:
+            _start_or_resume(booking)
+        except ValidationError as exc:
+            messages.error(request, exc.messages[0])
+            return redirect("exam:start_exam_termsandconditions", booking_id=booking.booking_id)
+        return redirect("exam:exam_player", booking_id=booking.booking_id)
+
     return render(
         request,
         "exam/start_exam_termsandconditions.html",
         {"booking": booking},
     )
 
+
+def _start_or_resume(booking):
+    """
+    Returns the booking's ExamSheet, drawing the paper the first time.
+
+    Idempotent on purpose. A candidate who double-clicks begin, or reloads the
+    POST, or comes back after a dropped connection must land on the *same*
+    paper — so an existing sheet is returned untouched rather than redrawn. The
+    OneToOneField would refuse a second row anyway; returning early means they
+    get their exam back instead of a 500.
+
+    Everything is fixed here and never again: which questions, their order,
+    what each is worth, and when the paper closes.
+    """
+    sheet = ExamSheet.objects.filter(booking=booking).first()
+    if sheet is not None:
+        return sheet
+
+    exam = booking.exam
+
+    # Only questions of the exam's own type. Nothing in the models stops an
+    # objective exam serving a subjective question, and it would break
+    # total_marks_for()'s arithmetic — it multiplies by MARKS_PER_QUESTION
+    # rather than summing what was actually served.
+    pool = Question.objects.filter(
+        question_subject=exam.subject,
+        question_type=exam.exam_type,
+        status=Question.Status.ACTIVE,
+    )
+
+    wanted = exam.question_count or 0
+    if not wanted:
+        raise ValidationError(
+            "This exam has no question count set, so there is no paper to draw. "
+            "Please contact support."
+        )
+
+    available = pool.count()
+    if available < wanted:
+        # Checked at Start Test rather than only at publish, because the bank
+        # changes after an exam is saved — a form check would have gone stale.
+        raise ValidationError(
+            f"This exam needs {wanted} questions but only {available} are "
+            f"available. Please contact support before trying again."
+        )
+
+    # order_by("?") is a database-side shuffle. Fine at this scale; if the bank
+    # ever reaches the tens of thousands it becomes a full sort and should be
+    # replaced by sampling ids in Python.
+    drawn = list(pool.order_by("?")[:wanted])
+
+    with transaction.atomic():
+        sheet = ExamSheet.objects.create(
+            booking=booking,
+            expires_at=timezone.now() + timedelta(minutes=exam.duration_minutes),
+        )
+        ExamSheetQuestion.objects.bulk_create([
+            ExamSheetQuestion(
+                sheet=sheet,
+                question=question,
+                position=index,
+                marks=question.marks,
+            )
+            for index, question in enumerate(drawn, start=1)
+        ])
+    return sheet
+
+@login_required
 def exam_player(request, booking_id):
     """
-    This is the actual exam player on which a candidate will take the exam.
-    The exam player will list down questions one at a time with its options in case of Objective
-    or a text field in case of Subjective. The candidate can navigate on the player on any question
-    using the question bookmark panel located on the right. They can answer or leave the options blank
-    and proceed to the next question. The candidate can also put down a question on review by choosing the review option
-    on the question. 
+    The exam itself: one question at a time, with a palette to jump around.
+
+    Reached only from the instructions page, which is what creates the sheet.
+    Arriving here without one means the candidate has not pressed begin, so
+    they are sent back rather than having a paper drawn for them by a URL they
+    typed.
+
+    ANSWER KEYS NEVER REACH THIS PAGE. The payload below is built field by
+    field and `is_correct` is not one of them — a serializer shared with
+    grading is how that leaks. See docs/conventions.md, "Answer-key safety".
+
+    NOT WIRED YET: answers live in the browser and a reload loses them.
+    Autosave is a POST per answer, writing selected_option / written_answer on
+    the ExamSheetQuestion; submit stamps ExamSheet.submitted_at and moves the
+    booking on. Until those exist this renders the real paper but records
+    nothing.
     """
-    return render(request, "exam/exam_player.html", {"booking_id": booking_id})
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam__subject"),
+        booking_id=booking_id,
+        candidate=request.user,
+    )
+    sheet = (
+        ExamSheet.objects
+        .filter(booking=booking)
+        .prefetch_related("questions__question__answers")
+        .first()
+    )
+    if sheet is None:
+        return redirect("exam:start_exam_termsandconditions", booking_id=booking.booking_id)
+
+    if sheet.submitted_at is not None:
+        messages.info(request, "You have already submitted this exam.")
+        return redirect("home:dashboard")
+
+    # Serialised here rather than in the template so the shape is visible in
+    # one place and the answer key is excluded by construction.
+    questions = [
+        {
+            "n": entry.position,
+            "type": entry.question.question_type,
+            "marks": entry.marks,
+            "text": entry.question.question_text,
+            "options": [o.answer_option_text for o in entry.question.answers.all()],
+            "answer": None,
+            "written": "",
+            "flagged": False,
+        }
+        for entry in sheet.questions.all()
+    ]
+
+    remaining = int((sheet.expires_at - timezone.now()).total_seconds())
+
+    return render(
+        request,
+        "exam/exam_player.html",
+        {
+            "booking": booking,
+            "sheet": sheet,
+            "questions_json": questions,
+            # Clamped at zero so an expired sheet renders 00:00 rather than a
+            # negative countdown. The server, not this number, is what actually
+            # decides whether the paper is still open.
+            "remaining_seconds": max(0, remaining),
+            "start_position": sheet.current_position,
+        },
+    )

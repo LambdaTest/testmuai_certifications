@@ -224,13 +224,31 @@
       </span>
     </label>
 
-    <div class="mt-5 flex flex-wrap items-center gap-3">
+    {% comment %}
+      A POST, not a link. This draws the paper and starts the clock, so a GET
+      would let a browser prefetch, a link preview or a mail scanner start
+      somebody's exam for them.
+    {% endcomment %}
+    <form method="post" class="mt-5 flex flex-wrap items-center gap-3">
+      {% csrf_token %}
       {% comment %}
         Disabled rather than hidden, so a candidate can see the action exists
         and work out why it is not available yet. A hidden button reads as a
         page that has not finished loading.
       {% endcomment %}
+      {% comment %}
+        Requests full screen on the click itself. The Fullscreen API only grants
+        the request during a user gesture, which is why the player cannot simply
+        ask for it on load — this click is that gesture.
+
+        Whether it survives the POST and redirect is the browser's call: Chrome
+        and Firefox drop full screen on a top-level navigation. So the player
+        asks again on the candidate's first interaction there, and shows the
+        amber banner until it has it. Between the two, the exam is full screen
+        from the first thing they touch.
+      {% endcomment %}
       <button type="submit" :disabled="!ready"
+              @click="document.documentElement.requestFullscreen?.().catch(() => {})"
               class="inline-flex h-12 items-center rounded-lg bg-[#111] px-7 text-[15px] font-bold text-white
                      hover:bg-[#2A2B31] disabled:cursor-not-allowed disabled:bg-zinc-300">
         I'm ready to begin
@@ -244,7 +262,7 @@
          class="ml-auto inline-flex h-12 items-center rounded-lg px-4 text-[14.5px] font-semibold text-muted hover:text-ink">
         Not now
       </a>
-    </div>
+    </form>
   </div>
 
   <p class="mt-6 text-center text-[14.5px] text-muted">Good luck!</p>
