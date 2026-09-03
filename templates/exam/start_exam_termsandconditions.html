@@ -35,7 +35,7 @@
   x-bind here is inert and the button would otherwise be live from the start.
   Hence :disabled rather than an x-show that hides it.
 {% endcomment %}
-<div class="mx-auto max-w-3xl px-4 py-10" x-data="{ ready: false }">
+<div class="mx-auto max-w-3xl px-4 py-10" x-data="{ ready: false, sample: false }">
 
   <p class="text-[13px] font-bold tracking-[1.4px] text-faint uppercase">Before You Begin Your Exam</p>
 
@@ -94,12 +94,20 @@
       <li class="flex gap-3.5">
         <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">2</span>
         <p class="text-[14.5px] leading-relaxed text-body">
+          <span class="font-semibold text-ink">The exam opens full screen</span> and stays there.
+          Leaving full screen is recorded against your attempt, so close anything you need
+          closed before you begin.
+        </p>
+      </li>
+      <li class="flex gap-3.5">
+        <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">3</span>
+        <p class="text-[14.5px] leading-relaxed text-body">
           <span class="font-semibold text-ink">The clock starts immediately</span> and does not
           pause. Closing the tab, losing your connection or walking away does not stop or pause it.
         </p>
       </li>
       <li class="flex gap-3.5">
-        <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">3</span>
+        <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">4</span>
         <p class="text-[14.5px] leading-relaxed text-body">
           <span class="font-semibold text-ink">Every answer saves as you give it.</span>
           If your connection drops, sign back in and you will be on the question you left,
@@ -107,7 +115,7 @@
         </p>
       </li>
       <li class="flex gap-3.5">
-        <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">4</span>
+        <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">5</span>
         <p class="text-[14.5px] leading-relaxed text-body">
           <span class="font-semibold text-ink">When time runs out it submits itself</span>
           with whatever you have answered. Unanswered questions score zero — they are not
@@ -140,6 +148,20 @@
         You cannot reopen the paper, and this test is a single attempt.
       </p>
     </div>
+
+    {% comment %}
+      Shown rather than described. "The palette is on the right" is a sentence
+      nobody retains and a picture they will — and the first time a candidate
+      sees this layout should not be with the clock already running.
+    {% endcomment %}
+    <button type="button" @click="sample = true"
+            class="mt-5 inline-flex h-11 items-center gap-2 rounded-lg border border-line px-4 text-[14.5px] font-semibold text-body hover:border-brand hover:text-brand">
+      <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="2.5" y="4" width="15" height="12" rx="1.5"/><path d="M2.5 7.5h15"/>
+      </svg>
+      See a sample screen
+    </button>
   </section>
 
   {# ---------- Rules ---------- #}
@@ -226,6 +248,143 @@
   </div>
 
   <p class="mt-6 text-center text-[14.5px] text-muted">Good luck!</p>
+
+  {# ---------- Sample screen ---------- #}
+  {% comment %}
+    A labelled diagram, not a screenshot. A screenshot has to be retaken every
+    time the player changes and goes stale silently; this is built from the same
+    design tokens as the real thing, so it drifts visibly instead.
+
+    Escape closes it and the backdrop is clickable. A modal a candidate cannot
+    get out of, on the page immediately before an exam, is its own small cruelty.
+  {% endcomment %}
+  <div x-show="sample" x-cloak @keydown.escape.window="sample = false"
+       class="fixed inset-0 z-50 grid place-items-center p-4"
+       role="dialog" aria-modal="true" aria-label="Sample exam screen">
+
+    <div @click="sample = false" class="absolute inset-0 bg-black/50"></div>
+
+    <div class="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h2 class="text-xl font-bold tracking-tight">What the exam screen looks like</h2>
+          <p class="mt-1 text-[14.5px] text-muted">
+            Nothing here is live — it is a picture, so you know where everything is
+            before the clock starts.
+          </p>
+        </div>
+        <button type="button" @click="sample = false" aria-label="Close"
+                class="grid size-9 shrink-0 place-items-center rounded-lg text-zinc-400 hover:bg-surface hover:text-body">
+          <svg class="size-5" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <path d="m5 5 10 10M15 5 5 15"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="mt-5 overflow-hidden rounded-xl border-2 border-line bg-surface">
+
+        <div class="flex items-center justify-between gap-4 border-b border-line bg-white px-4 py-3">
+          <div>
+            <p class="text-[13.5px] font-bold text-ink">{{ booking.exam.exam_name|default:"Your exam" }}</p>
+            <p class="text-[12px] text-muted">Question 7 of {{ booking.exam.question_count|default:20 }}</p>
+          </div>
+          <div class="flex items-center gap-2 rounded-lg bg-ok-tint px-3 py-1.5">
+            <svg class="size-4 text-ok" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+              <circle cx="10" cy="10.5" r="6.5"/><path d="M10 7v3.5l2 1.5"/>
+            </svg>
+            <span class="font-mono text-[15px] font-bold text-ok">28:14</span>
+          </div>
+        </div>
+
+        <div class="grid gap-4 p-4 sm:grid-cols-[1fr_190px]">
+
+          <div class="rounded-lg border border-line bg-white p-4">
+            <p class="text-[14px] font-semibold text-ink">
+              Which wait pauses until a specific condition is met on a specific element?
+            </p>
+            <div class="mt-3 grid gap-2">
+              <div class="flex items-center gap-2.5 rounded-lg border border-zinc-300 px-3 py-2">
+                <span class="size-3.5 shrink-0 rounded-full border-2 border-zinc-300"></span>
+                <span class="text-[13px] text-body">Implicit wait</span>
+              </div>
+              <div class="flex items-center gap-2.5 rounded-lg border-2 border-brand bg-brand-tint px-3 py-2">
+                <span class="grid size-3.5 shrink-0 place-items-center rounded-full border-2 border-brand">
+                  <span class="size-1.5 rounded-full bg-brand"></span>
+                </span>
+                <span class="text-[13px] font-semibold text-brand-dark">Explicit wait</span>
+              </div>
+              <div class="flex items-center gap-2.5 rounded-lg border border-zinc-300 px-3 py-2">
+                <span class="size-3.5 shrink-0 rounded-full border-2 border-zinc-300"></span>
+                <span class="text-[13px] text-body">Thread.sleep()</span>
+              </div>
+            </div>
+
+            <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-[#F0F1F3] pt-3">
+              <span class="rounded-lg border border-line px-3 py-1.5 text-[12.5px] font-semibold text-muted">&larr; Previous</span>
+              <span class="rounded-lg border border-warn bg-warn-tint px-3 py-1.5 text-[12.5px] font-semibold text-warn">Flag for review</span>
+              <span class="ml-auto rounded-lg bg-[#111] px-3.5 py-1.5 text-[12.5px] font-semibold text-white">Next &rarr;</span>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-line bg-white p-3">
+            <p class="text-[11px] font-bold tracking-[1px] text-faint uppercase">Questions</p>
+            <div class="mt-2.5 grid grid-cols-5 gap-1.5">
+              {% for n in "123456789012345678"|make_list %}
+                {% if forloop.counter == 7 %}
+                  <span class="grid aspect-square place-items-center rounded border-2 border-ink bg-ink text-[11px] font-bold text-white">7</span>
+                {% elif forloop.counter == 3 or forloop.counter == 11 %}
+                  <span class="grid aspect-square place-items-center rounded bg-warn-tint text-[11px] font-bold text-warn">{{ forloop.counter }}</span>
+                {% elif forloop.counter < 9 %}
+                  <span class="grid aspect-square place-items-center rounded bg-ok-tint text-[11px] font-bold text-ok">{{ forloop.counter }}</span>
+                {% else %}
+                  <span class="grid aspect-square place-items-center rounded bg-[#F0F1F4] text-[11px] font-bold text-faint">{{ forloop.counter }}</span>
+                {% endif %}
+              {% endfor %}
+            </div>
+            <div class="mt-3 grid gap-1.5 border-t border-[#F0F1F3] pt-2.5 text-[11.5px]">
+              <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-ok-tint"></span><span class="text-muted">Answered</span></span>
+              <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-warn-tint"></span><span class="text-muted">Flagged</span></span>
+              <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-[#F0F1F4]"></span><span class="text-muted">Not seen</span></span>
+              <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-ink"></span><span class="text-muted">You are here</span></span>
+            </div>
+            <div class="mt-3 rounded-lg bg-danger-tint px-2.5 py-2 text-center text-[12px] font-bold text-danger">
+              Submit exam
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-5 grid gap-3 sm:grid-cols-2">
+        <p class="text-[13.5px] leading-relaxed text-body">
+          <span class="font-semibold text-ink">The timer is top right.</span>
+          It counts down and turns red near the end. It runs on our server, not in your browser.
+        </p>
+        <p class="text-[13.5px] leading-relaxed text-body">
+          <span class="font-semibold text-ink">The grid on the right is every question.</span>
+          Tap any number to jump straight to it — you are never locked into an order.
+        </p>
+        <p class="text-[13.5px] leading-relaxed text-body">
+          <span class="font-semibold text-ink">Flag anything you want to revisit.</span>
+          It turns amber in the grid, so what is still open is visible at a glance.
+        </p>
+        <p class="text-[13.5px] leading-relaxed text-body">
+          <span class="font-semibold text-ink">Submit is always reachable.</span>
+          You do not have to reach the last question to finish, and you will be asked to confirm.
+        </p>
+      </div>
+
+      <div class="mt-6 flex justify-end">
+        <button type="button" @click="sample = false"
+                class="inline-flex h-11 items-center rounded-lg bg-[#111] px-5 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
+          Got it
+        </button>
+      </div>
+    </div>
+  </div>
+
 
 </div>
 {% endblock %}
