@@ -597,4 +597,4 @@ def exam_player(request, booking_id):
     and proceed to the next question. The candidate can also put down a question on review by choosing the review option
     on the question. 
     """
-    pass
+    return render(request, "exam/exam_player.html", {"booking_id": booking_id})

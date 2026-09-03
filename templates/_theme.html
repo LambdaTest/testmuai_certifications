@@ -1,0 +1,38 @@
+{% comment %}
+  Design tokens, in one place.
+
+  Included by base.html and by exam/exam_player.html. The player cannot extend
+  base.html — that carries a sticky nav, a sign-out link and a footer, and an
+  exam screen must render no navigation at all — so without this partial the
+  token list would exist in three copies (here, base.html, and the player) and
+  they would drift.
+
+  Keep in sync with static/css/input.css, which is what the production Tailwind
+  build reads. When that build lands, both consumers swap the script tag for a
+  stylesheet link and this file goes away.
+{% endcomment %}
+  <style type="text/tailwindcss">
+    @theme {
+      --font-sans: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+      --color-brand: #2C86EE;
+      --color-brand-dark: #1A6FD4;
+      --color-brand-tint: #EAF2FD;
+      --color-ink: #101010;
+      --color-body: #333333;
+      --color-muted: #666666;
+      --color-faint: #98A0AB;
+      --color-line: #E8E8E8;
+      --color-surface: #F8F9FB;
+      --color-dark: #0E0F13;
+      --color-ok: #0E8A45;
+      --color-ok-tint: #EAF7EF;
+      --color-warn: #B97F10;
+      --color-warn-tint: #FDF2E7;
+      --color-danger: #C2402A;
+      --color-danger-tint: #FBEBEB;
+    }
+
+  </style>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>

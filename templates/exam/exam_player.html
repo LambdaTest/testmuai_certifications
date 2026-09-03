@@ -1,0 +1,517 @@
+{% load static %}<!doctype html>
+<html lang="en" class="h-full">
+{% comment %}
+  The exam player. DUMMY DATA — every question below is hardcoded in Alpine so
+  the screen can be driven and reviewed before the sheet is wired up.
+
+  Context it will need from apps.exam.views.exam_player:
+    sheet – the ExamSheet, with .questions prefetched and .booking.exam selected
+
+  DELIBERATELY NOT EXTENDING base.html. That template carries a sticky nav, a
+  sign-out link and a footer. A nav bar mid-exam is an invitation to leave, and
+  it muddies "did the candidate navigate away" as a signal. Nothing on this
+  page navigates anywhere except Submit.
+
+  WHAT IS FAKE AND MUST BE REPLACED:
+    · `questions` — the array in x-data. Becomes {{ sheet.questions.all }}.
+    · `remaining` — counts down in the browser. The real deadline is
+      ExamSheet.expires_at, checked server-side on every write; this countdown
+      is display only. A candidate who changes it in devtools gains nothing.
+    · Answers live in Alpine and vanish on reload. Real autosave POSTs each
+      answer as it is given — that, not the countdown, is what protects work.
+    · `current` becomes ExamSheet.current_position, written on every move, so a
+      reconnect resumes here rather than at question 1.
+
+  LOCKDOWN. Full screen, no right-click, no copy. All three are deterrent and
+  audit trail, never enforcement — each is trivially defeated from devtools and
+  none survives a phone camera. What they are worth is the log: record every
+  full-screen exit and blocked copy against the sheet so a pattern is visible to
+  whoever reviews a suspicious attempt. Do not auto-terminate on a violation;
+  an accidental Escape is not cheating.
+{% endcomment %}
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ sheet.booking.exam.exam_name|default:"Selenium 101" }} · Exam in progress</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+  <script defer src="https://unpkg.com/alpinejs@3/dist/cdn.min.js"></script>
+
+  {% include "_theme.html" %}
+
+  <style>
+    {% comment %}
+      Copy is blocked on the question pane only. Blocking selection everywhere
+      would stop a candidate selecting their own typed answer in a subjective
+      box, which is hostile for no gain.
+    {% endcomment %}
+    .noselect { user-select: none; -webkit-user-select: none; }
+  </style>
+</head>
+
+<body class="flex h-full flex-col overflow-hidden bg-surface font-sans text-ink antialiased"
+      @contextmenu.prevent
+      @copy.prevent
+      @cut.prevent
+      x-data="player()" x-init="start()">
+
+  {# ================= Top bar ================= #}
+  <header class="flex h-16 shrink-0 items-center gap-4 border-b border-line bg-white px-4 sm:px-6">
+    <div class="min-w-0">
+      <p class="truncate text-[15px] font-bold tracking-tight">
+        {{ sheet.booking.exam.exam_name|default:"Selenium 101" }}
+      </p>
+      <p class="text-[12.5px] text-muted">
+        Question <span x-text="current + 1"></span> of <span x-text="questions.length"></span>
+      </p>
+    </div>
+
+    {# progress #}
+    <div class="mx-auto hidden h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-[#F0F1F4] md:block">
+      <div class="h-full rounded-full bg-ok transition-[width] duration-300"
+           :style="`width: ${(answered / questions.length) * 100}%`"></div>
+    </div>
+
+    <div class="ml-auto flex items-center gap-3">
+      {% comment %}
+        Amber under five minutes, red under one. Colour alone is not a signal
+        for everyone, so the label changes too rather than only the hue.
+      {% endcomment %}
+      <div class="flex items-center gap-2 rounded-lg px-3 py-2"
+           :class="remaining < 60 ? 'bg-danger-tint' : remaining < 300 ? 'bg-warn-tint' : 'bg-surface'">
+        <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" aria-hidden="true"
+             :class="remaining < 60 ? 'text-danger' : remaining < 300 ? 'text-warn' : 'text-muted'">
+          <circle cx="10" cy="10.5" r="6.5"/><path d="M10 7v3.5l2 1.5"/>
+        </svg>
+        <span class="font-mono text-[16px] font-bold tabular-nums"
+              :class="remaining < 60 ? 'text-danger' : remaining < 300 ? 'text-warn' : 'text-ink'"
+              x-text="clock"></span>
+        <span class="sr-only" x-text="remaining < 300 ? 'Time is running out' : ''"></span>
+      </div>
+
+      <button type="button" @click="toggleFullscreen()"
+              :aria-label="isFull ? 'Exit full screen' : 'Enter full screen'"
+              class="grid size-10 place-items-center rounded-lg border border-line text-muted hover:border-brand hover:text-brand">
+        <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path x-show="!isFull" d="M7.5 2.5h-5v5M12.5 2.5h5v5M17.5 12.5v5h-5M2.5 12.5v5h5"/>
+          <path x-show="isFull" x-cloak d="M2.5 7.5h5v-5M17.5 7.5h-5v-5M12.5 17.5v-5h5M7.5 17.5v-5h-5"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  {# ================= Full-screen nag ================= #}
+  {% comment %}
+    A banner, not a modal. Blocking the paper because someone tabbed away is
+    punishing an accident; the clock is already running and they need to get
+    back to work. The exit is what gets recorded, not what gets prevented.
+  {% endcomment %}
+  <div x-show="!isFull && started" x-cloak
+       class="flex shrink-0 items-center gap-3 border-b border-warn bg-warn-tint px-4 py-2.5 sm:px-6">
+    <svg class="size-4 shrink-0 text-warn" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+         stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+      <path d="M10 6.5v4M10 13.5v.5"/><circle cx="10" cy="10" r="7.5"/>
+    </svg>
+    <p class="text-[13.5px] text-body">
+      <span class="font-semibold text-warn">You have left full screen.</span>
+      This is recorded against your attempt. The clock is still running.
+    </p>
+    <button type="button" @click="enterFullscreen()"
+            class="ml-auto shrink-0 rounded-lg bg-warn px-3 py-1.5 text-[12.5px] font-bold text-white">
+      Return to full screen
+    </button>
+  </div>
+
+  {# ================= Body ================= #}
+  {% comment %}
+    flex-1 and min-h-0, not a calc against the header height. The banner above
+    is conditional, so any fixed subtraction is wrong exactly when it shows —
+    which is the state a candidate is most likely to be in when they need the
+    action bar. min-h-0 is the part that is easy to miss: a grid or flex child
+    defaults to min-height:auto, so it refuses to shrink below its content and
+    the overflow lands outside the viewport instead of inside the scroll pane.
+  {% endcomment %}
+  <div class="grid min-h-0 flex-1 gap-0 lg:grid-cols-[1fr_320px]">
+
+    {# ---------------- Question pane ---------------- #}
+    <main class="flex min-h-0 flex-col">
+      <div class="flex-1 overflow-y-auto px-4 py-6 sm:px-8">
+        <div class="mx-auto max-w-3xl">
+
+          <template x-for="(q, i) in questions" :key="q.n">
+            <div x-show="i === current">
+
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="rounded-full bg-brand-tint px-3 py-1 text-[12px] font-bold text-brand-dark"
+                      x-text="`Question ${q.n}`"></span>
+                <span class="rounded-full bg-surface px-3 py-1 text-[12px] font-bold text-muted"
+                      x-text="`${q.marks} mark${q.marks === 1 ? '' : 's'}`"></span>
+                <span x-show="q.flagged" x-cloak
+                      class="rounded-full bg-warn px-3 py-1 text-[12px] font-bold text-white">
+                  Flagged for review
+                </span>
+              </div>
+
+              {# the question itself — not selectable, per the copy rule #}
+              <p class="noselect mt-4 text-[19px] leading-[1.55] font-semibold tracking-tight"
+                 x-text="q.text"></p>
+
+              {# ---- objective ---- #}
+              <div x-show="q.type === 'objective'" class="mt-6 grid gap-2.5">
+                <template x-for="(opt, oi) in q.options" :key="oi">
+                  <label class="noselect flex cursor-pointer items-start gap-3.5 rounded-xl border-2 px-4 py-3.5 transition-colors"
+                         :class="q.answer === oi
+                                 ? 'border-ok bg-ok-tint'
+                                 : 'border-line bg-white hover:border-zinc-300'">
+                    <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border-2"
+                          :class="q.answer === oi ? 'border-ok' : 'border-zinc-300'">
+                      <span x-show="q.answer === oi" class="size-2.5 rounded-full bg-ok"></span>
+                    </span>
+                    <input type="radio" class="sr-only" :name="`q${q.n}`" :value="oi"
+                           :checked="q.answer === oi" @change="answer(oi)">
+                    <span class="text-[15px] leading-relaxed"
+                          :class="q.answer === oi ? 'font-semibold text-ok' : 'text-body'"
+                          x-text="opt"></span>
+                  </label>
+                </template>
+
+                <button type="button" x-show="q.answer !== null" x-cloak
+                        @click="q.answer = null"
+                        class="mt-1 justify-self-start text-[13px] font-semibold text-muted hover:text-danger">
+                  Clear my answer
+                </button>
+              </div>
+
+              {# ---- subjective ---- #}
+              {% comment %}
+                Selection is allowed here — the candidate has to be able to edit
+                what they typed. The copy block is on the question, not on their
+                own words.
+              {% endcomment %}
+              <div x-show="q.type === 'subjective'" x-cloak class="mt-6">
+                <textarea rows="12" x-model="q.written" @input="q.seen = true"
+                          placeholder="Write your answer here."
+                          class="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-[15px] leading-relaxed outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30"></textarea>
+                <p class="mt-2 text-[13px] text-muted">
+                  <span x-text="(q.written || '').trim().split(/\s+/).filter(Boolean).length"></span> words
+                </p>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      {# ---------------- Action bar ---------------- #}
+      <div class="shrink-0 border-t border-line bg-white px-4 py-3.5 sm:px-8">
+        <div class="mx-auto flex max-w-3xl flex-wrap items-center gap-2.5">
+
+          <button type="button" @click="go(current - 1)" :disabled="current === 0"
+                  class="inline-flex h-11 items-center rounded-lg border border-line px-4 text-[14.5px] font-semibold text-body hover:border-brand hover:text-brand disabled:cursor-not-allowed disabled:text-faint disabled:hover:border-line">
+            ← Previous
+          </button>
+
+          <button type="button" @click="cur().flagged = !cur().flagged"
+                  :aria-pressed="cur().flagged"
+                  class="inline-flex h-11 items-center gap-2 rounded-lg border px-4 text-[14.5px] font-semibold"
+                  :class="cur().flagged
+                          ? 'border-warn bg-warn text-white'
+                          : 'border-line text-body hover:border-warn hover:text-warn'">
+            <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 17V4h9l-2 3 2 3H5"/>
+            </svg>
+            <span x-text="cur().flagged ? 'Flagged' : 'Flag for review'"></span>
+          </button>
+
+          {# autosave receipt — the one thing that reassures people mid-exam #}
+          <span x-show="saved" x-cloak x-transition.opacity
+                class="inline-flex items-center gap-1.5 text-[13px] font-semibold text-ok">
+            <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                 stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m4 10.5 4 4 8-9"/>
+            </svg>
+            Saved
+          </span>
+
+          <button type="button" x-show="current < questions.length - 1"
+                  @click="go(current + 1)"
+                  class="ml-auto inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
+            Save &amp; next →
+          </button>
+
+          <button type="button" x-show="current === questions.length - 1" x-cloak
+                  @click="confirming = true"
+                  class="ml-auto inline-flex h-11 items-center rounded-lg bg-danger px-6 text-[14.5px] font-bold text-white hover:bg-[#A83522]">
+            Submit exam
+          </button>
+        </div>
+      </div>
+    </main>
+
+    {# ---------------- Palette ---------------- #}
+    {% comment %}
+      Four states, not the vendor's five. "Attempted and reviewed" versus "not
+      attempted and reviewed" is a distinction the candidate does not act on
+      differently — either way they meant to come back. Flagged wins the colour;
+      a small dot marks whether it also has an answer.
+    {% endcomment %}
+    <aside class="hidden min-h-0 flex-col border-l border-line bg-white lg:flex">
+      <div class="flex-1 overflow-y-auto p-5">
+        <p class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Your paper</p>
+
+        <div class="mt-3 grid grid-cols-5 gap-2">
+          <template x-for="(q, i) in questions" :key="q.n">
+            <button type="button" @click="go(i)"
+                    :aria-label="`Question ${q.n}${q.answer !== null || (q.written||'').trim() ? ', answered' : ''}${q.flagged ? ', flagged' : ''}`"
+                    :aria-current="i === current"
+                    class="relative grid aspect-square place-items-center rounded-lg text-[13px] font-bold transition-colors"
+                    :class="i === current   ? 'bg-ink text-white ring-2 ring-ink ring-offset-2'
+                          : q.flagged       ? 'bg-warn text-white hover:bg-[#9C6A0D]'
+                          : done(q)         ? 'bg-ok text-white hover:bg-[#0B7038]'
+                          :                   'bg-[#F0F1F4] text-faint hover:bg-[#E6E8ED]'">
+              <span x-text="q.n"></span>
+              <span x-show="q.flagged && done(q)"
+                    class="absolute top-1 right-1 size-1.5 rounded-full bg-white"></span>
+            </button>
+          </template>
+        </div>
+
+        <div class="mt-5 grid gap-2 border-t border-[#F0F1F3] pt-4 text-[13px]">
+          <div class="flex items-center justify-between">
+            <span class="flex items-center gap-2">
+              <span class="size-3 rounded bg-ok"></span><span class="text-body">Answered</span>
+            </span>
+            <span class="font-bold text-ok" x-text="answered"></span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="flex items-center gap-2">
+              <span class="size-3 rounded bg-warn"></span><span class="text-body">Flagged</span>
+            </span>
+            <span class="font-bold text-warn" x-text="flagged"></span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="flex items-center gap-2">
+              <span class="size-3 rounded bg-[#F0F1F4]"></span><span class="text-body">Not answered</span>
+            </span>
+            <span class="font-bold text-faint" x-text="questions.length - answered"></span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="flex items-center gap-2">
+              <span class="size-3 rounded bg-ink"></span><span class="text-body">You are here</span>
+            </span>
+          </div>
+        </div>
+
+        {# jump to the first thing still outstanding — the action people want at the end #}
+        <button type="button" x-show="questions.length - answered > 0" x-cloak
+                @click="goFirstOpen()"
+                class="mt-4 w-full rounded-lg border border-line px-3 py-2.5 text-[13.5px] font-semibold text-body hover:border-brand hover:text-brand">
+          Go to first unanswered
+        </button>
+      </div>
+
+      <div class="shrink-0 border-t border-line p-5">
+        <button type="button" @click="confirming = true"
+                class="w-full rounded-lg bg-danger px-4 py-3 text-[14.5px] font-bold text-white hover:bg-[#A83522]">
+          Submit exam
+        </button>
+        <p class="mt-2 text-center text-[12.5px] text-muted">
+          You will be asked to confirm.
+        </p>
+      </div>
+    </aside>
+  </div>
+
+  {# ================= Submit confirmation ================= #}
+  {% comment %}
+    Shows what is unfinished before asking. "Are you sure?" with no numbers
+    behind it is a dialog people dismiss without reading; naming the four
+    questions they have not answered is the only version that can change a mind.
+  {% endcomment %}
+  <div x-show="confirming" x-cloak @keydown.escape.window="confirming = false"
+       class="fixed inset-0 z-50 grid place-items-center p-4"
+       role="dialog" aria-modal="true" aria-label="Confirm submission">
+    <div @click="confirming = false" class="absolute inset-0 bg-black/60"></div>
+
+    <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+      <h2 class="text-xl font-bold tracking-tight">Submit your exam?</h2>
+      <p class="mt-1.5 text-[14.5px] text-muted">
+        You cannot reopen the paper after this.
+      </p>
+
+      <div class="mt-5 grid gap-2 rounded-xl bg-surface p-4 text-[14px]">
+        <div class="flex justify-between">
+          <span class="text-body">Answered</span>
+          <span class="font-bold text-ok"><span x-text="answered"></span> of <span x-text="questions.length"></span></span>
+        </div>
+        <div class="flex justify-between" x-show="questions.length - answered > 0">
+          <span class="text-body">Not answered</span>
+          <span class="font-bold text-danger" x-text="questions.length - answered"></span>
+        </div>
+        <div class="flex justify-between" x-show="flagged > 0">
+          <span class="text-body">Still flagged</span>
+          <span class="font-bold text-warn" x-text="flagged"></span>
+        </div>
+        <div class="flex justify-between border-t border-line pt-2">
+          <span class="text-body">Time left</span>
+          <span class="font-mono font-bold tabular-nums" x-text="clock"></span>
+        </div>
+      </div>
+
+      <p x-show="questions.length - answered > 0" x-cloak
+         class="mt-3 rounded-xl bg-danger-tint px-4 py-3 text-[13.5px] text-danger">
+        <span x-text="questions.length - answered"></span>
+        <span x-text="questions.length - answered === 1 ? 'question is' : 'questions are'"></span>
+        unanswered. They will score zero — and there is no penalty for a wrong answer,
+        so a guess is always better than a blank.
+      </p>
+
+      <div class="mt-6 flex flex-wrap gap-3">
+        <button type="button" @click="confirming = false"
+                class="inline-flex h-11 flex-1 items-center justify-center rounded-lg border border-line px-4 text-[14.5px] font-semibold text-body hover:border-brand hover:text-brand">
+          Keep working
+        </button>
+        <button type="button" @click="submit()"
+                class="inline-flex h-11 flex-1 items-center justify-center rounded-lg bg-danger px-4 text-[14.5px] font-bold text-white hover:bg-[#A83522]">
+          Submit
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# ================= Time up ================= #}
+  <div x-show="timeUp" x-cloak class="fixed inset-0 z-[60] grid place-items-center bg-black/70 p-4">
+    <div class="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-2xl">
+      <h2 class="text-xl font-bold tracking-tight">Time is up</h2>
+      <p class="mt-2 text-[14.5px] text-muted">
+        Your paper has been submitted with the answers you gave.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    {% comment %}
+      All of this is scaffolding for the real player. The questions are made up,
+      the countdown runs in the browser, and nothing is persisted — a reload
+      loses everything. Every one of those is listed at the top of this file
+      with what replaces it.
+    {% endcomment %}
+    function player() {
+      const DUMMY = [
+        ["Which browser is required for running Selenium IDE?",
+         ["Chrome", "Firefox", "Edge", "All of these"]],
+        ["What does an explicit wait do that an implicit wait does not?",
+         ["Waits for a condition on a specific element", "Pauses the thread for a fixed time",
+          "Applies to every findElement call", "Retries the whole test"]],
+        ["Which exception does findElement throw when nothing matches?",
+         ["NoSuchElementException", "TimeoutException",
+          "StaleElementReferenceException", "ElementNotInteractableException"]],
+        ["What causes a StaleElementReferenceException?",
+         ["The element is no longer attached to the DOM", "The element is hidden",
+          "The page loaded slowly", "The locator is unsupported"]],
+        ["Recommended way to handle dynamic elements?",
+         ["Using CSS locators", "Using relative XPath locators",
+          "Using regular expressions", "All of these"]],
+        ["Which protocol does Selenium 4 use to talk to the browser driver?",
+         ["JSON Wire Protocol", "W3C WebDriver Protocol", "DevTools Protocol only", "gRPC"]],
+        ["What is the difference between driver.close() and driver.quit()?",
+         ["close() closes the current window; quit() ends the session",
+          "close() ends the session; quit() closes a tab",
+          "They are the same", "close() clears cookies"]],
+        ["In the test automation pyramid, which layer holds the most tests?",
+         ["Unit tests", "Integration tests", "End-to-end UI tests", "Manual tests"]],
+      ];
+
+      const questions = [];
+      for (let n = 1; n <= 20; n++) {
+        const [text, options] = DUMMY[(n - 1) % DUMMY.length];
+        questions.push({ n, type: "objective", marks: 5, text, options,
+                         answer: null, written: "", flagged: false, seen: false });
+      }
+
+      return {
+        questions,
+        current: 0,
+        remaining: 45 * 60,
+        started: false,
+        isFull: false,
+        saved: false,
+        confirming: false,
+        timeUp: false,
+
+        start() {
+          this.started = true;
+          this.enterFullscreen();
+          document.addEventListener("fullscreenchange", () => {
+            this.isFull = !!document.fullscreenElement;
+          });
+          setInterval(() => {
+            if (this.remaining > 0) this.remaining--;
+            else if (!this.timeUp) { this.timeUp = true; this.confirming = false; }
+          }, 1000);
+        },
+
+        // NOT named q(). The x-for loops bind a loop variable called `q`,
+        // which layers over the component scope — so inside a loop `this.q`
+        // is the question object and calling it throws "this.q is not a
+        // function", silently, on every click in the palette and on every
+        // option. Alpine reports it as an expression warning and carries on.
+        cur() { return this.questions[this.current]; },
+        done(q) { return q.answer !== null || (q.written || "").trim().length > 0; },
+        get answered() { return this.questions.filter(q => this.done(q)).length; },
+        get flagged()  { return this.questions.filter(q => q.flagged).length; },
+
+        get clock() {
+          const m = Math.floor(this.remaining / 60), s = this.remaining % 60;
+          return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        },
+
+        answer(i) { this.cur().answer = i; this.flash(); },
+
+        // Stands in for the autosave POST. The receipt matters as much as the
+        // write: a candidate who cannot see that their work is safe keeps
+        // checking instead of answering.
+        flash() {
+          this.saved = true;
+          clearTimeout(this._t);
+          this._t = setTimeout(() => { this.saved = false; }, 1600);
+        },
+
+        go(i) {
+          if (i < 0 || i >= this.questions.length) return;
+          this.cur().seen = true;
+          this.current = i;                    // becomes a write to current_position
+          this.flash();
+        },
+
+        goFirstOpen() {
+          const i = this.questions.findIndex(q => !this.done(q));
+          if (i !== -1) this.go(i);
+        },
+
+        enterFullscreen() {
+          const el = document.documentElement;
+          if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+          this.isFull = !!document.fullscreenElement;
+        },
+
+        toggleFullscreen() {
+          if (document.fullscreenElement) document.exitFullscreen();
+          else this.enterFullscreen();
+        },
+
+        submit() {
+          this.confirming = false;
+          this.timeUp = true;                  // stands in for the POST + redirect
+        },
+      };
+    }
+  </script>
+</body>
+</html>

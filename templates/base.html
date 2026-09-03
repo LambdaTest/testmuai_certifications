@@ -17,34 +17,7 @@
   <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
   <script defer src="https://unpkg.com/alpinejs@3/dist/cdn.min.js"></script>
 
-  {% comment %}
-    Tokens from testmu-design-system.md — keep these in sync with
-    static/css/input.css so the production build matches.
-  {% endcomment %}
-  <style type="text/tailwindcss">
-    @theme {
-      --font-sans: 'Inter', -apple-system, 'Segoe UI', sans-serif;
-      --color-brand: #2C86EE;
-      --color-brand-dark: #1A6FD4;
-      --color-brand-tint: #EAF2FD;
-      --color-ink: #101010;
-      --color-body: #333333;
-      --color-muted: #666666;
-      --color-faint: #98A0AB;
-      --color-line: #E8E8E8;
-      --color-surface: #F8F9FB;
-      --color-dark: #0E0F13;
-      --color-ok: #0E8A45;
-      --color-ok-tint: #EAF7EF;
-      --color-warn: #B97F10;
-      --color-warn-tint: #FDF2E7;
-      --color-danger: #C2402A;
-      --color-danger-tint: #FBEBEB;
-    }
-  </style>
-  <style>
-    [x-cloak] { display: none !important; }
-  </style>
+  {% include "_theme.html" %}
 </head>
 
 <body class="flex min-h-full flex-col bg-white font-sans text-ink antialiased">
