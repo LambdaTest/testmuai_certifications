@@ -581,12 +581,30 @@ def _commit_question_import(request):
 def delete_question(request, question_id):
     pass
 
-def start_exam_termsandconditions(request):
+@login_required
+def start_exam_termsandconditions(request, booking_id):
     """
-    The first page on the exam player that displays the terms and conditions and 
-    and takes the candidate to the actual exam player after accepting the terms and conditions.
+    The instructions a candidate reads immediately before their exam.
+
+    Everything the page shows — exam name, question count, pass mark, their
+    scheduled time — comes off the booking, so the route carries its id.
+
+    The ownership filter is part of the lookup, not a check afterwards, so
+    somebody else's booking id is a 404 rather than a 403. We do not confirm a
+    booking exists to a candidate with no business knowing. Same shape as
+    reschedule() and cancel_booking().
     """
-    return render(request, "exam/start_exam_termsandconditions.html")
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam__subject"),
+        booking_id=booking_id,
+        candidate=request.user,
+        status=ExamBooking.Status.BOOKED,
+    )
+    return render(
+        request,
+        "exam/start_exam_termsandconditions.html",
+        {"booking": booking},
+    )
 
 def exam_player(request, booking_id):
     """

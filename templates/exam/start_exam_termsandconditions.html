@@ -63,7 +63,7 @@
     </div>
     <div class="rounded-xl border border-line bg-white px-4 py-3.5">
       <p class="text-2xl font-extrabold tracking-tight">
-        {{ booking.exam.passing_marks }}<span class="text-base font-bold text-muted">/{{ booking.exam.maximum_marks }}</span>
+        {{ booking.exam.passing_marks|default:"—" }}<span class="text-base font-bold text-muted">/{{ booking.exam.maximum_marks|default:"—" }}</span>
       </p>
       <p class="mt-0.5 text-[13px] text-muted">To pass</p>
     </div>
@@ -310,11 +310,11 @@
                 <span class="size-3.5 shrink-0 rounded-full border-2 border-zinc-300"></span>
                 <span class="text-[13px] text-body">Implicit wait</span>
               </div>
-              <div class="flex items-center gap-2.5 rounded-lg border-2 border-brand bg-brand-tint px-3 py-2">
-                <span class="grid size-3.5 shrink-0 place-items-center rounded-full border-2 border-brand">
-                  <span class="size-1.5 rounded-full bg-brand"></span>
+              <div class="flex items-center gap-2.5 rounded-lg border-2 border-ok bg-ok-tint px-3 py-2">
+                <span class="grid size-3.5 shrink-0 place-items-center rounded-full border-2 border-ok">
+                  <span class="size-1.5 rounded-full bg-ok"></span>
                 </span>
-                <span class="text-[13px] font-semibold text-brand-dark">Explicit wait</span>
+                <span class="text-[13px] font-semibold text-ok">Explicit wait</span>
               </div>
               <div class="flex items-center gap-2.5 rounded-lg border border-zinc-300 px-3 py-2">
                 <span class="size-3.5 shrink-0 rounded-full border-2 border-zinc-300"></span>
@@ -324,7 +324,7 @@
 
             <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-[#F0F1F3] pt-3">
               <span class="rounded-lg border border-line px-3 py-1.5 text-[12.5px] font-semibold text-muted">&larr; Previous</span>
-              <span class="rounded-lg border border-warn bg-warn-tint px-3 py-1.5 text-[12.5px] font-semibold text-warn">Flag for review</span>
+              <span class="rounded-lg border border-warn bg-warn px-3 py-1.5 text-[12.5px] font-semibold text-white">Flag for review</span>
               <span class="ml-auto rounded-lg bg-[#111] px-3.5 py-1.5 text-[12.5px] font-semibold text-white">Next &rarr;</span>
             </div>
           </div>
@@ -336,17 +336,17 @@
                 {% if forloop.counter == 7 %}
                   <span class="grid aspect-square place-items-center rounded border-2 border-ink bg-ink text-[11px] font-bold text-white">7</span>
                 {% elif forloop.counter == 3 or forloop.counter == 11 %}
-                  <span class="grid aspect-square place-items-center rounded bg-warn-tint text-[11px] font-bold text-warn">{{ forloop.counter }}</span>
+                  <span class="grid aspect-square place-items-center rounded bg-warn text-[11px] font-bold text-white">{{ forloop.counter }}</span>
                 {% elif forloop.counter < 9 %}
-                  <span class="grid aspect-square place-items-center rounded bg-ok-tint text-[11px] font-bold text-ok">{{ forloop.counter }}</span>
+                  <span class="grid aspect-square place-items-center rounded bg-ok text-[11px] font-bold text-white">{{ forloop.counter }}</span>
                 {% else %}
                   <span class="grid aspect-square place-items-center rounded bg-[#F0F1F4] text-[11px] font-bold text-faint">{{ forloop.counter }}</span>
                 {% endif %}
               {% endfor %}
             </div>
             <div class="mt-3 grid gap-1.5 border-t border-[#F0F1F3] pt-2.5 text-[11.5px]">
-              <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-ok-tint"></span><span class="text-muted">Answered</span></span>
-              <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-warn-tint"></span><span class="text-muted">Flagged</span></span>
+              <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-ok"></span><span class="text-muted">Answered</span></span>
+              <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-warn"></span><span class="text-muted">Flagged</span></span>
               <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-[#F0F1F4]"></span><span class="text-muted">Not seen</span></span>
               <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-ink"></span><span class="text-muted">You are here</span></span>
             </div>
