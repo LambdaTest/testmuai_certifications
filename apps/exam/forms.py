@@ -297,17 +297,25 @@ class ExamForm(AuthoringForm):
         # served, so exposing it as a field would let a submitted value overwrite
         # the computed one — and a `readonly` input is no defence, since the
         # browser still posts it and devtools can change it.
+        # question_selection is COMMENTED OUT, not removed. Every paper is a
+        # random draw now — manual selection has never been used on the vendor
+        # platform and its picker was never built, so publishing a manual exam
+        # was refused anyway. Leaving it out of Meta.fields is what stops the
+        # form demanding a value the page no longer renders; the model column
+        # and its default are untouched, so restoring it is uncommenting this
+        # line and the block in add_exam.html.
         fields = ['subject', 'exam_name', 'slug', 'exam_type', 'exam_level',
-                  'question_selection', 'question_count',
+                  # 'question_selection',
+                  'question_count',
                   'marketing_url', 'passing_marks', 'description']
         labels = {
             'subject': 'Subject',
             'exam_name': 'Exam Name',
             'slug': 'Slug',
             'exam_type': 'Exam Type',
-            'question_selection': 'Question Selection',
-            'question_count': 'Questions to serve',
-            'passing_marks': 'Passing Marks',
+            # 'question_selection': 'Question Selection',
+            'question_count': 'Objective Questions To Serve',
+            'passing_marks': 'Passing Marks %',
             'exam_level': 'Exam Level',
             'description': 'Exam Description'
         }
@@ -348,24 +356,21 @@ class ExamForm(AuthoringForm):
         """
         cleaned = super().clean()  # AuthoringForm fills in a blank slug
 
-        selection = cleaned.get("question_selection")
+        # Every paper is a random draw. question_selection is no longer a form
+        # field — see Meta.fields — so this reads the constant rather than the
+        # submission. Taken from cleaned_data it would be None, and every branch
+        # below would quietly stop firing: no "how many questions" error, and no
+        # derived maximum.
+        selection = Exam.QuestionSelection.RANDOM
         count = cleaned.get("question_count")
 
-        if selection == Exam.QuestionSelection.RANDOM:
-            if not count:
-                self.add_error("question_count", "Say how many questions to serve.")
-        elif selection == Exam.QuestionSelection.MANUAL:
-            # A manual paper's questions are picked, not counted. Clearing this
-            # stops a leftover number from an earlier edit reading as meaningful.
-            cleaned["question_count"] = count = None
+        if not count:
+            self.add_error("question_count", "Say how many objective questions to serve.")
 
         # Same helper the model saves through, so the number validated here is
         # exactly the number that lands in the column.
         maximum = Exam.total_marks_for(selection, count)
         if maximum is None:
-            # Manual: nothing to derive from yet, so fall back to whatever the
-            # exam already carried. On a new manual exam that is None and the
-            # check below simply doesn't apply.
             maximum = self.instance.maximum_marks
 
         # Left blank, the pass mark defaults to a share of the paper. Written
@@ -376,8 +381,8 @@ class ExamForm(AuthoringForm):
         # to None, never to an empty string, so testing for "" would only ever
         # catch a literal typed 0 and let the actual blank case through.
         #
-        # Guarded on `maximum` because it is None for a manual paper — there is
-        # nothing to take a share of, and multiplying None raises.
+        # Guarded on `maximum` because it is None until a count is given — there
+        # is nothing to take a share of, and multiplying None raises.
         passing = cleaned.get("passing_marks")
         if not passing and maximum:
             # ceil, so a 25-mark paper needs 18 rather than 17.5.

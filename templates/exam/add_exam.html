@@ -195,39 +195,47 @@
       devtools, which is why there isn't one.
     {% endcomment %}
     <div class="mt-7 border-t border-[#F0F1F3] pt-6">
-      <h2 class="mb-4 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Question Selection</h2>
+      <h2 class="mb-4 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Questions</h2>
 
-      <div class="grid gap-3 sm:grid-cols-2">
-        {% comment %}
-          Looping the field's own choices means the two cards come from the
-          TextChoices on the model. Add a third option there and it appears here
-          with no template change — and a renamed value can never leave a card
-          posting something the form will reject.
-        {% endcomment %}
-        {% for value, label in form.question_selection.field.choices %}
-          <label class="flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors"
-                 :class="selection === '{{ value }}' ? 'border-brand bg-brand-tint' : 'border-line hover:border-[#B9BFC9]'">
-            <input type="radio" name="{{ form.question_selection.html_name }}" value="{{ value }}"
-                   x-model="selection" class="mt-0.5 size-4 accent-[#2C86EE]">
-            <span>
-              <span class="block text-[14.5px] font-semibold text-ink">{{ label }}</span>
-              <span class="mt-0.5 block text-[13px] text-muted">
-                {% if value == 'random' %}
-                  Each candidate draws a different set from the subject's question bank.
-                {% else %}
-                  Choose the exact questions. Every candidate sits the same paper.
-                {% endif %}
+      {% comment %}
+        QUESTION SELECTION — COMMENTED OUT, NOT DELETED.
+
+        The random/manual choice is gone from the UI. Every paper is a random
+        draw: the team confirmed manual selection has never been used on the
+        vendor platform in years, and the picker it would need was never built,
+        so publishing a manual exam was refused anyway. Keeping the markup here
+        means restoring it is uncommenting rather than rewriting, if the
+        requirement ever arrives.
+
+        The count below is no longer conditional on it — with only one selection
+        mode left there is nothing to switch on.
+
+        Maximum marks is deliberately NOT an input. It is derived and
+        Exam.save() computes it; the figure below is a live preview only. A
+        `readonly` input would still submit its value and can be edited in
+        devtools, which is why there isn't one.
+
+        <div class="grid gap-3 sm:grid-cols-2">
+          {% templatetag openblock %} for value, label in form.question_selection.field.choices {% templatetag closeblock %}
+            <label class="flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors"
+                   :class="selection === '{{ value }}' ? 'border-brand bg-brand-tint' : 'border-line hover:border-[#B9BFC9]'">
+              <input type="radio" name="{{ form.question_selection.html_name }}" value="{{ value }}"
+                     x-model="selection" class="mt-0.5 size-4 accent-[#2C86EE]">
+              <span>
+                <span class="block text-[14.5px] font-semibold text-ink">{{ label }}</span>
+                <span class="mt-0.5 block text-[13px] text-muted">
+                  random: Each candidate draws a different set from the subject's
+                  question bank. manual: Choose the exact questions. Every
+                  candidate sits the same paper.
+                </span>
               </span>
-            </span>
-          </label>
-        {% endfor %}
-      </div>
-      {% for error in form.question_selection.errors %}
-        <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
-      {% endfor %}
+            </label>
+          {% templatetag openblock %} endfor {% templatetag closeblock %}
+        </div>
+      {% endcomment %}
 
-      {# ---- Random: how many to draw ---- #}
-      <div x-show="selection === 'random'" x-cloak class="mt-5">
+      {# ---- How many objective questions to draw ---- #}
+      <div class="mt-5">
         <label for="{{ form.question_count.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
           {{ form.question_count.label }}
         </label>
@@ -240,15 +248,11 @@
         {% endfor %}
       </div>
 
-      {# ---- Manual: the picker, not built yet ---- #}
-      <div x-show="selection === 'manual'" x-cloak class="mt-5">
-        <div class="rounded-xl border border-dashed border-[#D6DAE1] bg-surface p-8 text-center">
-          <p class="text-sm font-semibold text-body">Question picker</p>
-          <p class="mt-1 text-[13px] text-muted">
-            Manual question picker is coming soon.
-          </p>
-        </div>
-      </div>
+      {% comment %}
+        The manual picker placeholder lived here. Commented out with the
+        selection radios above — with no way to choose manual, there is nothing
+        to reveal.
+      {% endcomment %}
 
       {# ---- Derived total ---- #}
       <div class="mt-5 flex items-center justify-between rounded-xl bg-surface px-5 py-4">

@@ -144,6 +144,7 @@ class Exam(models.Model):
     class Type(models.TextChoices):
         OBJECTIVE = "objective", "Objective"
         SUBJECTIVE = "subjective", "Subjective"
+        BOTH = "both", "Both"
     #: Duration is determined by the exam type. Single source of truth — the
     #: CheckConstraint in Meta mirrors these values, so change both together.
     DURATION_BY_TYPE = {
