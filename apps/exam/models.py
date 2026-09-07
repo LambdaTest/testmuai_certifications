@@ -442,6 +442,48 @@ class ExamBooking(models.Model):
         blank=True,
     )
     booking_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
+
+    #: Which round of the exam this booking is for.
+    #:
+    #: A booking is one sitting, not one certification. An exam whose format is
+    #: `both` produces two bookings — objective first, then a subjective one
+    #: created when the objective is submitted. Single-format exams produce one.
+    #:
+    #: Stored rather than derived. The exam's format cannot answer it: Demo3 is
+    #: subjective-only, so its single booking has no parent and is still a
+    #: subjective round. Deriving would mean reading the format *and* the parent
+    #: at every use, which is what this field exists to stop.
+    round_type = models.CharField(
+        max_length=16,
+        choices=Exam.Type.choices,
+        default=Exam.Type.OBJECTIVE,
+    )
+
+    #: The objective booking this subjective round belongs to. Null on a first
+    #: round, which is how a first round is recognised.
+    #:
+    #: Held on the child, not the parent, so the column is filled the moment the
+    #: row exists — a link on the objective booking would sit null for the whole
+    #: life of every single-round exam.
+    #:
+    #: OneToOne rather than ForeignKey: a booking has at most one subjective
+    #: follow-up, and a plain FK would permit five.
+    #:
+    #: This is what makes two rows one attempt, and grading needs exactly that —
+    #: the pass mark is 70% of both rounds together. It could in principle be
+    #: reconstructed from timestamps, since a subjective round starts 30 minutes
+    #: after its objective was submitted. It should not be: the candidate can
+    #: reschedule a booking, an admin can extend one, and the 30 minutes is a
+    #: house rule that may change — any of which silently breaks the arithmetic.
+    #: The handler that creates this row is holding both bookings already, so
+    #: recording which is cheaper than re-deriving it forever.
+    parent_booking = models.OneToOneField(
+        "self",
+        on_delete=models.PROTECT,
+        related_name="subjective_booking",
+        blank=True,
+        null=True,
+    )
     exam = models.ForeignKey(Exam, on_delete=models.PROTECT, related_name="bookings")
 
     #: Stored UTC. Always.
@@ -481,8 +523,14 @@ class ExamBooking(models.Model):
             # String literals rather than Status.BOOKED — a class body is not
             # an enclosing scope, so names defined on ExamBooking are not
             # visible inside Meta.
+            # round_type is part of the key, not an afterthought. A two-round
+            # exam is two bookings for the same (candidate, exam) pair, so
+            # without it the constraint refuses the subjective round the moment
+            # the objective one is created — or, worse, appears to work only
+            # because the objective row leaves this status set first, which
+            # makes correctness depend on ordering rather than on the rule.
             models.UniqueConstraint(
-                fields=["candidate", "exam"],
+                fields=["candidate", "exam", "round_type"],
                 condition=models.Q(status__in=["booked", "under_review", "attended"]),
                 name="one_open_booking_per_exam",
             ),

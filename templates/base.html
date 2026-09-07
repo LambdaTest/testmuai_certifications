@@ -96,6 +96,35 @@
   </header>
 
   <main class="flex-1">
+
+    {% comment %}
+      Flash messages, rendered once here so no candidate page has to think about
+      them. django.contrib.messages was configured from the start — app,
+      middleware and context processor — but only base_staff.html displayed it,
+      so every message a candidate-facing view added was silently discarded.
+      That is why pressing "I'm ready to begin" on an exam that could not be
+      drawn simply reloaded the page saying nothing.
+
+      Iterating `messages` is what marks them read; they survive exactly one
+      response, which is why a view can add one and then redirect.
+
+      Constrained to the same width the pages use, so a message does not sit
+      flush against the viewport on a wide screen.
+    {% endcomment %}
+    {% if messages %}
+      <div class="mx-auto mt-6 grid w-full max-w-[1200px] gap-2 px-4 sm:px-6">
+        {% for message in messages %}
+          <div class="rounded-xl border px-5 py-3.5 text-[13.5px]
+                      {% if message.level_tag == 'success' %}border-ok bg-ok-tint text-ok
+                      {% elif message.level_tag == 'warning' %}border-warn bg-warn-tint text-warn
+                      {% elif message.level_tag == 'error' %}border-danger bg-danger-tint text-danger
+                      {% else %}border-line bg-surface text-body{% endif %}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
     {% block content %}{% endblock %}
   </main>
 

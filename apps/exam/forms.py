@@ -163,9 +163,19 @@ class BookingForm(ScheduleForm):
         return self.cleaned_data["exam"]
 
     def save(self, candidate=None) -> ExamBooking:
+        exam = self.cleaned_data["exam"]
         return ExamBooking.objects.create(
             candidate=candidate,
-            exam=self.cleaned_data["exam"],
+            exam=exam,
+            # Which round a candidate is booking. Round one is objective for
+            # every format except a subjective-only exam, which has no objective
+            # round to sit. The subjective round of a `both` exam is not booked
+            # here — it does not exist until the objective one is submitted.
+            round_type=(
+                Exam.Type.SUBJECTIVE
+                if exam.exam_type == Exam.Type.SUBJECTIVE
+                else Exam.Type.OBJECTIVE
+            ),
             scheduled_at=self.cleaned_data["scheduled_at"],
             booked_timezone=self.cleaned_data["timezone"],
         )

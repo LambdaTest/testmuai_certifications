@@ -656,17 +656,29 @@ def _start_or_resume(booking):
 
     exam = booking.exam
 
-    # Only questions of the exam's own type. Nothing in the models stops an
-    # objective exam serving a subjective question, and it would break
-    # total_marks_for()'s arithmetic — it multiplies by MARKS_PER_QUESTION
-    # rather than summing what was actually served.
+    # The ROUND's type, not the exam's. An exam can be "both", but a question is
+    # only ever objective or subjective — filtering on the exam's format matched
+    # nothing and every two-round exam refused to start.
+    #
+    # Read from the booking rather than derived: the booking already knows which
+    # round it is, and the subjective row of a two-round attempt is
+    # indistinguishable from a subjective-only exam's booking by format alone.
+    round_type = booking.round_type
+
     pool = Question.objects.filter(
         question_subject=exam.subject,
-        question_type=exam.exam_type,
+        question_type=round_type,
         status=Question.Status.ACTIVE,
     )
 
-    wanted = exam.question_count or 0
+    # A subjective round is one question, whatever the exam says. question_count
+    # describes the objective round and is null on a subjective-only exam, so
+    # reading it here refused to draw a paper that was perfectly well configured.
+    wanted = (
+        Exam.SUBJECTIVE_QUESTION_COUNT
+        if round_type == Exam.Type.SUBJECTIVE
+        else (exam.question_count or 0)
+    )
     if not wanted:
         raise ValidationError(
             "This exam has no question count set, so there is no paper to draw. "
@@ -690,7 +702,13 @@ def _start_or_resume(booking):
     with transaction.atomic():
         sheet = ExamSheet.objects.create(
             booking=booking,
-            expires_at=timezone.now() + timedelta(minutes=exam.duration_minutes),
+            # The round's own clock: 45 minutes for an objective sitting, 36
+            # hours for a subjective window. exam.duration_minutes is the total
+            # across both rounds — 2205 for a "both" exam — and would have given
+            # a candidate 37 hours to answer forty multiple-choice questions.
+            expires_at=timezone.now() + timedelta(
+                minutes=Exam.DURATION_BY_TYPE[round_type]
+            ),
         )
         ExamSheetQuestion.objects.bulk_create([
             ExamSheetQuestion(
