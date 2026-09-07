@@ -71,13 +71,27 @@ def book(request):
         if match:
             preselected = match.slug
 
-    # Anonymous until OIDC lands, so the clash check is inert on this path.
+    # Anonymous only if nobody is signed in. Until the OIDC integration lands
+    # that means the Django admin login, which is real enough for both of the
+    # rules that depend on knowing who this is.
     candidate = request.user if request.user.is_authenticated else None
     form = BookingForm(request.POST or None, candidate=candidate)
 
     if request.method == "POST" and form.is_valid():
-        # Candidate is None until the OIDC integration lands.
-        booking = form.save(candidate=None)
+        # Passed through, not dropped. This used to save candidate=None from a
+        # time when nothing was signed in, which left every booking anonymous —
+        # and silently disabled the two rules that key on the candidate:
+        #
+        #   · one_open_booking_per_exam is a partial unique index on
+        #     (candidate, exam). Two NULLs are never equal in Postgres, so it
+        #     matched nothing and a candidate could hold any number of open
+        #     bookings for the same exam.
+        #   · the clash check in ScheduleForm returns early with no candidate,
+        #     so overlapping bookings were never detected.
+        #
+        # Both come alive now, which is the point — but it means a booking that
+        # would have been accepted yesterday can be rejected today.
+        booking = form.save(candidate=candidate)
         # Redirect after POST. Reloading then re-issues a harmless GET instead
         # of re-submitting the form and creating a second booking.
         return redirect(f"{reverse('exam:book')}?booked={booking.booking_id}")

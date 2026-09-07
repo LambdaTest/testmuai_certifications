@@ -53,19 +53,29 @@
       <p class="mt-0.5 text-[13px] text-muted">Questions</p>
     </div>
     <div class="rounded-xl border border-line bg-white px-4 py-3.5">
-      <p class="text-2xl font-extrabold tracking-tight">
-        {% if booking.exam.duration_minutes == 2160 %}36<span class="text-base font-bold"> hrs</span>
-        {% else %}{{ booking.exam.duration_minutes }}<span class="text-base font-bold"> min</span>{% endif %}
-      </p>
+      {% comment %}
+        Smaller type than the other tiles: "45 min + 36 hrs" is three times the
+        width of a bare number and would either wrap or shrink the tile. The
+        figure matters more than the flourish here.
+      {% endcomment %}
+      <p class="text-xl font-extrabold tracking-tight">{{ booking.exam.duration_display }}</p>
       <p class="mt-0.5 text-[13px] text-muted">
-        {% if booking.exam.duration_minutes == 2160 %}To submit{% else %}Time limit{% endif %}
+        {% if booking.exam.exam_type == 'objective' %}Time limit
+        {% elif booking.exam.exam_type == 'subjective' %}To submit
+        {% else %}Across two rounds{% endif %}
       </p>
     </div>
     <div class="rounded-xl border border-line bg-white px-4 py-3.5">
       <p class="text-2xl font-extrabold tracking-tight">
-        {{ booking.exam.passing_marks|default:"—" }}<span class="text-base font-bold text-muted">/{{ booking.exam.maximum_marks|default:"—" }}</span>
+        {{ booking.exam.pass_percentage }}<span class="text-base font-bold text-muted">%</span>
       </p>
       <p class="mt-0.5 text-[13px] text-muted">To pass</p>
+      {% comment %}
+        A percentage, not marks. A subjective round draws one question from a
+        pool whose questions differ in weight, so the paper's total is not the
+        same for every candidate — an absolute figure here would be right for
+        some of them and wrong for the rest.
+      {% endcomment %}
     </div>
     <div class="rounded-xl border border-line bg-white px-4 py-3.5">
       <p class="text-2xl font-extrabold tracking-tight text-ok">None</p>

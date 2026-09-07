@@ -307,7 +307,7 @@ class ExamForm(AuthoringForm):
         fields = ['subject', 'exam_name', 'slug', 'exam_type', 'exam_level',
                   # 'question_selection',
                   'question_count',
-                  'marketing_url', 'passing_marks', 'description']
+                  'marketing_url', 'pass_percentage', 'description']
         labels = {
             'subject': 'Subject',
             'exam_name': 'Exam Name',
@@ -315,11 +315,12 @@ class ExamForm(AuthoringForm):
             'exam_type': 'Exam Type',
             # 'question_selection': 'Question Selection',
             'question_count': 'Objective Questions To Serve',
-            'passing_marks': 'Passing Marks %',
+            'pass_percentage': 'Passing Marks %',
             'exam_level': 'Exam Level',
             'description': 'Exam Description'
         }
         help_texts = {
+            'pass_percentage': "Whole percent. 70 means a candidate needs 70% of the paper.",
             'slug': "Leave blank to generate one from the exam name.",
             'marketing_url': "Optional. A URL that takes marketing page for this Exam."
         }
@@ -329,7 +330,7 @@ class ExamForm(AuthoringForm):
             "slug": forms.TextInput(attrs={"placeholder": "selenium-basics"}),
             "exam_level": forms.Select(attrs={"placeholder": "Select Exam Level"}),
             "marketing_url": forms.URLInput(attrs={"placeholder": "https://example.com/selenium-basics"}),
-            "passing_marks": forms.NumberInput(attrs={"min": 1}),
+            "pass_percentage": forms.NumberInput(attrs={"min": 1, "max": 100}),
             # x-model lets Alpine mirror the typed value so the derived total
             # updates as you type. Django passes unknown attrs straight through
             # to the HTML, so framework hooks can live on a ModelForm widget.
@@ -341,7 +342,12 @@ class ExamForm(AuthoringForm):
                           "focus-visible:ring-brand/30"),
             }),
             "subject": forms.Select(attrs={"placeholder": "Select Subject"}),
-            "exam_type": forms.Select(attrs={"placeholder": "Select Exam Type"}),
+            # x-model so the page can react to the format: a subjective-only
+            # exam has no objective questions, so its count input hides.
+            "exam_type": forms.Select(attrs={
+                "placeholder": "Select Exam Type",
+                "x-model": "format",
+            }),
         }
 
     slug_source = "exam_name"
@@ -356,58 +362,36 @@ class ExamForm(AuthoringForm):
         """
         cleaned = super().clean()  # AuthoringForm fills in a blank slug
 
-        # Every paper is a random draw. question_selection is no longer a form
-        # field — see Meta.fields — so this reads the constant rather than the
-        # submission. Taken from cleaned_data it would be None, and every branch
-        # below would quietly stop firing: no "how many questions" error, and no
-        # derived maximum.
-        selection = Exam.QuestionSelection.RANDOM
+        exam_type = cleaned.get("exam_type")
         count = cleaned.get("question_count")
 
-        if not count:
-            self.add_error("question_count", "Say how many objective questions to serve.")
+        # The count belongs to the objective round, so it is required for an
+        # objective or a both exam and meaningless for a subjective-only one.
+        # The template hides the input in that case; this is the rule, since a
+        # hidden input still posts and the page works with JavaScript off.
+        if exam_type == Exam.Type.SUBJECTIVE:
+            # Cleared rather than ignored, so a number left over from an earlier
+            # edit cannot sit in the column reading as meaningful.
+            cleaned["question_count"] = count = None
+        elif not count:
+            self.add_error(
+                "question_count", "Say how many objective questions to serve."
+            )
 
         # Same helper the model saves through, so the number validated here is
-        # exactly the number that lands in the column.
-        maximum = Exam.total_marks_for(selection, count)
-        if maximum is None:
-            maximum = self.instance.maximum_marks
+        # exactly the number that lands in the column. Always a number now —
+        # every format has a total.
+        maximum = Exam.total_marks_for(exam_type, count)
 
-        # Left blank, the pass mark defaults to a share of the paper. Written
-        # back into cleaned_data, not just a local — save() reads cleaned_data,
-        # so a value only rebound to a variable never reaches the column.
-        #
-        # `not passing` rather than `== ""`: an IntegerField cleans a blank input
-        # to None, never to an empty string, so testing for "" would only ever
-        # catch a literal typed 0 and let the actual blank case through.
-        #
-        # Guarded on `maximum` because it is None until a count is given — there
-        # is nothing to take a share of, and multiplying None raises.
-        passing = cleaned.get("passing_marks")
-        if not passing and maximum:
-            # ceil, so a 25-mark paper needs 18 rather than 17.5.
-            passing = cleaned["passing_marks"] = math.ceil(
-                maximum * Exam.DEFAULT_PASS_RATIO
-            )
+        # The pass mark needs no rules here any more. It was absolute, so it had
+        # to be defaulted from the maximum and checked against it; as a
+        # percentage the field's own default (70) and its 1-100 validators say
+        # everything there is to say, and neither depends on the paper's total.
 
-        if passing and maximum and passing > maximum:
-            self.add_error(
-                "passing_marks",
-                f"Cannot be more than the maximum of {maximum} marks.",
-            )
-
-        # The template greys out the Publish button for a manual exam. That stops
-        # the click, not the request — so the rule is enforced here too, where it
-        # actually holds.
-        if (
-            cleaned.get("action") == "publish"
-            and selection == Exam.QuestionSelection.MANUAL
-        ):
-            self.add_error(
-                None,
-                "Choosing questions by hand isn't built yet, so a manual exam "
-                "can only be saved as a draft.",
-            )
+        # The manual-selection publish guard lived here. It is gone with manual
+        # selection: `selection` is no longer read from the submission, so the
+        # condition could never be true, and a rule that cannot fire is worse
+        # than no rule — it reads as protection that is not there.
 
         return cleaned
 

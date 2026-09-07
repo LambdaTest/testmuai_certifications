@@ -58,7 +58,7 @@
               <span class="rounded-lg border border-white/12 bg-white/7 px-3 py-1.5 text-[13px] text-white/85">{{ upcoming_booking.scheduled_at|date:"D, M j, Y" }}</span>
               <span class="rounded-lg border border-white/12 bg-white/7 px-3 py-1.5 text-[13px] text-white/85">{{ upcoming_booking.scheduled_at|date:"g:i A" }} · {{ upcoming_booking.booked_timezone }}</span>
             {% endtimezone %}
-            <span class="rounded-lg border border-white/12 bg-white/7 px-3 py-1.5 text-[13px] text-white/85">{{ upcoming_booking.exam.get_exam_type_display }} · {{ upcoming_booking.exam.duration_minutes }} min</span>
+            <span class="rounded-lg border border-white/12 bg-white/7 px-3 py-1.5 text-[13px] text-white/85">{{ upcoming_booking.exam.get_exam_type_display }} · {{ upcoming_booking.exam.duration_display }}</span>
           </div>
         {% else %}
           <p class="mt-3.5 max-w-[52ch] text-[14.5px] text-white/70">

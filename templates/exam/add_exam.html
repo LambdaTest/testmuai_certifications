@@ -62,7 +62,7 @@
     worth 5. It belongs in settings once this is wired — hardcoded here only
     because nothing server-side reads it yet.
 
-    `passing` is picked up by delegation: {{ form.passing_marks }} renders from
+    `passing` is picked up by delegation: {{ form.pass_percentage }} renders from
     Django's widget, so it cannot carry x-model directly.
   {% endcomment %}
   <form method="post" class="rounded-2xl border border-line bg-white p-6"
@@ -77,19 +77,28 @@
         {% endcomment %}
         x-data="{
           MARKS_PER_QUESTION: {{ form.instance.MARKS_PER_QUESTION }},
-          selection: '{{ form.question_selection.value|default:"random"|escapejs }}',
+          {# Single quotes inside the filter: a " here would close x-data. #}
+          format: '{{ form.exam_type.value|default:'objective'|escapejs }}',
+          SUBJECTIVE_MARKS: {{ form.instance.SUBJECTIVE_MARKS }},
           count: {{ form.question_count.value|default:0 }},
-          selectedMarks: 0,
-          passing: {{ form.passing_marks.value|default:0 }},
-          {# Math.round because 0.7 * 100 is 70.00000000000001 in JS. #}
-          defaultPassPercent: Math.round({{ form.instance.DEFAULT_PASS_RATIO }} * 100),
+          passing: {{ form.pass_percentage.value|default:70 }},
+          // The same sum as Exam.total_marks_for(), so the preview and the
+          // stored total cannot disagree. Both constants come from the model
+          // rather than being typed here, for the same reason.
+          //
+          // A JS comment, not {# … #}: Django's short comment is single-line
+          // only, so a multi-line one renders literally and lands inside this
+          // expression as a syntax error — which kills the whole component
+          // silently. See docs/conventions.md, Templates.
           get maxMarks() {
-            return this.selection === 'random'
-              ? (this.count || 0) * this.MARKS_PER_QUESTION
-              : this.selectedMarks
+            const objective = this.format === 'subjective'
+              ? 0 : (this.count || 0) * this.MARKS_PER_QUESTION
+            const subjective = this.format === 'objective'
+              ? 0 : this.SUBJECTIVE_MARKS
+            return objective + subjective
           },
         }"
-        @input="if ($event.target.name === 'passing_marks') passing = +$event.target.value || 0">
+        @input="if ($event.target.name === 'pass_percentage') passing = +$event.target.value || 0">
     {% csrf_token %}
 
     {% if form.non_field_errors %}
@@ -218,7 +227,7 @@
         <div class="grid gap-3 sm:grid-cols-2">
           {% templatetag openblock %} for value, label in form.question_selection.field.choices {% templatetag closeblock %}
             <label class="flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors"
-                   :class="selection === '{{ value }}' ? 'border-brand bg-brand-tint' : 'border-line hover:border-[#B9BFC9]'">
+                   :class="'border-line hover:border-[#B9BFC9]'">
               <input type="radio" name="{{ form.question_selection.html_name }}" value="{{ value }}"
                      x-model="selection" class="mt-0.5 size-4 accent-[#2C86EE]">
               <span>
@@ -235,7 +244,13 @@
       {% endcomment %}
 
       {# ---- How many objective questions to draw ---- #}
-      <div class="mt-5">
+      {% comment %}
+        Hidden for a subjective-only exam, which has no objective round to
+        count. A guard, not enforcement: the same rule has to hold in
+        ExamForm.clean(), because a hidden input still posts and the page can
+        be submitted with JavaScript off.
+      {% endcomment %}
+      <div x-show="format !== 'subjective'" x-cloak class="mt-5">
         <label for="{{ form.question_count.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
           {{ form.question_count.label }}
         </label>
@@ -269,35 +284,31 @@
     {# ---------- Pass mark ---------- #}
     <div class="mt-7 border-t border-[#F0F1F3] pt-6">
       <div class="max-w-[16rem]">
-        <label for="{{ form.passing_marks.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
-          {{ form.passing_marks.label }}
+        <label for="{{ form.pass_percentage.id_for_label }}" class="mb-1.5 block text-[13px] font-semibold text-body">
+          {{ form.pass_percentage.label }}
         </label>
-        {{ form.passing_marks }}
+        {{ form.pass_percentage }}
         {% comment %}
-          Three states, one at a time: what happens if you leave it blank, what
-          you have chosen, or why what you chose is wrong.
+          The three old bylines are gone: they defaulted a blank value, warned
+          about exceeding the maximum, and converted marks to a percentage —
+          all of which existed because the field held absolute marks. None of
+          them means anything now. The field defaults to 70 and validates 1-100
+          by itself.
 
-          The blank byline is gated on maxMarks > 0 because the default is a
-          share of the paper — with no total there is nothing to take a share
-          of, and ExamForm.clean() correspondingly leaves the pass mark unset.
-          Promising a default there would be a lie.
+          What is worth showing is the arithmetic: 70% of what, in marks. ceil
+          to match Exam.pass_mark, so the preview and the stored figure agree.
 
-          Mirrors ExamForm.clean(); the warning is the explanation, the form is
-          the enforcement.
+          For any exam with a subjective round this is a projection. The real
+          pass mark depends on which question that candidate draws, and is
+          fixed onto their booking when the paper is built.
         {% endcomment %}
-        <p x-show="!passing && maxMarks > 0" x-cloak
+        <p x-show="passing > 0 && maxMarks > 0" x-cloak
            class="mt-1.5 text-[13px] text-muted">
-          Default: <span x-text="defaultPassPercent"></span>%
+          <span x-text="Math.ceil(maxMarks * passing / 100)"></span> of
+          <span x-text="maxMarks"></span> marks
+          <span x-show="format !== 'objective'">, for a typical paper</span>.
         </p>
-        <p x-show="passing > maxMarks && maxMarks > 0" x-cloak
-           class="mt-1.5 text-[13px] text-danger">
-          Cannot exceed the maximum marks (<span x-text="maxMarks"></span>).
-        </p>
-        <p x-show="!(passing > maxMarks && maxMarks > 0) && passing > 0 && maxMarks > 0" x-cloak
-           class="mt-1.5 text-[13px] text-muted">
-          <span x-text="Math.round(passing / maxMarks * 100)"></span>% to pass.
-        </p>
-        {% for error in form.passing_marks.errors %}
+        {% for error in form.pass_percentage.errors %}
           <p class="mt-1.5 text-[13px] text-danger">{{ error }}</p>
         {% endfor %}
       </div>
@@ -336,26 +347,16 @@
       </button>
 
       {% comment %}
-        Publishing is closed off while manual selection is chosen: the picker
-        does not exist, so such an exam has no questions and would be bookable
-        but unanswerable. Disabled rather than hidden — a button that vanishes
-        reads as a bug, one that greys out with a reason reads as a rule.
-
-        ExamForm.clean() refuses the same combination. A disabled attribute only
-        stops the click; it is not a constraint.
+        The publish guard for manual selection is gone with manual selection
+        itself. It read `selection === 'manual'`, and `selection` is no longer
+        in x-data — an undefined name in an Alpine expression throws, which
+        fails the whole binding, so the :class beside it would have stopped
+        applying too and the button would have rendered unstyled.
       {% endcomment %}
       <button type="submit" name="action" value="publish"
-              :disabled="selection === 'manual'"
-              :class="selection === 'manual'
-                ? 'cursor-not-allowed border-line text-faint'
-                : 'border-line text-body hover:border-brand hover:text-brand'"
-              class="inline-flex h-11 items-center rounded-lg border px-6 text-[14.5px] font-semibold">
+              class="inline-flex h-11 items-center rounded-lg border border-line px-6 text-[14.5px] font-semibold text-body hover:border-brand hover:text-brand">
         Add Exam
       </button>
-
-      <p x-show="selection === 'manual'" x-cloak class="text-[13px] text-muted">
-        Manual selection can only be saved as a draft for now.
-      </p>
 
       <a href="{% url 'exam:explore_exams' %}"
          class="ml-auto inline-flex h-11 items-center rounded-lg px-4 text-[14.5px] font-semibold text-muted hover:text-ink">

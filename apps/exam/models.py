@@ -13,13 +13,15 @@ If this file grows past a few hundred lines, split it into a ``models/`` package
 re-exported from ``models/__init__.py`` — not into another app.
 """
 
+import math
 import uuid
 from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.core.validators import FileExtensionValidator
+from django.core.validators import (FileExtensionValidator, MaxValueValidator,
+                                    MinValueValidator)
 
 class Question(models.Model):
     """
@@ -150,6 +152,17 @@ class Exam(models.Model):
     DURATION_BY_TYPE = {
         Type.OBJECTIVE: 45,
         Type.SUBJECTIVE: 36 * 60,  # 36 hours
+        #: Both rounds end to end: the 45-minute objective sitting plus the
+        #: 36-hour subjective window. Written as a sum so it reads as the two
+        #: rounds it is, and so it matches the CheckConstraint below character
+        #: for character.
+        #:
+        #: It excludes the 30-minute cooling period between the rounds, and it
+        #: is a TOTAL FOR DISPLAY — not a schedulable span. The rounds are
+        #: separate sittings with their own clocks, held on separate bookings,
+        #: so nothing should reserve 2205 continuous minutes of a candidate's
+        #: time. occupied_minutes() in forms.py is the place that matters.
+        Type.BOTH: 45 + 36 * 60,  # 2205
     }
     class Level(models.TextChoices):
             BEGINNER = "beginner", "Beginner"
@@ -165,10 +178,22 @@ class Exam(models.Model):
     #: paper of N questions always totals N × 5, whoever sits it.
     MARKS_PER_QUESTION = 5
 
-    #: Share of the paper needed to pass when an author leaves the pass mark
-    #: blank. A house rule, so it lives beside the other one rather than as a
-    #: bare 0.7 inside a form.
-    DEFAULT_PASS_RATIO = 0.7
+    #: A subjective round is one question. A constant rather than a field
+    #: because every exam we have uses one — a nullable column would be a
+    #: migration, a form input and a branch, all carrying a number nobody
+    #: varies. One line to change if that stops being true.
+    SUBJECTIVE_QUESTION_COUNT = 1
+
+    #: What that one subjective question is worth. Far more than an objective
+    #: question, because it is a scenario answer an examiner reads rather than
+    #: a choice among four — and because a round given 36 hours has to matter
+    #: to the total or nobody will sit it.
+    SUBJECTIVE_MARKS = 50
+
+    #: Share of the paper needed to pass when an author does not say otherwise.
+    #: A house rule, so it lives beside the other two rather than as a bare 70
+    #: on the field below. Whole percent, matching what pass_percentage stores.
+    DEFAULT_PASS_PERCENTAGE = 70
 
     question_selection = models.CharField(max_length=30, choices=QuestionSelection.choices, default=QuestionSelection.RANDOM)
     #: Random draws only — how many to pull from the subject's bank. Null for a
@@ -207,9 +232,25 @@ class Exam(models.Model):
     #: Nothing should write to it once that relation lands.
     maximum_marks = models.PositiveIntegerField(blank=True, null=True)
 
-    #: Absolute marks needed to pass. Copied onto the booking at grading time,
-    #: so raising the bar later never reclassifies a credential already issued.
-    passing_marks = models.PositiveIntegerField(blank=True, null=True)
+    #: Share of the paper needed to pass, as a whole percentage.
+    #:
+    #: A percentage, not absolute marks, because a paper's total is not fixed.
+    #: A subjective round draws one question from a pool whose questions differ
+    #: in weight, so two candidates can sit papers worth different totals — and
+    #: "35 marks to pass" then means different things to each of them. 70% means
+    #: the same thing to both.
+    #:
+    #: An integer rather than a float: authors type 70, not 0.7, and a small
+    #: integer cannot accumulate the rounding error a float can.
+    #:
+    #: The absolute figure is derived — see pass_mark — and snapshotted onto the
+    #: booking when the paper is drawn, so raising the bar later never
+    #: reclassifies a credential already issued.
+    pass_percentage = models.PositiveSmallIntegerField(
+        default=DEFAULT_PASS_PERCENTAGE,
+        validators=[MinValueValidator(1), MaxValueValidator(100)],
+        help_text="Whole percent of the paper needed to pass.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -227,32 +268,116 @@ class Exam(models.Model):
                 condition=(
                     models.Q(exam_type="objective", duration_minutes=45)
                     | models.Q(exam_type="subjective", duration_minutes=36 * 60)
+                    | models.Q(exam_type="both", duration_minutes=45 + 36 * 60)
                 ),
                 name="exam_duration_matches_type",
             ),
+            # The objective count belongs to the objective round, so a
+            # subjective-only exam must not carry one and the other two must.
+            #
+            # ExamForm.clean() says the same thing with a readable message and
+            # the template hides the input — but neither reaches the admin, the
+            # shell, bulk_create or a hand-made post. This is the guarantee; the
+            # others are the explanation.
+            #
+            # An exam with no count and no rule against it would look bookable
+            # and then fail at Start Test, when a candidate is sitting in front
+            # of it — the worst moment to discover a paper cannot be drawn.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(exam_type="subjective", question_count__isnull=True)
+                    | (
+                        ~models.Q(exam_type="subjective")
+                        & models.Q(question_count__isnull=False)
+                    )
+                ),
+                name="exam_question_count_matches_type",
+            ),
         ]
+
+    @staticmethod
+    def _humanise_minutes(minutes):
+        """45 -> "45 min"; 2160 -> "36 hrs". Whole hours only, since every
+        round we have is either well under an hour or an exact number of them."""
+        if minutes >= 60 and minutes % 60 == 0:
+            hours = minutes // 60
+            return f"{hours} hr{'' if hours == 1 else 's'}"
+        return f"{minutes} min"
+
+    @property
+    def duration_display(self):
+        """
+        How long this exam takes, phrased for a candidate: "45 min", "36 hrs",
+        or "45 min + 36 hrs".
+
+        A two-round exam is not 2205 continuous minutes and printing it that way
+        is true but useless — it reads as a 37-hour sitting. The rounds are what
+        a candidate plans around, so the rounds are what this names.
+
+        Built by asking each round whether it applies, the same shape as
+        total_marks_for(), and off DURATION_BY_TYPE rather than repeating the
+        numbers. Five templates used to carry their own `== 2160` check; this
+        is what replaces them.
+        """
+        parts = []
+        if self.exam_type != self.Type.SUBJECTIVE:
+            parts.append(self._humanise_minutes(self.DURATION_BY_TYPE[self.Type.OBJECTIVE]))
+        if self.exam_type != self.Type.OBJECTIVE:
+            parts.append(self._humanise_minutes(self.DURATION_BY_TYPE[self.Type.SUBJECTIVE]))
+        return " + ".join(parts)
+
+    @property
+    def pass_mark(self):
+        """
+        The pass mark in marks, derived from the percentage and the projected
+        total. None when the total is unknown.
+
+        A projection, not a promise, for any exam with a subjective round: the
+        real figure depends on which question that candidate draws, and is
+        snapshotted onto their booking when the paper is built. For a purely
+        objective exam the two are always equal, since every question is worth
+        MARKS_PER_QUESTION.
+
+        ceil rather than round, so a 250-mark paper at 70% needs 175 and a
+        249-mark one needs 175 rather than 174 — the bar never rounds down.
+        """
+        if not self.maximum_marks:
+            return None
+        return math.ceil(self.maximum_marks * self.pass_percentage / 100)
 
     def __str__(self):
         return self.exam_name
 
     @classmethod
-    def total_marks_for(cls, question_selection, question_count):
+    def total_marks_for(cls, exam_type, question_count):
         """
-        What a paper is out of, given how its questions are chosen.
+        What a paper is out of, for an exam of this shape.
+
+            objective   count × 5
+            subjective            50
+            both        count × 5 + 50
+
+        Each round contributes or contributes nothing, and the total is the
+        sum — so no format is a special case and adding a third round later
+        would be a third term rather than a rewrite.
+
+        Takes `exam_type`, not `question_selection`, since selection stopped
+        being a choice: every paper is a random draw now.
 
         A classmethod rather than a property because ExamForm needs the answer
-        for values the user has just submitted, before they are on an instance.
-        Both callers share this one definition so the form and the database can
-        never disagree about the total.
-
-        Returns None for a manual paper: its total is the sum of the questions
-        actually picked, which needs Exam ↔ Question. Until that relation exists
-        there is nothing to add up, and None says "unknown" rather than inventing
-        a zero.
+        for values just submitted, before they are on an instance. Both callers
+        share this one definition, so the form and the database cannot disagree
+        about the total.
         """
-        if question_selection == cls.QuestionSelection.RANDOM:
-            return (question_count or 0) * cls.MARKS_PER_QUESTION
-        return None
+        objective = (
+            0 if exam_type == cls.Type.SUBJECTIVE
+            else (question_count or 0) * cls.MARKS_PER_QUESTION
+        )
+        subjective = (
+            0 if exam_type == cls.Type.OBJECTIVE
+            else cls.SUBJECTIVE_MARKS
+        )
+        return objective + subjective
 
     def clean(self):
         """Form-level validation — gives a readable error instead of IntegrityError."""
@@ -263,16 +388,17 @@ class Exam(models.Model):
             # errors onto the form by name and raises ValueError for one it does
             # not recognise — so a wrong key here is a 500, not a message.
             raise ValidationError({"exam_type": "Unknown exam type."})
-        if not self.duration_minutes:
-            self.duration_minutes = expected
-        elif self.duration_minutes != expected:
-            raise ValidationError(
-                {
-                    "duration_minutes": (
-                        f"{self.get_exam_type_display()} exams must be {expected} minutes."
-                    )
-                }
-            )
+        # Overwritten, never rejected. Duration is derived from the type and has
+        # no input anywhere, so a mismatch can only mean the type just changed —
+        # and the right answer to that is the new duration, not an error.
+        #
+        # It used to raise here, keyed to "duration_minutes". That field is not
+        # on ExamForm, and _post_clean turns a model error naming an unknown
+        # field into ValueError rather than a message — so every edit that
+        # changed the type was a 500. The comment above about keying errors to
+        # real form fields was written about the branch above this one; this
+        # branch is why the rule matters.
+        self.duration_minutes = expected
 
     def save(self, *args, **kwargs):
         # Fill in derived values for callers that skip full_clean() — the shell,
@@ -284,9 +410,9 @@ class Exam(models.Model):
         # Maximum marks is derived, never typed. Guarded on None so saving a
         # manual exam doesn't wipe a total that was set some other way — for
         # manual papers the helper has no source to work from yet.
-        total = self.total_marks_for(self.question_selection, self.question_count)
-        if total is not None:
-            self.maximum_marks = total
+        # Always a number now — every format has a total — so the None guard
+        # that existed for manual papers is gone with manual selection.
+        self.maximum_marks = self.total_marks_for(self.exam_type, self.question_count)
         super().save(*args, **kwargs)
 
 
