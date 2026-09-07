@@ -429,6 +429,20 @@
       <p class="mt-2 text-[14.5px] text-muted">
         Your paper has been submitted with the answers you gave.
       </p>
+
+      {% comment %}
+        The only way out of this dialog, and it leaves. There is deliberately no
+        dismiss: the paper is closed, so putting them back on questions they can
+        no longer answer would be worse than showing them nothing.
+
+        A link rather than history.back(): back would land on the instructions
+        page, and going forward from there would try to start an exam that is
+        already over.
+      {% endcomment %}
+      <a href="{% url 'home:dashboard' %}"
+         class="mt-6 inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#111] px-6 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
+        Exit
+      </a>
     </div>
   </div>
 
