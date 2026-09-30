@@ -798,15 +798,17 @@ def grade_exam(booking, sheet):
     Grades the exam after submission.
     """
     if booking.round_type == Exam.Type.OBJECTIVE:
-        # Grade the exam only if it's an objective exam or a subjective round
+        # Grade the exam only if it's an objective exam.
         marks_obtained = 0
         questions = ExamSheetQuestion.objects.filter(sheet=sheet).select_related("question", "selected_option")
         for question in questions:
-            if question and question.selected_option.is_correct:
-                question.marks_awarded += Exam.MARKS_PER_QUESTION
+            if question and question.selected_option and question.selected_option.is_correct:
+                question.marks_awarded = question.marks
                 marks_obtained += Exam.MARKS_PER_QUESTION
+            else:
+                question.marks_awarded = 0
             question.save()
-        booking.marks_obtained += marks_obtained
+        booking.marks_obtained = marks_obtained
         booking.save()
 
 @login_required
@@ -856,21 +858,20 @@ def submit_exam(request, booking_id):
             scheduled_at = sheet.submitted_at + timedelta(minutes=Exam.ROUND_GAP_MINUTES),
             )
         messages.info(request, "Your objective round is completed. You have been booked for the subjective round.")
-        new_exam_booking.save()
     else:
         messages.info(request, "Thank you for completing the exam.")
         return redirect("exam:exam_completed", booking_id=booking.booking_id)
     return redirect("home:dashboard")
 
-@login_required
-def exam_completed(request, booking_id):
-    """
-    Displays a confirmation page after the exam is completed.
-    """
-    booking = get_object_or_404(
-        ExamBooking.objects.select_related("exam__subject"),
-        booking_id=booking_id,
-        candidate=request.user,
-    )
-    marks_obtained = booking.marks_obtained if booking else None
-    return render(request, "exam/exam_completed.html", {"booking": booking, "marks_obtained": marks_obtained})
+# @login_required
+# def exam_completed(request, booking_id):
+#     """
+#     Displays a confirmation page after the exam is completed.
+#     """
+#     # booking = get_object_or_404(
+#     #     ExamBooking.objects.select_related("exam__subject"),
+#     #     booking_id=booking_id,
+#     #     candidate=request.user,
+#     # )
+#     # marks_obtained = booking.marks_obtained if booking else None
+#     return render(request, "exam/exam_completed.html", {"booking": booking, "marks_obtained": marks_obtained})
