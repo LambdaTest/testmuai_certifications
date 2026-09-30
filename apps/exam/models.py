@@ -195,6 +195,11 @@ class Exam(models.Model):
     #: on the field below. Whole percent, matching what pass_percentage stores.
     DEFAULT_PASS_PERCENTAGE = 70
 
+    # Round gap minutes is the gap after which the user can take the second exam (subjective) after
+    # the successful completion of an objective exam
+
+    ROUND_GAP_MINUTES = 30
+
     question_selection = models.CharField(max_length=30, choices=QuestionSelection.choices, default=QuestionSelection.RANDOM)
     #: Random draws only — how many to pull from the subject's bank. Null for a
     #: manual paper, where the questions are chosen rather than counted.
@@ -612,6 +617,9 @@ class ExamSheet(models.Model):
     maximum_marks, passing_marks, graded_by, graded_at and feedback; a second
     home for a score is a second answer to "did they pass".
     """
+    class SubmissionStatus(models.TextChoices):
+        SELF = "self", "Self"
+        TIMEDOUT = "timedout", "Timed Out"
 
     booking = models.OneToOneField(
         ExamBooking,
@@ -648,6 +656,7 @@ class ExamSheet(models.Model):
     #: a no-op; for a paper abandoned at 10:00 and swept up at 14:00 it records
     #: the exam as ending when it actually did.
     submitted_at = models.DateTimeField(blank=True, null=True)
+    submission_status = models.CharField(max_length=20, choices=SubmissionStatus.choices, default=SubmissionStatus.SELF)
 
     class Meta:
         db_table = "exam_sheets"

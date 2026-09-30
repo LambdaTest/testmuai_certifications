@@ -791,3 +791,86 @@ def exam_player(request, booking_id):
             "start_position": sheet.current_position,
         },
     )
+
+
+def grade_exam(booking, sheet):
+    """
+    Grades the exam after submission.
+    """
+    if booking.round_type == Exam.Type.OBJECTIVE:
+        # Grade the exam only if it's an objective exam or a subjective round
+        marks_obtained = 0
+        questions = ExamSheetQuestion.objects.filter(sheet=sheet).select_related("question", "selected_option")
+        for question in questions:
+            if question and question.selected_option.is_correct:
+                question.marks_awarded += Exam.MARKS_PER_QUESTION
+                marks_obtained += Exam.MARKS_PER_QUESTION
+            question.save()
+        booking.marks_obtained += marks_obtained
+        booking.save()
+
+@login_required
+def submit_exam(request, booking_id):
+    """
+    Marks the exam as completed and submitted. Triggered on multiple ocassion:
+    When the user selects submit
+    When the time is up and the user was idle
+    When the time is up and the user was active on the sheet
+    """
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam__subject"),
+        booking_id=booking_id,
+        candidate=request.user,
+    )
+    sheet = (
+        ExamSheet.objects
+        .filter(booking=booking)
+        .first()
+    )
+    if sheet is None:
+        messages.error(request, "No exam sheet found for this booking.")
+        return redirect("home:dashboard")
+
+    # Mark the sheet as submitted
+    sheet.submitted_at = timezone.now()
+    # Check if the exam was timed out or deliberately submitted by the user
+    if request.POST.get("action") == "submit_action":
+        sheet.submission_status = ExamSheet.SubmissionStatus.SELF
+    elif request.POST.get("action") == "timeout_action":
+        sheet.submission_status = ExamSheet.SubmissionStatus.TIMEDOUT
+    sheet.save()
+    # Update the booking status to attended
+    booking.status = ExamBooking.Status.ATTENDED
+    booking.save()
+    messages.success(request, "Your exam has been submitted successfully.")
+    # create a new booking if the exam is a two-round exam and the current round is objective
+    grade_exam(booking, sheet)
+    if booking.exam.exam_type == Exam.Type.BOTH and booking.round_type == Exam.Type.OBJECTIVE:
+        new_exam_booking = ExamBooking.objects.create(
+            candidate=booking.candidate,
+            exam=booking.exam,
+            round_type=Exam.Type.SUBJECTIVE,
+            status=ExamBooking.Status.BOOKED,
+            parent_booking=booking,  # Link the new booking to the original one
+            booked_timezone=booking.booked_timezone,
+            scheduled_at = sheet.submitted_at + timedelta(minutes=Exam.ROUND_GAP_MINUTES),
+            )
+        messages.info(request, "Your objective round is completed. You have been booked for the subjective round.")
+        new_exam_booking.save()
+    else:
+        messages.info(request, "Thank you for completing the exam.")
+        return redirect("exam:exam_completed", booking_id=booking.booking_id)
+    return redirect("home:dashboard")
+
+@login_required
+def exam_completed(request, booking_id):
+    """
+    Displays a confirmation page after the exam is completed.
+    """
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam__subject"),
+        booking_id=booking_id,
+        candidate=request.user,
+    )
+    marks_obtained = booking.marks_obtained if booking else None
+    return render(request, "exam/exam_completed.html", {"booking": booking, "marks_obtained": marks_obtained})

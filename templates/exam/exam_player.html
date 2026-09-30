@@ -372,6 +372,19 @@
     behind it is a dialog people dismiss without reading; naming the four
     questions they have not answered is the only version that can change a mind.
   {% endcomment %}
+  {% comment %}
+    One form for both endings. The confirm button posts action=submit_action;
+    the timeout path submits the same form from JS without it, and the view
+    reads the absence as a timeout rather than needing a second endpoint.
+
+    A POST, obviously — it ends an exam. And it is the only thing on this page
+    that navigates, which is why the player carries no other links.
+  {% endcomment %}
+  <form id="submit-form" method="post"
+        action="{% url 'exam:submit_exam' booking.booking_id %}">
+    {% csrf_token %}
+  </form>
+
   <div x-show="confirming" x-cloak @keydown.escape.window="confirming = false"
        class="fixed inset-0 z-50 grid place-items-center p-4"
        role="dialog" aria-modal="true" aria-label="Confirm submission">
@@ -414,7 +427,7 @@
                 class="inline-flex h-11 flex-1 items-center justify-center rounded-lg border border-line px-4 text-[14.5px] font-semibold text-body hover:border-brand hover:text-brand">
           Keep working
         </button>
-        <button type="button" @click="submit()"
+        <button type="submit" form="submit-form" name="action" value="submit_action"
                 class="inline-flex h-11 flex-1 items-center justify-center rounded-lg bg-danger px-4 text-[14.5px] font-bold text-white hover:bg-[#A83522]">
           Submit
         </button>
@@ -502,7 +515,14 @@
           });
           setInterval(() => {
             if (this.remaining > 0) this.remaining--;
-            else if (!this.timeUp) { this.timeUp = true; this.confirming = false; }
+            else if (!this.timeUp) {
+              this.timeUp = true;
+              this.confirming = false;
+              // Same form, no action field — the view treats that as a timeout.
+              // The dialog shows while the POST is in flight, so the candidate
+              // is not left looking at a live paper they can no longer answer.
+              document.getElementById("submit-form").submit();
+            }
           }, 1000);
         },
 
@@ -562,10 +582,10 @@
           else this.enterFullscreen();
         },
 
-        submit() {
-          this.confirming = false;
-          this.timeUp = true;                  // stands in for the POST + redirect
-        },
+        // No submit() any more. Both endings post #submit-form: the confirm
+        // button by being type="submit" bound to it, the timeout from the
+        // interval above. Nothing about finishing an exam should live only in
+        // the browser.
       };
     }
   </script>
