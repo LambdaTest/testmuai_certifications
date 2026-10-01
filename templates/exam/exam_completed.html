@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% load tz %}
 
 {% comment %}
   Where a candidate lands after submitting a single-round exam, or the
@@ -7,178 +6,138 @@
   goes to the dashboard instead, because the attempt is not finished yet.
 
   Context it will need from apps.exam.views.exam_completed:
-    booking   – the ExamBooking, with exam and subject already selected
-    sheet     – its ExamSheet, for submitted_at and submission_status
-    answered  – how many questions on the sheet have an answer
-    total     – how many questions are on the sheet
+    booking – the ExamBooking, with exam and subject already selected
 
-  NOT WIRED YET. The view is commented out, so every value below falls back to
-  "—" or the objective-only branch. The fallbacks are deliberate: the page must
-  render with an empty context rather than 500, the same as the T&C page.
+  NOT WIRED YET. Nothing on this page is saved. The form has no action and no
+  submit button, so the fields are inert and Close simply leaves. The input
+  names (linkedin_url, github_url, rating_*, suggestions) are chosen to become
+  the field names of a Django Form when this is wired, so the template will not
+  need renaming then.
 
-  NO SCORE ON THIS PAGE, on purpose. When an objective result is released is
-  still open (TRACKER.md, "Objective result release timing"), and a subjective
-  round has no score until an examiner grades it. Showing a number here would
-  decide that question by accident. Add the score block once it is decided.
+  When it is wired, Close becomes the form's submit button: it saves the
+  answers and then redirects. LinkedIn, GitHub and all three ratings are
+  mandatory; Suggestions is not. The `required` attributes below are only the
+  browser's check and can be bypassed, so the Django Form must mark the same
+  fields required=True — that is the check that actually holds.
 {% endcomment %}
 
 {% block title %}Exam submitted · {{ booking.exam.exam_name|default:"TestMu AI Certifications" }}{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-3xl px-4 py-10">
-
-  <p class="text-[13px] font-bold tracking-[1.4px] text-faint uppercase">Exam Submitted</p>
-
-  <header class="mt-2 mb-7">
-    <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">{{ booking.exam.exam_name|default:"Your exam" }}</h1>
-    {% if booking %}
-    <p class="mt-2 text-[15px] text-muted">
-      {{ booking.exam.subject.name }} ·
-      {{ booking.exam.get_exam_level_display }} ·
-      {{ booking.get_round_type_display }} round
-    </p>
-    {% endif %}
-  </header>
+<div class="mx-auto max-w-2xl px-4 py-10">
 
   {# ---------- Confirmation ---------- #}
-  {% comment %}
-    Two versions of the same message. A candidate whose time ran out did not
-    choose to stop, and the first thing they want to know is whether the
-    answers they had already given were kept. They were, so say so.
-  {% endcomment %}
-  <section class="flex gap-4 rounded-2xl border border-ok bg-ok-tint p-6">
-    <span class="grid size-10 shrink-0 place-items-center rounded-full bg-ok text-white" aria-hidden="true">
-      <svg class="size-5" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+  <header class="flex flex-col items-center text-center">
+    <span class="grid size-14 place-items-center rounded-full bg-ok text-white" aria-hidden="true">
+      <svg class="size-7" viewBox="0 0 20 20" fill="none" stroke="currentColor"
            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M4.5 10.5l3.5 3.5 7.5-8"/>
       </svg>
     </span>
-    <div>
-      {% if sheet.submission_status == "timedout" %}
-        <h2 class="text-lg font-bold text-ink">Time ran out, and your paper was submitted for you</h2>
-        <p class="mt-1 text-[14.5px] leading-relaxed text-body">
-          Every answer you gave before the clock reached zero has been kept. Questions you did
-          not reach score zero. They are not penalised.
-        </p>
-      {% else %}
-        <h2 class="text-lg font-bold text-ink">Your answers are in</h2>
-        <p class="mt-1 text-[14.5px] leading-relaxed text-body">
-          Your paper has been submitted and can no longer be changed. There is nothing more
-          you need to do now.
-        </p>
-      {% endif %}
-    </div>
-  </section>
+    <h1 class="mt-5 text-2xl font-bold tracking-tight sm:text-3xl">Your exam is successfully submitted.</h1>
+    {% if booking %}
+      <p class="mt-2 text-[15px] text-muted">{{ booking.exam.exam_name }}</p>
+    {% endif %}
+  </header>
 
-  {# ---------- Summary tiles ---------- #}
-  <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-    <div class="rounded-xl border border-line bg-white px-4 py-3.5">
-      <p class="text-2xl font-extrabold tracking-tight">
-        {{ answered|default:"—" }}<span class="text-base font-bold text-muted"> / {{ total|default:"—" }}</span>
-      </p>
-      <p class="mt-0.5 text-[13px] text-muted">Questions answered</p>
-    </div>
-    <div class="rounded-xl border border-line bg-white px-4 py-3.5">
-      <p class="text-2xl font-extrabold tracking-tight">
-        {% if sheet.submission_status == "timedout" %}Time up{% elif sheet %}By you{% else %}—{% endif %}
-      </p>
-      <p class="mt-0.5 text-[13px] text-muted">How it ended</p>
-    </div>
-    <div class="col-span-2 rounded-xl border border-line bg-white px-4 py-3.5 sm:col-span-1">
+  <form class="mt-9 grid gap-4" onsubmit="return false">
+
+    {# ---------- Profiles ---------- #}
+    <section class="rounded-2xl border border-line bg-white p-6">
+      <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Your profiles</h2>
+
+      <div class="mt-4 grid gap-4">
+        <div>
+          <label for="linkedin_url" class="text-[14px] font-semibold text-ink">LinkedIn</label>
+          {% comment %}
+            type="url" gets the right keyboard on a phone and a free browser
+            check that it is a URL. The real check belongs in the form's clean
+            method when this is wired, since the browser one can be skipped.
+          {% endcomment %}
+          <input type="url" id="linkedin_url" name="linkedin_url" required
+                 placeholder="https://www.linkedin.com/in/your-name"
+                 class="mt-1.5 h-11 w-full rounded-lg border border-line bg-white px-3.5 text-[14.5px] text-ink placeholder:text-faint focus:border-brand focus:outline-none">
+        </div>
+        <div>
+          <label for="github_url" class="text-[14px] font-semibold text-ink">GitHub</label>
+          <input type="url" id="github_url" name="github_url" required
+                 placeholder="https://github.com/your-username"
+                 class="mt-1.5 h-11 w-full rounded-lg border border-line bg-white px-3.5 text-[14.5px] text-ink placeholder:text-faint focus:border-brand focus:outline-none">
+        </div>
+      </div>
+    </section>
+
+    {# ---------- Feedback ---------- #}
+    <section class="rounded-2xl border border-line bg-white p-6">
+      <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">How was the exam?</h2>
+      <p class="mt-1.5 text-[13.5px] text-muted">Rate each from 1 (poor) to 5 (excellent).</p>
+
       {% comment %}
-        Inside {% templatetag openblock %} timezone {% templatetag closeblock %} so it shows in the zone
-        the candidate booked in, and guarded on booking because an empty zone
-        name raises rather than rendering blank. Same rule as the T&C page.
+        One row per aspect, five radio buttons each. A fieldset with a legend
+        so a screen reader announces "Clarity of questions, 3" rather than a
+        bare "3". The circles are styled labels: the real radio is visually
+        hidden (sr-only) but still focusable and keyboard-operable, and
+        peer-checked colours the circle after it.
       {% endcomment %}
-      {% if booking and sheet %}
-        {% timezone booking.booked_timezone %}
-          <p class="text-xl font-extrabold tracking-tight">{{ sheet.submitted_at|time:"g:i A" }}</p>
-          <p class="mt-0.5 text-[13px] text-muted">Submitted {{ sheet.submitted_at|date:"j M Y" }}</p>
-        {% endtimezone %}
-      {% else %}
-        <p class="text-2xl font-extrabold tracking-tight">—</p>
-        <p class="mt-0.5 text-[13px] text-muted">Submitted</p>
-      {% endif %}
+      <div class="mt-4 grid gap-4">
+        <fieldset class="flex flex-wrap items-center justify-between gap-3">
+          <legend class="float-left text-[14.5px] font-semibold text-ink">Clarity of questions</legend>
+          <div class="flex gap-2">
+            {% for n in "12345" %}
+              <label class="cursor-pointer">
+                <input type="radio" name="rating_clarity" value="{{ n }}" required class="peer sr-only">
+                <span class="grid size-9 place-items-center rounded-full border border-line text-[13.5px] font-semibold text-body hover:border-brand peer-checked:border-brand peer-checked:bg-brand peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand">{{ n }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <fieldset class="flex flex-wrap items-center justify-between gap-3">
+          <legend class="float-left text-[14.5px] font-semibold text-ink">Relevance to the subject</legend>
+          <div class="flex gap-2">
+            {% for n in "12345" %}
+              <label class="cursor-pointer">
+                <input type="radio" name="rating_relevance" value="{{ n }}" required class="peer sr-only">
+                <span class="grid size-9 place-items-center rounded-full border border-line text-[13.5px] font-semibold text-body hover:border-brand peer-checked:border-brand peer-checked:bg-brand peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand">{{ n }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <fieldset class="flex flex-wrap items-center justify-between gap-3">
+          <legend class="float-left text-[14.5px] font-semibold text-ink">Overall exam experience</legend>
+          <div class="flex gap-2">
+            {% for n in "12345" %}
+              <label class="cursor-pointer">
+                <input type="radio" name="rating_experience" value="{{ n }}" required class="peer sr-only">
+                <span class="grid size-9 place-items-center rounded-full border border-line text-[13.5px] font-semibold text-body hover:border-brand peer-checked:border-brand peer-checked:bg-brand peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand">{{ n }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+      </div>
+
+      <div class="mt-6">
+        <label for="suggestions" class="text-[14px] font-semibold text-ink">Suggestions</label>
+        <textarea id="suggestions" name="suggestions" rows="4"
+                  placeholder="Anything we could do better?"
+                  class="mt-1.5 w-full rounded-lg border border-line bg-white px-3.5 py-2.5 text-[14.5px] text-ink placeholder:text-faint focus:border-brand focus:outline-none"></textarea>
+      </div>
+    </section>
+
+    {% comment %}
+      "Close" leaves for the dashboard. window.close() would do nothing here:
+      browsers only let a script close a tab that a script opened, and the
+      candidate arrived by a normal redirect. A plain link, not a button, while
+      nothing is saved — leaving changes nothing.
+    {% endcomment %}
+    <div class="flex justify-end">
+      <a href="{% url 'home:dashboard' %}"
+         class="inline-flex h-11 items-center justify-center rounded-lg bg-[#111] px-7 text-sm font-bold text-white hover:bg-[#2A2B31]">
+        Close
+      </a>
     </div>
-  </div>
-
-  {# ---------- What happens next ---------- #}
-  {% comment %}
-    Ordered for the same reason as on the T&C page: it is a sequence. Split by
-    round because the two paths differ. An objective paper is marked
-    automatically; a subjective answer waits for an examiner, and for a
-    two-round exam it is only now that the combined 70% can be worked out.
-  {% endcomment %}
-  <section class="mt-7 rounded-2xl border border-line bg-white p-6">
-    <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">What happens next</h2>
-    <ol class="mt-4 grid gap-4">
-      {% if booking.round_type == "subjective" %}
-        <li class="flex gap-3.5">
-          <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">1</span>
-          <p class="text-[14.5px] leading-relaxed text-body">
-            <span class="font-semibold text-ink">An examiner reads your answer.</span>
-            Written answers are marked by a person, not automatically, so this takes longer
-            than an objective paper.
-          </p>
-        </li>
-        <li class="flex gap-3.5">
-          <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">2</span>
-          <p class="text-[14.5px] leading-relaxed text-body">
-            {% if booking.parent_booking_id %}
-              <span class="font-semibold text-ink">Both rounds are scored together.</span>
-              You pass with {{ booking.exam.pass_percentage }}% of the combined marks from your
-              objective and subjective rounds.
-            {% else %}
-              <span class="font-semibold text-ink">You pass with {{ booking.exam.pass_percentage|default:"70" }}% of the marks.</span>
-            {% endif %}
-          </p>
-        </li>
-      {% else %}
-        <li class="flex gap-3.5">
-          <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">1</span>
-          <p class="text-[14.5px] leading-relaxed text-body">
-            <span class="font-semibold text-ink">Your paper is marked automatically.</span>
-            There is no negative marking, so only correct answers affect your score.
-          </p>
-        </li>
-        <li class="flex gap-3.5">
-          <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">2</span>
-          <p class="text-[14.5px] leading-relaxed text-body">
-            <span class="font-semibold text-ink">You pass with {{ booking.exam.pass_percentage|default:"70" }}% of the marks.</span>
-          </p>
-        </li>
-      {% endif %}
-      <li class="flex gap-3.5">
-        <span class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-tint text-[12px] font-bold text-brand-dark">3</span>
-        <p class="text-[14.5px] leading-relaxed text-body">
-          <span class="font-semibold text-ink">Your result appears on your dashboard</span>
-          once it is released. If you pass, your certificate is issued from there.
-        </p>
-      </li>
-    </ol>
-  </section>
-
-  {# ---------- Support ---------- #}
-  {% comment %}
-    Support tickets are not built yet (TRACKER.md, "Support tickets"), so this
-    is text rather than a button. Swap it for a link when they exist.
-  {% endcomment %}
-  <section class="mt-4 rounded-2xl bg-surface px-6 py-5">
-    <p class="text-[14.5px] leading-relaxed text-body">
-      <span class="font-semibold text-ink">Something went wrong during your exam?</span>
-      If your connection dropped or the paper did not behave as expected, contact support
-      and quote your booking reference{% if booking %}
-      <span class="font-mono text-[13px] text-ink">{{ booking.booking_id }}</span>{% endif %}.
-    </p>
-  </section>
-
-  {# A plain link, not a form: going back to the dashboard changes nothing. #}
-  <div class="mt-7">
-    <a href="{% url 'home:dashboard' %}"
-       class="inline-flex h-11 items-center justify-center rounded-lg bg-brand px-5 text-[14.5px] font-bold text-white hover:bg-brand-dark">
-      Back to dashboard
-    </a>
-  </div>
+  </form>
 
 </div>
 {% endblock %}

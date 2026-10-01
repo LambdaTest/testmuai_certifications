@@ -903,19 +903,20 @@ def submit_exam(request, booking_id):
     return redirect("home:dashboard")
 
 @login_required
-def exam_completed(request, booking_id):
+def exam_completed(request):
     """
     Displays a confirmation page after the exam is completed.
     """
-    booking = get_object_or_404(
-        ExamBooking.objects.select_related("exam__subject"),
-        booking_id=booking_id,
-        candidate=request.user,
-    )
-    total_marks = 0
-    if booking:
-        total_marks = booking.marks_obtained if booking else None
-        if booking.parent_booking:
-            parent_booking = booking.parent_booking
-            total_marks = parent_booking.marks_obtained if parent_booking else None
-    return render(request, "exam/exam_completed.html", {"booking": booking, "total_marks": total_marks})
+    # booking = get_object_or_404(
+    #     ExamBooking.objects.select_related("exam__subject"),
+    #     booking_id=booking_id,
+    #     candidate=request.user,
+    # )
+    # total_marks = 0
+    # if booking:
+    #     total_marks = booking.marks_obtained if booking else None
+    #     if booking.parent_booking:
+    #         parent_booking = booking.parent_booking
+    #         total_marks = parent_booking.marks_obtained if parent_booking else None
+    # return render(request, "exam/exam_completed.html", {"booking": booking, "total_marks": total_marks})
+    return render(request, "exam/exam_completed.html")
