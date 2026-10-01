@@ -17,6 +17,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, request
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from . import imports
 from . import timezones
@@ -812,51 +813,89 @@ def grade_exam(booking, sheet):
         booking.save()
 
 @login_required
+@require_POST
 def submit_exam(request, booking_id):
     """
     Marks the exam as completed and submitted. Triggered on multiple ocassion:
     When the user selects submit
     When the time is up and the user was idle
     When the time is up and the user was active on the sheet
-    """
-    booking = get_object_or_404(
-        ExamBooking.objects.select_related("exam__subject"),
-        booking_id=booking_id,
-        candidate=request.user,
-    )
-    sheet = (
-        ExamSheet.objects
-        .filter(booking=booking)
-        .first()
-    )
-    if sheet is None:
-        messages.error(request, "No exam sheet found for this booking.")
-        return redirect("home:dashboard")
 
-    # Mark the sheet as submitted
-    sheet.submitted_at = timezone.now()
-    # Check if the exam was timed out or deliberately submitted by the user
-    if request.POST.get("action") == "submit_action":
-        sheet.submission_status = ExamSheet.SubmissionStatus.SELF
-    elif request.POST.get("action") == "timeout_action":
-        sheet.submission_status = ExamSheet.SubmissionStatus.TIMEDOUT
-    sheet.save()
-    # Update the booking status to attended
-    booking.status = ExamBooking.Status.ATTENDED
-    booking.save()
-    messages.success(request, "Your exam has been submitted successfully.")
-    # create a new booking if the exam is a two-round exam and the current round is objective
-    grade_exam(booking, sheet)
-    if booking.exam.exam_type == Exam.Type.BOTH and booking.round_type == Exam.Type.OBJECTIVE:
-        new_exam_booking = ExamBooking.objects.create(
-            candidate=booking.candidate,
-            exam=booking.exam,
-            round_type=Exam.Type.SUBJECTIVE,
-            status=ExamBooking.Status.BOOKED,
-            parent_booking=booking,  # Link the new booking to the original one
-            booked_timezone=booking.booked_timezone,
-            scheduled_at = sheet.submitted_at + timedelta(minutes=Exam.ROUND_GAP_MINUTES),
+    POST only — it ends an exam, so a link, a prefetch or the back button must
+    not be able to trigger it.
+    """
+    # One transaction for everything below: stamping the sheet, moving the
+    # booking on, grading and booking the subjective round. A failure part way
+    # leaves the paper open rather than half-submitted.
+    with transaction.atomic():
+        booking = get_object_or_404(
+            ExamBooking.objects.select_related("exam__subject"),
+            booking_id=booking_id,
+            candidate=request.user,
+        )
+        # select_for_update locks the sheet row until the transaction ends. A
+        # double click or the timer firing just after Submit sends two POSTs;
+        # the second waits here, then sees submitted_at already set below.
+        sheet = (
+            ExamSheet.objects
+            .select_for_update()
+            .filter(booking=booking)
+            .first()
+        )
+        if sheet is None:
+            messages.error(request, "No exam sheet found for this booking.")
+            return redirect("home:dashboard")
+
+        # Already finished — a repeat POST, not a second submission. Without this
+        # a Both exam would try to create a second subjective booking.
+        if sheet.submitted_at is not None:
+            messages.info(request, "You have already submitted this exam.")
+            return redirect("home:dashboard")
+
+        # Only a live booking can be sat. A cancelled or no-show booking that
+        # still has a sheet must not be turned into an attended one.
+        if booking.status != ExamBooking.Status.BOOKED:
+            messages.error(request, "This booking is not open for submission.")
+            return redirect("home:dashboard")
+
+        now = timezone.now()
+        # The server's clock decides, not the browser's. A POST after expiry is
+        # still accepted — refusing it would leave the paper open forever — but
+        # it is recorded as ending at the deadline, as the model asks.
+        sheet.submitted_at = min(now, sheet.expires_at)
+
+        # Only the Submit button before the deadline counts as the candidate's
+        # own submission. The JS timeout posts no action, and anything arriving
+        # after expires_at is a timeout whatever the form said.
+        if request.POST.get("action") == "submit_action" and now < sheet.expires_at:
+            sheet.submission_status = ExamSheet.SubmissionStatus.SELF
+        else:
+            sheet.submission_status = ExamSheet.SubmissionStatus.TIMEDOUT
+        sheet.save()
+        # Update the booking status to attended
+        booking.status = ExamBooking.Status.ATTENDED
+        booking.save()
+        grade_exam(booking, sheet)
+        # create a new booking if the exam is a two-round exam and the current round is objective
+        is_first_of_two = (
+            booking.exam.exam_type == Exam.Type.BOTH
+            and booking.round_type == Exam.Type.OBJECTIVE
+        )
+        if is_first_of_two:
+            ExamBooking.objects.create(
+                candidate=booking.candidate,
+                exam=booking.exam,
+                round_type=Exam.Type.SUBJECTIVE,
+                status=ExamBooking.Status.BOOKED,
+                parent_booking=booking,  # Link the new booking to the original one
+                booked_timezone=booking.booked_timezone,
+                scheduled_at=sheet.submitted_at + timedelta(minutes=Exam.ROUND_GAP_MINUTES),
             )
+
+    # Messages after the transaction, so a rollback never leaves a success banner
+    # for a submission that did not happen.
+    messages.success(request, "Your exam has been submitted successfully.")
+    if is_first_of_two:
         messages.info(request, "Your objective round is completed. You have been booked for the subjective round.")
     else:
         messages.info(request, "Thank you for completing the exam.")
