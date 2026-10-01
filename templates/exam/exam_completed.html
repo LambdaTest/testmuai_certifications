@@ -8,15 +8,15 @@
   Context it will need from apps.exam.views.exam_completed:
     booking – the ExamBooking, with exam and subject already selected
 
-  NOT WIRED YET. Nothing on this page is saved. The form has no action and no
-  submit button, so the fields are inert and Close simply leaves. The input
+  NOT WIRED YET. Nothing on this page is saved. Close submits the form only so
+  the browser checks the required fields; the handler then just navigates to
+  the dashboard. The input
   names (linkedin_url, github_url, rating_*, suggestions) are chosen to become
   the field names of a Django Form when this is wired, so the template will not
   need renaming then.
 
-  When it is wired, Close becomes the form's submit button: it saves the
-  answers and then redirects. LinkedIn, GitHub and all three ratings are
-  mandatory; Suggestions is not. The `required` attributes below are only the
+  When it is wired, Close saves the answers and then redirects. LinkedIn and
+  GitHub are mandatory; the ratings and Suggestions are not. The `required` attributes below are only the
   browser's check and can be bypassed, so the Django Form must mark the same
   fields required=True — that is the check that actually holds.
 {% endcomment %}
@@ -40,7 +40,15 @@
     {% endif %}
   </header>
 
-  <form class="mt-9 grid gap-4" onsubmit="return false">
+  {% comment %}
+    The browser runs its required check before the submit event fires, so this
+    handler only runs once LinkedIn and GitHub are filled. Until the view saves
+    anything it just navigates; when wired, drop the handler and give the form
+    method="post" and an action instead.
+  {% endcomment %}
+  <form class="mt-9 grid gap-4"
+        onsubmit="window.location.href = '{% url 'home:dashboard' %}'; return false">
+    {% csrf_token %}
 
     {# ---------- Profiles ---------- #}
     <section class="rounded-2xl border border-line bg-white p-6">
@@ -85,7 +93,7 @@
           <div class="flex gap-2">
             {% for n in "12345" %}
               <label class="cursor-pointer">
-                <input type="radio" name="rating_clarity" value="{{ n }}" required class="peer sr-only">
+                <input type="radio" name="rating_clarity" value="{{ n }}" class="peer sr-only">
                 <span class="grid size-9 place-items-center rounded-full border border-line text-[13.5px] font-semibold text-body hover:border-brand peer-checked:border-brand peer-checked:bg-brand peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand">{{ n }}</span>
               </label>
             {% endfor %}
@@ -97,7 +105,7 @@
           <div class="flex gap-2">
             {% for n in "12345" %}
               <label class="cursor-pointer">
-                <input type="radio" name="rating_relevance" value="{{ n }}" required class="peer sr-only">
+                <input type="radio" name="rating_relevance" value="{{ n }}" class="peer sr-only">
                 <span class="grid size-9 place-items-center rounded-full border border-line text-[13.5px] font-semibold text-body hover:border-brand peer-checked:border-brand peer-checked:bg-brand peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand">{{ n }}</span>
               </label>
             {% endfor %}
@@ -109,7 +117,7 @@
           <div class="flex gap-2">
             {% for n in "12345" %}
               <label class="cursor-pointer">
-                <input type="radio" name="rating_experience" value="{{ n }}" required class="peer sr-only">
+                <input type="radio" name="rating_experience" value="{{ n }}" class="peer sr-only">
                 <span class="grid size-9 place-items-center rounded-full border border-line text-[13.5px] font-semibold text-body hover:border-brand peer-checked:border-brand peer-checked:bg-brand peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand">{{ n }}</span>
               </label>
             {% endfor %}
@@ -126,16 +134,16 @@
     </section>
 
     {% comment %}
-      "Close" leaves for the dashboard. window.close() would do nothing here:
-      browsers only let a script close a tab that a script opened, and the
-      candidate arrived by a normal redirect. A plain link, not a button, while
-      nothing is saved — leaving changes nothing.
+      "Close" is the form's submit button, not a link. The browser only checks
+      `required` fields when a form is submitted, so a link would walk straight
+      past an empty LinkedIn or GitHub. It goes to the dashboard rather than
+      closing the tab: window.close() only works on a tab a script opened.
     {% endcomment %}
     <div class="flex justify-end">
-      <a href="{% url 'home:dashboard' %}"
-         class="inline-flex h-11 items-center justify-center rounded-lg bg-[#111] px-7 text-sm font-bold text-white hover:bg-[#2A2B31]">
+      <button type="submit"
+              class="inline-flex h-11 items-center justify-center rounded-lg bg-[#111] px-7 text-sm font-bold text-white hover:bg-[#2A2B31]">
         Close
-      </a>
+      </button>
     </div>
   </form>
 
