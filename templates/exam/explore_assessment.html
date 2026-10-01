@@ -134,6 +134,23 @@
          class="inline-flex h-11 items-center rounded-lg border border-line px-5 text-sm font-semibold text-body hover:border-[#B9BFC9]">
         Show Results
       </a>
+
+      {% comment %}
+        NEEDS A ROUTE, and a rule. There is no certificate view yet (TRACKER.md,
+        "Credentials"), so this is a disabled button rather than an href="#"
+        that goes nowhere. When it is wired:
+          - show it only to a candidate who passed, not to every attended
+            booking. Pass is 70% of both rounds together, so on a two-round
+            exam the objective booking alone cannot answer it.
+          - link to the public verification page, which is the credential,
+            not to a PDF.
+        Solid black, like Join exam, because once results are out this is the
+        thing the candidate came here for.
+      {% endcomment %}
+      <button type="button" disabled
+              class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">
+        Get Certificate
+      </button>
     </div>
   {% endif %}
   <p class="mt-6 text-xs text-faint">Exam ID for reference · {{ booking.booking_id }}</p>

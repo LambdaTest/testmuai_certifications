@@ -26,5 +26,5 @@ urlpatterns = [
     path("exam/player/<uuid:booking_id>/", views.exam_player, name="exam_player"),
     path("exam/player/<uuid:booking_id>/termsandconditions/", views.start_exam_termsandconditions, name="start_exam_termsandconditions"),
     path("exam/player/<uuid:booking_id>/submit/", views.submit_exam, name="submit_exam"),
-    path("exam/player/<uuid:booking_id>/completed/", views.exam_completed, name="exam_completed"),
+    path("exam/<uuid:booking_id>/completed/", views.exam_completed, name="exam_completed"),
 ]

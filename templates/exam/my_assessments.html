@@ -53,7 +53,19 @@
       <a href="{% url 'exam:explore_assessment' booking.booking_id %}"
          class="group flex items-center gap-4 rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
         <span class="min-w-0 flex-1">
-          <span class="block font-semibold text-ink">{{ booking.exam.exam_name }}</span>
+          {% comment %}
+            The round, not the exam's type: a "both" exam is two bookings, and
+            labelling each by exam type would show "Both" twice. A span, not a
+            button — the whole row is already a link, and HTML does not allow an
+            interactive element inside one.
+          {% endcomment %}
+          <span class="flex flex-wrap items-center gap-2">
+            <span class="font-semibold text-ink">{{ booking.exam.exam_name }}</span>
+            <span class="rounded-full px-2.5 py-0.5 text-[11.5px] font-bold
+                         {% if booking.round_type == 'subjective' %}bg-warn-tint text-warn{% else %}bg-brand-tint text-brand-dark{% endif %}">
+              {{ booking.get_round_type_display }}
+            </span>
+          </span>
           {% comment %}
             scheduled_at is stored UTC. Rendering it inside {% timezone %} shows
             it in the zone the candidate booked in — without this Django converts
