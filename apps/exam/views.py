@@ -769,7 +769,15 @@ def exam_player(request, booking_id):
             "type": entry.question.question_type,
             "marks": entry.marks,
             "text": entry.question.question_text,
-            "options": [o.answer_option_text for o in entry.question.answers.all()],
+            # One dict per option, so an id can never drift from its text the
+            # way two parallel lists could. Autosave sends the id back, not the
+            # index, so a reorder between reads cannot change what was chosen.
+            # Built field by field: an id says nothing about correctness, and
+            # is_correct stays out of this payload.
+            "options": [
+                {"id": o.id, "text": o.answer_option_text}
+                for o in entry.question.answers.all()
+            ],
             "answer": None,
             "written": "",
             "flagged": False,

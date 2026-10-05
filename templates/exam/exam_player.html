@@ -15,14 +15,13 @@
   it muddies "did the candidate navigate away" as a signal. Nothing on this
   page navigates anywhere except Submit.
 
+  AUTOSAVE: every answer, clear and move posts to exam:save_answer, one at a
+  time through a queue, and "Saved" shows only on the server's ok. Submit and
+  the timeout both wait (up to 5s) for queued saves before posting.
+
   STILL NOT WIRED:
-    · Answers live in Alpine and vanish on reload. Autosave is a POST per
-      answer, writing selected_option / written_answer on the
-      ExamSheetQuestion. That, not the countdown, is what protects their work.
-    · Moving between questions does not write current_position, so a reconnect
-      resumes at wherever the page last loaded rather than where they got to.
-    · Submit ends the sitting in the browser only. It has to stamp
-      ExamSheet.submitted_at and move the booking on.
+    · A rejoin does not show saved answers yet. They are in the database, but
+      exam_player still sends "answer": None for every question.
 
   The countdown stays display-only by design. ExamSheet.expires_at on the
   server is the deadline; a candidate editing this number gains nothing.
@@ -202,7 +201,7 @@
 
               {# ---- objective ---- #}
               <div x-show="q.type === 'objective'" class="mt-6 grid gap-2.5">
-                <template x-for="(opt, oi) in q.options" :key="oi">
+                <template x-for="(opt, oi) in q.options" :key="opt.id">
                   <label class="noselect flex cursor-pointer items-start gap-3.5 rounded-xl border-2 px-4 py-3.5 transition-colors"
                          :class="q.answer === oi
                                  ? 'border-ok bg-ok-tint'
@@ -215,12 +214,12 @@
                            :checked="q.answer === oi" @change="answer(oi)">
                     <span class="text-[15px] leading-relaxed"
                           :class="q.answer === oi ? 'font-semibold text-ok' : 'text-body'"
-                          x-text="opt"></span>
+                          x-text="opt.text"></span>
                   </label>
                 </template>
 
                 <button type="button" x-show="q.answer !== null" x-cloak
-                        @click="q.answer = null"
+                        @click="clearAnswer()"
                         class="mt-1 justify-self-start text-[13px] font-semibold text-muted hover:text-danger">
                   Clear my answer
                 </button>
@@ -233,7 +232,13 @@
                 own words.
               {% endcomment %}
               <div x-show="q.type === 'subjective'" x-cloak class="mt-6">
+                {% comment %}
+                  Debounced: saves once typing pauses for 800ms, not on every
+                  keystroke. go() and the submit path also flush it, so a pause
+                  shorter than that before moving on loses nothing.
+                {% endcomment %}
                 <textarea rows="12" x-model="q.written" @input="q.seen = true"
+                          @input.debounce.800ms="saveWritten(q)"
                           placeholder="Write your answer here."
                           class="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-[15px] leading-relaxed outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30"></textarea>
                 <p class="mt-2 text-[13px] text-muted">
@@ -275,6 +280,15 @@
               <path d="m4 10.5 4 4 8-9"/>
             </svg>
             Saved
+          </span>
+          {% comment %}
+            The other half of the receipt. "Saved" now only appears when the
+            server confirms, so a failed save has to say so — silence would
+            read as success.
+          {% endcomment %}
+          <span x-show="saveFailed" x-cloak
+                class="text-[13px] font-semibold text-danger">
+            Not saved — check your connection
           </span>
 
           <button type="button" x-show="current < questions.length - 1"
@@ -380,8 +394,14 @@
     A POST, obviously — it ends an exam. And it is the only thing on this page
     that navigates, which is why the player carries no other links.
   {% endcomment %}
+  {% comment %}
+    @submit holds the final POST until queued autosaves have landed. Without
+    it, a last answer still in flight reaches the server after the paper is
+    closed, is refused with 409, and is graded as blank.
+  {% endcomment %}
   <form id="submit-form" method="post"
-        action="{% url 'exam:submit_exam' booking.booking_id %}">
+        action="{% url 'exam:submit_exam' booking.booking_id %}"
+        @submit="holdForSaves($event)">
     {% csrf_token %}
   </form>
 
@@ -489,8 +509,19 @@
         started: false,
         isFull: false,
         saved: false,
+        saveFailed: false,
         confirming: false,
         timeUp: false,
+
+        // Autosave plumbing. Saves run one after another through _queue, never
+        // side by side: two answers sent in parallel can arrive in either
+        // order, and the server would keep whichever landed last rather than
+        // the one the candidate chose last. `pending` counts what is still
+        // queued so the submit path knows whether to wait.
+        saveUrl: "{% url 'exam:save_answer' booking.booking_id %}",
+        _queue: Promise.resolve(),
+        pending: 0,
+        closed: false,
 
         start() {
           this.started = true;
@@ -521,7 +552,9 @@
               // Same form, no action field — the view treats that as a timeout.
               // The dialog shows while the POST is in flight, so the candidate
               // is not left looking at a live paper they can no longer answer.
-              document.getElementById("submit-form").submit();
+              // finish() lets queued saves land first; form.submit() alone
+              // skips the @submit hold.
+              this.finish();
             }
           }, 1000);
         },
@@ -541,22 +574,132 @@
           return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
         },
 
-        answer(i) { this.cur().answer = i; this.flash(); },
+        answer(i) {
+          const q = this.cur();
+          q.answer = i;
+          this.save({ position: q.n, option_id: q.options[i].id });
+        },
 
-        // Stands in for the autosave POST. The receipt matters as much as the
-        // write: a candidate who cannot see that their work is safe keeps
-        // checking instead of answering.
+        clearAnswer() {
+          const q = this.cur();
+          q.answer = null;
+          // Sent empty, not omitted: the view reads an empty option_id as
+          // "clear it" and a missing one as plain navigation.
+          this.save({ position: q.n, option_id: "" });
+        },
+
+        saveWritten(q) {
+          if (q.written === q._savedWritten) return;   // nothing new since last save
+          q._savedWritten = q.written;
+          this.save({ position: q.n, written_answer: q.written || "" });
+        },
+
+        // The receipt. Only ever called once the server has said ok — a tick
+        // shown before then is the one that told candidates their work was
+        // safe when it was not.
         flash() {
+          this.saveFailed = false;
           this.saved = true;
           clearTimeout(this._t);
           this._t = setTimeout(() => { this.saved = false; }, 1600);
         },
 
+        // Queues one autosave. Returns at once; the request runs after any
+        // already queued.
+        save(fields) {
+          if (this.closed) return;
+          this.pending++;
+          this._queue = this._queue
+            .then(() => this.post(fields))
+            .finally(() => { this.pending--; });
+        },
+
+        async post(fields, attempt = 1) {
+          const body = new FormData();
+          for (const [k, v] of Object.entries(fields)) body.append(k, v);
+          // The CSRF token the csrf_token tag already put in #submit-form.
+          // Sent as a header, which is what Django checks for a fetch().
+          const token = document.querySelector("#submit-form [name=csrfmiddlewaretoken]").value;
+          try {
+            const res = await fetch(this.saveUrl, {
+              method: "POST",
+              headers: { "X-CSRFToken": token },
+              body,
+              credentials: "same-origin",
+              // Lets a save fired just as the tab closes still go out.
+              keepalive: true,
+            });
+            if (res.ok) { this.flash(); return; }
+            // 409: submitted or past the deadline. Retrying cannot help, so
+            // stop saving; the timer or the submit already under way takes it
+            // from here.
+            if (res.status === 409) { this.closed = true; return; }
+            // Other 4xx: the request itself was refused. Retrying the same
+            // thing gets the same answer.
+            if (res.status < 500) { this.saveFailed = true; return; }
+            throw new Error(`server ${res.status}`);
+          } catch (err) {
+            // Network drop or a 5xx: worth another go, briefly. Three tries
+            // with a growing pause, then admit it to the candidate.
+            if (attempt < 3) {
+              await new Promise(r => setTimeout(r, 1000 * attempt));
+              return this.post(fields, attempt + 1);
+            }
+            this.saveFailed = true;
+          }
+        },
+
+        // Saves the current subjective answer if typing has not paused long
+        // enough for the debounce to have done it.
+        flushWritten() {
+          const q = this.cur();
+          if (q && q.type === "subjective") this.saveWritten(q);
+        },
+
+        // Resolves once every queued save has finished, or after 5 seconds —
+        // a dead connection must not stop the paper from being submitted.
+        drain() {
+          this.flushWritten();
+          return Promise.race([
+            this._queue,
+            new Promise(r => setTimeout(r, 5000)),
+          ]);
+        },
+
+        // The Submit button is type="submit", so it arrives here as a normal
+        // form submission. If saves are still queued, cancel this one, wait,
+        // then submit again with the same button so action=submit_action is
+        // still sent.
+        holdForSaves(event) {
+          if (this._released) return;          // second pass, after the wait
+          this.flushWritten();
+          if (this.pending === 0) return;
+          event.preventDefault();
+          const submitter = event.submitter;
+          this.drain().then(() => {
+            // A flag rather than trusting pending: after the 5-second cap a
+            // save may still be queued, and the paper must go anyway.
+            this._released = true;
+            event.target.requestSubmit(submitter);
+          });
+        },
+
+        // The timeout path. form.submit() bypasses @submit, so drain here.
+        finish() {
+          this.drain().then(() => {
+            this.closed = true;
+            document.getElementById("submit-form").submit();
+          });
+        },
+
         go(i) {
           if (i < 0 || i >= this.questions.length) return;
+          this.flushWritten();
           this.cur().seen = true;
-          this.current = i;                    // becomes a write to current_position
-          this.flash();
+          this.current = i;
+          // Navigation only: no answer field, so the view just moves
+          // current_position and a reconnect resumes here.
+          this.save({ position: this.questions[i].n });
         },
 
         goFirstOpen() {
