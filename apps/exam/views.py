@@ -763,27 +763,40 @@ def exam_player(request, booking_id):
 
     # Serialised here rather than in the template so the shape is visible in
     # one place and the answer key is excluded by construction.
-    questions = [
-        {
+    questions = []
+    for entry in sheet.questions.all():
+        # One dict per option, so an id can never drift from its text the way
+        # two parallel lists could. Autosave sends the id back, not the index,
+        # so a reorder between reads cannot change what was chosen. Built field
+        # by field: an id says nothing about correctness, and is_correct stays
+        # out of this payload.
+        options = [
+            {"id": o.id, "text": o.answer_option_text}
+            for o in entry.question.answers.all()
+        ]
+
+        # What autosave stored, handed back so a rejoin shows it. The player
+        # tracks the choice as a position in `options`, so the saved id is
+        # turned into that index here. Matched by id against this read's list,
+        # which is what keeps it right even if the order differs from the last
+        # page load. None when unanswered — or if the option is somehow no
+        # longer among the question's answers, which shows as blank rather
+        # than as the wrong option ticked.
+        answer = next(
+            (i for i, o in enumerate(options) if o["id"] == entry.selected_option_id),
+            None,
+        )
+
+        questions.append({
             "n": entry.position,
             "type": entry.question.question_type,
             "marks": entry.marks,
             "text": entry.question.question_text,
-            # One dict per option, so an id can never drift from its text the
-            # way two parallel lists could. Autosave sends the id back, not the
-            # index, so a reorder between reads cannot change what was chosen.
-            # Built field by field: an id says nothing about correctness, and
-            # is_correct stays out of this payload.
-            "options": [
-                {"id": o.id, "text": o.answer_option_text}
-                for o in entry.question.answers.all()
-            ],
-            "answer": None,
-            "written": "",
+            "options": options,
+            "answer": answer,
+            "written": entry.written_answer,
             "flagged": False,
-        }
-        for entry in sheet.questions.all()
-    ]
+        })
 
     remaining = int((sheet.expires_at - timezone.now()).total_seconds())
 
@@ -908,12 +921,16 @@ def grade_exam(booking, sheet):
         for question in questions:
             if question and question.selected_option and question.selected_option.is_correct:
                 question.marks_awarded = question.marks
-                marks_obtained += Exam.MARKS_PER_QUESTION
+                marks_obtained += question.marks
             else:
                 question.marks_awarded = 0
             question.save()
         booking.marks_obtained = marks_obtained
         booking.save()
+    elif booking.round_type == Exam.Type.SUBJECTIVE:
+        # Subjective exams are graded manually
+        pass
+
 
 @login_required
 @require_POST

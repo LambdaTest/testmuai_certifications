@@ -17,11 +17,11 @@
 
   AUTOSAVE: every answer, clear and move posts to exam:save_answer, one at a
   time through a queue, and "Saved" shows only on the server's ok. Submit and
-  the timeout both wait (up to 5s) for queued saves before posting.
+  the timeout both wait (up to 5s) for queued saves before posting. A rejoin
+  gets the saved answers and position back from exam_player.
 
   STILL NOT WIRED:
-    · A rejoin does not show saved answers yet. They are in the database, but
-      exam_player still sends "answer": None for every question.
+    · Flags are not saved — they reset on reload. There is no column for them.
 
   The countdown stays display-only by design. ExamSheet.expires_at on the
   server is the deadline; a candidate editing this number gains nothing.
