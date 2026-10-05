@@ -897,3 +897,35 @@ class ImportQuestionsForm(forms.Form):
             imports.parse_row(cells, number)
             for number, cells in enumerate(self.raw_rows or [], start=1)
         ]
+
+
+class SaveAnswerForm(forms.Form):
+    """
+    One autosave from the exam player: where the candidate is, and optionally
+    what they answered there.
+
+    A plain Form, not a ModelForm, even though it ends up writing an
+    ExamSheetQuestion. A ModelForm would expose the row's fields by name, and
+    the browser must never be able to say which sheet, which question or how
+    many marks — only "I am on question 3 and chose option 812". The view
+    resolves everything else from the candidate's own sheet.
+
+    Every field but position is optional because one endpoint serves three
+    calls: an objective answer (option_id), a subjective answer
+    (written_answer), and plain navigation (neither), which only moves the
+    bookmark. The view tells "not sent" from "sent empty" by checking
+    request.POST directly — cleaned_data turns both into None/"".
+    """
+
+    #: 1-based, matching ExamSheetQuestion.position. min_value here; the upper
+    #: bound depends on the sheet, so the view checks that the row exists.
+    position = forms.IntegerField(min_value=1)
+
+    #: The AnswerOptions id, not its index in the list. Options are ordered by
+    #: position, but rows written before that column existed all sit at 0 and
+    #: tie — an index could point at a different option on the next read.
+    option_id = forms.IntegerField(required=False, min_value=1)
+
+    #: strip=False: leading spaces or blank lines in an answer are the
+    #: candidate's, and autosave must not quietly rewrite what they typed.
+    written_answer = forms.CharField(required=False, strip=False)

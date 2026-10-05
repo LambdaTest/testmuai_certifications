@@ -25,6 +25,7 @@ urlpatterns = [
     path("question_center/delete_question/<int:question_id>/", views.delete_question, name="delete_question"),
     path("exam/player/<uuid:booking_id>/", views.exam_player, name="exam_player"),
     path("exam/player/<uuid:booking_id>/termsandconditions/", views.start_exam_termsandconditions, name="start_exam_termsandconditions"),
+    path("exam/player/<uuid:booking_id>/save/", views.save_answer, name="save_answer"),
     path("exam/player/<uuid:booking_id>/submit/", views.submit_exam, name="submit_exam"),
     path("exam/completed/", views.exam_completed, name="exam_completed"),
 ]

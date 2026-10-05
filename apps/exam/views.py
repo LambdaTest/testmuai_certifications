@@ -14,7 +14,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponse, request
+from django.http import Http404, HttpResponse, JsonResponse, request
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -29,6 +29,7 @@ from .forms import (
     ExamForm,
     QuestionForm,
     RescheduleForm,
+    SaveAnswerForm,
     SubjectForm,
     ImportQuestionsForm
 )
@@ -792,6 +793,100 @@ def exam_player(request, booking_id):
             "start_position": sheet.current_position,
         },
     )
+
+
+@login_required
+@require_POST
+def save_answer(request, booking_id):
+    """
+    Autosave: records one answer, and the candidate's place, as they go.
+
+    Called by the player in the background, so it answers in JSON rather than
+    redirecting — the page stays where it is and only the "Saved" tick reacts.
+    The tick should appear on {"ok": true} and nowhere else; a receipt shown
+    before the server confirms is the one that lied before.
+
+    Three kinds of call, told apart by which fields were sent:
+      option_id       – an objective answer; empty clears it
+      written_answer  – a subjective answer; empty clears it
+      neither         – navigation, which only moves current_position
+
+    Refuses once the paper is closed — submitted, past expires_at, or the
+    booking no longer live — so nothing can change an answer after the fact.
+    """
+    form = SaveAnswerForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse({"ok": False, "errors": form.errors}, status=400)
+    data = form.cleaned_data
+
+    with transaction.atomic():
+        booking = get_object_or_404(
+            ExamBooking,
+            booking_id=booking_id,
+            candidate=request.user,
+        )
+        # Locked for the same reason submit_exam locks it: a save racing the
+        # final submit must land before it or not at all, never after the
+        # paper was graded.
+        sheet = (
+            ExamSheet.objects
+            .select_for_update()
+            .filter(booking=booking)
+            .first()
+        )
+        if sheet is None:
+            return JsonResponse({"ok": False, "error": "no_sheet"}, status=404)
+
+        # 409 Conflict: the request was fine, the paper's state refuses it. The
+        # player should stop saving and let the submit path take over.
+        if (
+            sheet.submitted_at is not None
+            or timezone.now() >= sheet.expires_at
+            or booking.status != ExamBooking.Status.BOOKED
+        ):
+            return JsonResponse({"ok": False, "error": "closed"}, status=409)
+
+        entry = (
+            ExamSheetQuestion.objects
+            .select_related("question")
+            .filter(sheet=sheet, position=data["position"])
+            .first()
+        )
+        if entry is None:
+            return JsonResponse({"ok": False, "error": "no_such_question"}, status=400)
+
+        fields = []
+
+        if "option_id" in request.POST:
+            if entry.question.question_type != Question.Type.OBJECTIVE:
+                return JsonResponse({"ok": False, "error": "wrong_type"}, status=400)
+            option = None
+            if data["option_id"] is not None:
+                # Filtered by this question, so an id belonging to some other
+                # question — on this paper or any other — is refused rather
+                # than stored. Without it a candidate could save any option id
+                # in the database against question 3.
+                option = entry.question.answers.filter(pk=data["option_id"]).first()
+                if option is None:
+                    return JsonResponse({"ok": False, "error": "no_such_option"}, status=400)
+            entry.selected_option = option
+            fields.append("selected_option")
+
+        elif "written_answer" in request.POST:
+            if entry.question.question_type != Question.Type.SUBJECTIVE:
+                return JsonResponse({"ok": False, "error": "wrong_type"}, status=400)
+            entry.written_answer = data["written_answer"]
+            fields.append("written_answer")
+
+        if fields:
+            # update_fields writes only the answer column. marks and
+            # marks_awarded are never touched by a candidate's request.
+            entry.save(update_fields=fields)
+
+        sheet.current_position = entry.position
+        sheet.save(update_fields=["current_position"])
+
+    return JsonResponse({"ok": True})
 
 
 def grade_exam(booking, sheet):
