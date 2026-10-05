@@ -9,6 +9,7 @@ from .models import (
     Question,
     Subject,
     Video,
+    ExamSheetQuestion
 )
 
 
@@ -77,3 +78,5 @@ class ExamBookingAdmin(admin.ModelAdmin):
 
 for model in (Image, Audio, Video):
     admin.site.register(model)
+
+admin.site.register(ExamSheetQuestion)
