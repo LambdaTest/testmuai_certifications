@@ -20,8 +20,7 @@
   the timeout both wait (up to 5s) for queued saves before posting. A rejoin
   gets the saved answers and position back from exam_player.
 
-  STILL NOT WIRED:
-    · Flags are not saved — they reset on reload. There is no column for them.
+  Flags save the same way, through toggleFlag(), and come back on a rejoin.
 
   The countdown stays display-only by design. ExamSheet.expires_at on the
   server is the deadline; a candidate editing this number gains nothing.
@@ -259,7 +258,7 @@
             ← Previous
           </button>
 
-          <button type="button" @click="cur().flagged = !cur().flagged"
+          <button type="button" @click="toggleFlag()"
                   :aria-pressed="cur().flagged"
                   class="inline-flex h-11 items-center gap-2 rounded-lg border px-4 text-[14.5px] font-semibold"
                   :class="cur().flagged
@@ -586,6 +585,14 @@
           // Sent empty, not omitted: the view reads an empty option_id as
           // "clear it" and a missing one as plain navigation.
           this.save({ position: q.n, option_id: "" });
+        },
+
+        toggleFlag() {
+          const q = this.cur();
+          q.flagged = !q.flagged;
+          // The words "true"/"false", never 1/0: Django's BooleanField reads
+          // only those two words, and the string "0" counts as True.
+          this.save({ position: q.n, flagged: q.flagged ? "true" : "false" });
         },
 
         saveWritten(q) {

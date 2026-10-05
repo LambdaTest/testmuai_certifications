@@ -795,7 +795,7 @@ def exam_player(request, booking_id):
             "options": options,
             "answer": answer,
             "written": entry.written_answer,
-            "flagged": False,
+            "flagged": entry.flagged,
         })
 
     remaining = int((sheet.expires_at - timezone.now()).total_seconds())
@@ -899,9 +899,17 @@ def save_answer(request, booking_id):
             entry.written_answer = data["written_answer"]
             fields.append("written_answer")
 
+        # Outside the chain above: a flag can arrive on its own or alongside an
+        # answer. Checked against request.POST, not cleaned_data — the form
+        # turns "not sent" into False, which would unflag the question on
+        # every answer save.
+        if "flagged" in request.POST:
+            entry.flagged = data["flagged"]
+            fields.append("flagged")
+
         if fields:
-            # update_fields writes only the answer column. marks and
-            # marks_awarded are never touched by a candidate's request.
+            # update_fields writes only the columns this request named. marks
+            # and marks_awarded are never touched by a candidate's request.
             entry.save(update_fields=fields)
 
         sheet.current_position = entry.position

@@ -929,3 +929,6 @@ class SaveAnswerForm(forms.Form):
     #: strip=False: leading spaces or blank lines in an answer are the
     #: candidate's, and autosave must not quietly rewrite what they typed.
     written_answer = forms.CharField(required=False, strip=False)
+
+    # flagged option to check if the candidate has flagged the question for review
+    flagged = forms.BooleanField(required=False)

@@ -741,6 +741,12 @@ class ExamSheetQuestion(models.Model):
     #: defaulted to 0 — unanswered and ungraded are different states.
     marks_awarded = models.PositiveIntegerField(blank=True, null=True)
 
+    #: The candidate's "come back to this" mark. Saved by autosave so a reconnect
+    #: brings the review list back along with the answers. It never affects the
+    #: score; kept afterwards because a question most candidates flag is
+    #: probably unclear.
+    flagged = models.BooleanField(default=False)
+
     class Meta:
         db_table = "exam_sheet_questions"
         ordering = ["position"]
