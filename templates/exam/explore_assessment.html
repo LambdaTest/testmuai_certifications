@@ -146,10 +146,23 @@
         starts on the begin button there, so linking directly to the player
         would start the exam for them.
       {% endcomment %}
-      <a href="{% url 'exam:start_exam_termsandconditions' booking.booking_id %}"
-         class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31]">
-        Join exam →
-      </a>
+      {% comment %}
+        Live only inside the join window (stage "underway": scheduled_at up to
+        join_closes_at). Before it, a disabled button — no early starts — with
+        Reschedule and calendar still usable, since that is when they matter.
+        _start_or_resume enforces the same window on the server.
+      {% endcomment %}
+      {% if booking.stage == 'underway' %}
+        <a href="{% url 'exam:start_exam_termsandconditions' booking.booking_id %}"
+           class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31]">
+          Join exam →
+        </a>
+      {% else %}
+        <button type="button" disabled
+                class="inline-flex h-11 cursor-not-allowed items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white opacity-40">
+          Join exam →
+        </button>
+      {% endif %}
     </div>
 
   {% elif booking.status == 'attended' %}

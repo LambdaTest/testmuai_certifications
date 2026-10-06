@@ -656,6 +656,22 @@ def _start_or_resume(booking):
     if sheet is not None:
         return sheet
 
+    # The join window, checked only for a NEW paper — after the resume above, on
+    # purpose. Someone who began at 10:40 and lost their connection must get back
+    # in at 10:50 even though nobody may start one then.
+    #
+    # Enforced here, not only by the disabled buttons: those are display, and
+    # the begin POST can be sent without ever seeing them.
+    now = timezone.now()
+    if now < booking.scheduled_at:
+        raise ValidationError(
+            "This exam has not opened yet. You can begin from your scheduled time."
+        )
+    if now >= booking.join_closes_at:
+        raise ValidationError(
+            "The time to start this exam has passed."
+        )
+
     exam = booking.exam
 
     # The ROUND's type, not the exam's. An exam can be "both", but a question is

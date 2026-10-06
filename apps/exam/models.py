@@ -573,9 +573,26 @@ class ExamBooking(models.Model):
         now = dj_tz.now()
         if now < self.scheduled_at:
             return "upcoming"
-        if now < self.scheduled_at + timedelta(minutes=self.exam.duration_minutes):
+        if now < self.join_closes_at:
             return "underway"
         return "lapsed"
+
+    @property
+    def join_closes_at(self):
+        """
+        The last moment a paper can be *started*: scheduled_at plus this round's
+        own duration. 10:00 PM for a 45-minute objective round closes at 10:45.
+
+        The round's duration, not exam.duration_minutes. On a "both" exam that
+        field is 2205 — the two rounds added together for display — and used
+        here it kept an objective round joinable for 37 hours.
+
+        Only governs starting. Anyone who begins inside the window gets the full
+        duration from the moment they press begin (see _start_or_resume), so a
+        10:44 start runs to 11:29. A candidate already mid-paper can always
+        resume, whatever the time.
+        """
+        return self.scheduled_at + timedelta(minutes=Exam.DURATION_BY_TYPE[self.round_type])
 
     @property
     def local_scheduled_at(self):

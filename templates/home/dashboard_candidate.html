@@ -75,8 +75,18 @@
               starts when the candidate presses begin on that page, so landing
               them directly in the exam would start it for them.
             {% endcomment %}
-            <a href="{% url 'exam:start_exam_termsandconditions' upcoming_booking.booking_id %}"
-               class="flex-auto rounded-lg bg-white px-[22px] py-3 text-center text-[14.5px] font-bold text-dark hover:bg-[#E4E9F0]">Join exam →</a>
+            {% comment %}
+              Live only inside the join window, same rule as the assessment
+              page: booking.stage "underway". Disabled otherwise — a <button>,
+              because a link stays clickable however it is styled.
+            {% endcomment %}
+            {% if upcoming_booking.stage == 'underway' %}
+              <a href="{% url 'exam:start_exam_termsandconditions' upcoming_booking.booking_id %}"
+                 class="flex-auto rounded-lg bg-white px-[22px] py-3 text-center text-[14.5px] font-bold text-dark hover:bg-[#E4E9F0]">Join exam →</a>
+            {% else %}
+              <button type="button" disabled
+                      class="flex-auto cursor-not-allowed rounded-lg bg-white px-[22px] py-3 text-center text-[14.5px] font-bold text-dark opacity-40">Join exam →</button>
+            {% endif %}
             <a href="{% url 'exam:reschedule' upcoming_booking.booking_id %}"
                class="flex-auto rounded-lg border border-white/30 px-5 py-3 text-center text-[14.5px] font-semibold text-white hover:border-white/65">Reschedule</a>
           </div>
