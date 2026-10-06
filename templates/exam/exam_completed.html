@@ -38,6 +38,33 @@
     {% if booking %}
       <p class="mt-2 text-[15px] text-muted">{{ booking.exam.exam_name }}</p>
     {% endif %}
+
+    {% comment %}
+      Objective rounds only, read from round_type, which the view passes from
+      the booking. A subjective round has no score until an examiner grades it.
+
+      "is not None" as well, not a plain truth test on marks_obtained: a score
+      of 0 is falsy and would hide the line from exactly the candidate who most
+      needs to see it.
+    {% endcomment %}
+    {% if round_type == "objective" and marks_obtained is not None %}
+      <p class="mt-5 rounded-xl bg-brand-tint px-5 py-3 text-lg font-bold text-brand-dark">
+        You Scored: {{ marks_obtained }}
+      </p>
+    {% endif %}
+
+    {% comment %}
+      Only after the first round of a two-round exam (has_next_round, set by
+      submit_exam). Shown to everyone else it would be a riddle: a single-round
+      candidate has no second round, and a second-round candidate is done.
+    {% endcomment %}
+    {% if has_next_round %}
+      <p class="mt-4 rounded-xl border border-line bg-surface px-5 py-3 text-[14px] text-body">
+        If this is a two-round exam, the second round can be accessed from the
+        <a href="{% url 'exam:myassessment' 'booked' %}" class="font-semibold text-brand hover:underline">My Assessments</a>
+        section.
+      </p>
+    {% endif %}
   </header>
 
   {% comment %}

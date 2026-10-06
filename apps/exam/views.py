@@ -935,6 +935,7 @@ def grade_exam(booking, sheet):
             question.save()
         booking.marks_obtained = marks_obtained
         booking.save()
+        return marks_obtained
     elif booking.round_type == Exam.Type.SUBJECTIVE:
         # Subjective exams are graded manually
         pass
@@ -1003,7 +1004,7 @@ def submit_exam(request, booking_id):
         # Update the booking status to attended
         booking.status = ExamBooking.Status.ATTENDED
         booking.save()
-        grade_exam(booking, sheet)
+        marks_obtained = grade_exam(booking, sheet)
         # create a new booking if the exam is a two-round exam and the current round is objective
         is_first_of_two = (
             booking.exam.exam_type == Exam.Type.BOTH
@@ -1027,24 +1028,29 @@ def submit_exam(request, booking_id):
         messages.info(request, "Your objective round is completed. You have been booked for the subjective round.")
     else:
         messages.info(request, "Thank you for completing the exam.")
-        return redirect("exam:exam_completed", booking_id=booking.booking_id)
-    return redirect("home:dashboard")
+    # Every round ends on the completed page now, including the first round of
+    # a two-round exam — that candidate is the one who needs telling where the
+    # second round is.
+    candidate_name = booking.candidate.get_full_name()
+    marks_obtained = booking.marks_obtained
+    # The round, not exam.exam_type: on a two-round exam the type is "both"
+    # for both bookings, so it cannot say whether this paper was objective.
+    round_type = booking.round_type
+    # Keyword arguments, not a dict: exam_completed collects them through
+    # **kwargs, which accepts keywords only — a dict passed positionally
+    # raises TypeError.
+    return exam_completed(
+        request,
+        candidate_name=candidate_name,
+        marks_obtained=marks_obtained,
+        round_type=round_type,
+        has_next_round=is_first_of_two,
+    )
+    # return redirect("exam:exam_completed", {"candidate_name": candidate_name, "marks_obtained": marks_obtained})
 
 @login_required
-def exam_completed(request):
+def exam_completed(request, **kwargs):
     """
     Displays a confirmation page after the exam is completed.
     """
-    # booking = get_object_or_404(
-    #     ExamBooking.objects.select_related("exam__subject"),
-    #     booking_id=booking_id,
-    #     candidate=request.user,
-    # )
-    # total_marks = 0
-    # if booking:
-    #     total_marks = booking.marks_obtained if booking else None
-    #     if booking.parent_booking:
-    #         parent_booking = booking.parent_booking
-    #         total_marks = parent_booking.marks_obtained if parent_booking else None
-    # return render(request, "exam/exam_completed.html", {"booking": booking, "total_marks": total_marks})
-    return render(request, "exam/exam_completed.html")
+    return render(request, "exam/exam_completed.html", kwargs)
