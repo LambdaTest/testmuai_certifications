@@ -1,0 +1,263 @@
+{% load tz %}
+<!doctype html>
+<html lang="en" class="h-full">
+{% comment %}
+  The subjective round: one task, answered with a link to a GitHub pull request.
+
+  Context it will need from the view (none of it wired yet):
+    booking   – the ExamBooking (round_type "subjective"), exam selected
+    sheet     – its ExamSheet, for expires_at (the 36-hour deadline)
+    question  – the single ExamSheetQuestion, with question selected
+
+  NOT WIRED. No POST, no autosave, no view renders this yet. Every value falls
+  back to a placeholder so the page renders with an empty context. The Submit
+  button only enables and disables; clicking it does nothing.
+
+  NO LOCKDOWN, unlike exam_player.html, on purpose. This round is a 36-hour
+  task done in an editor and on GitHub. Full screen would have to be left
+  within a minute, and blocking copy would stop the candidate pasting the very
+  link the page asks for. The integrity check for this round is the examiner
+  reading the PR, not the browser.
+{% endcomment %}
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ booking.exam.exam_name|default:"Subjective round" }} · Subjective round</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+  <script defer src="https://unpkg.com/alpinejs@3/dist/cdn.min.js"></script>
+
+  {% include "_theme.html" %}
+</head>
+
+<body class="min-h-full bg-surface font-sans text-ink antialiased">
+
+  {# ================= Top bar ================= #}
+  <header class="border-b border-line bg-white">
+    <div class="mx-auto flex h-16 max-w-3xl items-center gap-4 px-4">
+      <div class="min-w-0">
+        <p class="truncate text-[15px] font-bold tracking-tight">
+          {{ booking.exam.exam_name|default:"Exam name" }}
+        </p>
+        <p class="text-[12.5px] text-muted">Subjective round</p>
+      </div>
+
+      {% comment %}
+        The deadline as a time, not a ticking clock. Over 36 hours a countdown
+        is noise; "due Thu 10:30 PM" is what a candidate plans around. Shown in
+        the zone they booked in, and guarded on sheet because {% templatetag openblock %} timezone {% templatetag closeblock %}
+        raises on an empty zone name rather than rendering blank.
+      {% endcomment %}
+      <div class="ml-auto rounded-lg bg-warn-tint px-3 py-2 text-right">
+        <p class="text-[11px] font-bold tracking-[1px] text-warn uppercase">Submit by</p>
+        <p class="text-[14px] font-bold text-ink">
+          {% if sheet and booking %}
+            {% timezone booking.booked_timezone %}{{ sheet.expires_at|date:"D j M, g:i A" }}{% endtimezone %}
+          {% else %}
+            —
+          {% endif %}
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto grid max-w-3xl gap-5 px-4 py-8">
+
+    {# ================= Instructions ================= #}
+    {% comment %}
+      Follows the submission Eklavya asked for — a private repository shared
+      with the admin address, plus the Test Manager test IDs — with the pull
+      request added so the examiner has one diff to read. Wording is a first
+      draft; adjust once the rules are final.
+    {% endcomment %}
+    <section class="rounded-2xl border border-brand bg-brand-tint p-6">
+      <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-brand-dark uppercase">Instructions</h2>
+      <ol class="mt-3 grid list-decimal gap-2 pl-5 text-[14.5px] leading-relaxed text-body">
+        <li>Read the task below in full before you start.</li>
+        <li>
+          Do the work in a <span class="font-semibold text-ink">private</span> GitHub repository and
+          share it with <span class="font-semibold text-ink">admin@testmuaicertifications.com</span>,
+          or the examiner cannot open it.
+        </li>
+        <li>Open a pull request in that repository containing your solution.</li>
+        <li>Note the Test Manager test ID of every test run you make.</li>
+        <li>Paste the repository link, the pull request link and your test IDs below, then press Submit before the deadline.</li>
+        <li>Do not push to the repository after you submit. Only the work present at submission is graded.</li>
+        <li>You can leave this page and come back at any time before the deadline.</li>
+      </ol>
+    </section>
+
+    {# ================= Question ================= #}
+    <section class="rounded-2xl border border-line bg-white p-6">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Your task</h2>
+        <span class="text-[13px] font-semibold text-muted">
+          {{ question.marks|default:"—" }} marks
+        </span>
+      </div>
+      {% comment %}
+        linebreaks keeps the author's paragraphs; the text is escaped first, so
+        markup in a question renders as text rather than as HTML.
+      {% endcomment %}
+      <div class="mt-3 text-[16px] leading-[1.6] text-ink">
+        {% if question %}
+          {{ question.question.question_text|linebreaks }}
+        {% else %}
+          <p>The task text appears here.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    {# ================= Answer ================= #}
+    {% comment %}
+      Three fields, all required. Submit stays disabled until every one is
+      valid; a field shows its red hint only once something has been typed, so
+      an empty form does not open as a wall of errors.
+
+      The checks are a convenience, so the button is not live for a typo. The
+      view must repeat them when this is wired — the disabled attribute can be
+      removed from devtools. Field names (repo_url, pr_url, test_ids) are meant
+      to become the Django form's field names.
+
+      A form with no action and type="button" on Submit, so nothing posts yet.
+    {% endcomment %}
+    <section class="rounded-2xl border border-line bg-white p-6" x-data="subjectiveAnswer()">
+      <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Your submission</h2>
+      <p class="mt-1.5 text-[13px] text-muted">All three fields are required.</p>
+
+      <form class="mt-4 grid gap-5" onsubmit="return false">
+
+        {# ---- repository ---- #}
+        <div>
+          <label for="repo_url" class="text-[14px] font-semibold text-ink">GitHub repository link <span class="text-danger" aria-hidden="true">*</span></label>
+          <input type="url" id="repo_url" name="repo_url" x-model="repoUrl" required
+                 placeholder="https://github.com/your-name/your-repo"
+                 autocomplete="off" spellcheck="false" aria-describedby="repo_hint"
+                 :aria-invalid="showError('repo') ? 'true' : 'false'"
+                 :class="showError('repo') ? 'border-danger focus:border-danger' : 'border-line focus:border-brand'"
+                 class="mt-1.5 h-12 w-full rounded-lg border bg-white px-3.5 font-mono text-[14px] text-ink placeholder:font-sans placeholder:text-faint focus:outline-none">
+          <p id="repo_hint" class="mt-2 text-[13px]"
+             :class="showError('repo') ? 'text-danger' : 'text-muted'"
+             x-text="showError('repo')
+                       ? 'That does not look like a repository link. It should look like github.com/owner/repo.'
+                       : 'The private repository you shared with admin@testmuaicertifications.com.'">
+            The private repository you shared with admin@testmuaicertifications.com.
+          </p>
+        </div>
+
+        {# ---- pull request ---- #}
+        <div>
+          <label for="pr_url" class="text-[14px] font-semibold text-ink">Pull request link <span class="text-danger" aria-hidden="true">*</span></label>
+          <input type="url" id="pr_url" name="pr_url" x-model="prUrl" required
+                 placeholder="https://github.com/your-name/your-repo/pull/1"
+                 autocomplete="off" spellcheck="false" aria-describedby="pr_hint"
+                 :aria-invalid="showError('pr') ? 'true' : 'false'"
+                 :class="showError('pr') ? 'border-danger focus:border-danger' : 'border-line focus:border-brand'"
+                 class="mt-1.5 h-12 w-full rounded-lg border bg-white px-3.5 font-mono text-[14px] text-ink placeholder:font-sans placeholder:text-faint focus:outline-none">
+          <p id="pr_hint" class="mt-2 text-[13px]"
+             :class="showError('pr') ? 'text-danger' : 'text-muted'"
+             x-text="prMessage()">
+            The pull request with your solution, in the repository above.
+          </p>
+        </div>
+
+        {# ---- test IDs ---- #}
+        <div>
+          <label for="test_ids" class="text-[14px] font-semibold text-ink">Test Manager test IDs <span class="text-danger" aria-hidden="true">*</span></label>
+          {% comment %}
+            A textarea rather than a single-line input: a long run of IDs wraps
+            and stays readable, and a candidate pasting one per line is fine —
+            line breaks are accepted as separators alongside commas.
+          {% endcomment %}
+          <textarea id="test_ids" name="test_ids" rows="3" x-model="testIds" required
+                    placeholder="TM-1042, TM-1043, TM-1051"
+                    spellcheck="false" aria-describedby="ids_hint"
+                    :aria-invalid="showError('ids') ? 'true' : 'false'"
+                    :class="showError('ids') ? 'border-danger focus:border-danger' : 'border-line focus:border-brand'"
+                    class="mt-1.5 w-full rounded-lg border bg-white px-3.5 py-2.5 font-mono text-[14px] text-ink placeholder:font-sans placeholder:text-faint focus:outline-none"></textarea>
+          <p id="ids_hint" class="mt-2 text-[13px]"
+             :class="showError('ids') ? 'text-danger' : 'text-muted'"
+             x-text="idsMessage()">
+            Separate the IDs with commas.
+          </p>
+        </div>
+
+        <div class="flex justify-end">
+          <button type="button" :disabled="!allValid" disabled
+                  class="inline-flex h-11 items-center justify-center rounded-lg bg-[#111] px-7 text-sm font-bold text-white hover:bg-[#2A2B31] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#111]">
+            Submit
+          </button>
+        </div>
+      </form>
+    </section>
+
+  </main>
+
+  <script>
+    function subjectiveAnswer() {
+      // https://github.com/<owner>/<repo>, optional trailing slash.
+      const REPO = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/?$/;
+      // https://github.com/<owner>/<repo>/pull/<number>, optionally followed
+      // by a tab such as /files.
+      const PR = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/\d+(\/[\w-]*)?\/?$/;
+
+      return {
+        repoUrl: "",
+        prUrl: "",
+        testIds: "",
+
+        get repoMatch() { return this.repoUrl.trim().match(REPO); },
+        get prMatch()   { return this.prUrl.trim().match(PR); },
+
+        // The PR must live in the repository given above — that repository
+        // is the one shared with the examiner, so a PR anywhere else is one
+        // they may not be able to open. GitHub names are case-insensitive.
+        get prInRepo() {
+          if (!this.repoMatch || !this.prMatch) return false;
+          return `${this.prMatch[1]}/${this.prMatch[2]}`.toLowerCase()
+              === `${this.repoMatch[1]}/${this.repoMatch[2]}`.toLowerCase();
+        },
+
+        // Commas or line breaks separate IDs; blanks from a trailing comma or
+        // a double comma are ignored rather than treated as an error.
+        get idList() {
+          return this.testIds.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+        },
+
+        get valid() {
+          return {
+            repo: !!this.repoMatch,
+            pr: !!this.prMatch && this.prInRepo,
+            ids: this.idList.length > 0,
+          };
+        },
+        get allValid() { return this.valid.repo && this.valid.pr && this.valid.ids; },
+
+        // Red only once the candidate has typed something into that field.
+        showError(field) {
+          const typed = { repo: this.repoUrl, pr: this.prUrl, ids: this.testIds }[field];
+          return typed.trim() !== "" && !this.valid[field];
+        },
+
+        prMessage() {
+          if (!this.prUrl.trim()) return "The pull request with your solution, in the repository above.";
+          if (!this.prMatch) return "That does not look like a pull request link. It should look like github.com/owner/repo/pull/123.";
+          if (this.repoMatch && !this.prInRepo) return "This pull request is not in the repository above. It must be in the repository you shared.";
+          if (!this.repoMatch) return "Add the repository link above as well.";
+          return "The pull request with your solution, in the repository above.";
+        },
+
+        idsMessage() {
+          const n = this.idList.length;
+          if (n === 0) return "Separate the IDs with commas.";
+          return `${n} test ID${n === 1 ? "" : "s"}: ${this.idList.join(", ")}`;
+        },
+      };
+    }
+  </script>
+</body>
+</html>

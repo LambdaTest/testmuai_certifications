@@ -831,6 +831,16 @@ def exam_player(request, booking_id):
         },
     )
 
+@login_required
+def exam_player_subjective(request):
+    """
+    This is the exam player for subjective exams. It is similar to the exam_player view but tailored for subjective paper.
+    A subjective paper will have only one question and a textbox where github PR can be pasted.
+    If the paste is complete, the candidate can submit the exam. They can access this player until 36 hours after starting.
+    """
+    return render(request, "exam/exam_player_subjective.html")
+
+
 
 @login_required
 @require_POST
