@@ -22,6 +22,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.core.validators import (FileExtensionValidator, MaxValueValidator,
                                     MinValueValidator)
+from django.contrib.postgres.fields import ArrayField
 
 class Question(models.Model):
     """
@@ -748,10 +749,6 @@ class ExamSheetQuestion(models.Model):
         null=True,
     )
 
-    #: Subjective answer. Written incrementally by autosave, not only at submit
-    #: — a closed tab must not lose work, and an abandoned paper should grade on
-    #: what was actually written.
-    written_answer = models.TextField(blank=True)
 
     #: Filled by auto-grading for objective questions, by an examiner for
     #: subjective ones. Null means not yet graded, which is why it is not
@@ -785,3 +782,20 @@ class ExamSheetQuestion(models.Model):
 
     def __str__(self):
         return f"Q{self.position} of {self.sheet_id}"
+
+class SubjectiveSubmission(models.Model):
+    """
+    Three fields specific to the subjective round which provides a single question
+    and asks for only 3 fields which are not present in the objective exam.
+    """
+    #: One per subjective question slot. The slot (question, position, marks,
+    #: marks_awarded) stays on ExamSheetQuestion; this holds only the answer.
+    entry = models.OneToOneField(ExamSheetQuestion, on_delete=models.CASCADE, related_name="submission")
+    github_repo = models.URLField()
+    github_pr = models.URLField()
+    test_ids = ArrayField(models.CharField(max_length=100))
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "subjective_submissions"
+        ordering = ["-submitted_at"]

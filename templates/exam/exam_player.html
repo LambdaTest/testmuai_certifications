@@ -51,9 +51,8 @@
 
   <style>
     {% comment %}
-      Copy is blocked on the question pane only. Blocking selection everywhere
-      would stop a candidate selecting their own typed answer in a subjective
-      box, which is hostile for no gain.
+      Copy is blocked on the question pane only, not the whole page — blocking
+      selection everywhere is hostile for no gain.
     {% endcomment %}
     .noselect { user-select: none; -webkit-user-select: none; }
   </style>
@@ -223,27 +222,7 @@
                   Clear my answer
                 </button>
               </div>
-
-              {# ---- subjective ---- #}
-              {% comment %}
-                Selection is allowed here — the candidate has to be able to edit
-                what they typed. The copy block is on the question, not on their
-                own words.
-              {% endcomment %}
-              <div x-show="q.type === 'subjective'" x-cloak class="mt-6">
-                {% comment %}
-                  Debounced: saves once typing pauses for 800ms, not on every
-                  keystroke. go() and the submit path also flush it, so a pause
-                  shorter than that before moving on loses nothing.
-                {% endcomment %}
-                <textarea rows="12" x-model="q.written" @input="q.seen = true"
-                          @input.debounce.800ms="saveWritten(q)"
-                          placeholder="Write your answer here."
-                          class="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-[15px] leading-relaxed outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30"></textarea>
-                <p class="mt-2 text-[13px] text-muted">
-                  <span x-text="(q.written || '').trim().split(/\s+/).filter(Boolean).length"></span> words
-                </p>
-              </div>
+              {# Subjective rounds have their own page: exam_player_subjective.html #}
             </div>
           </template>
         </div>
@@ -319,7 +298,7 @@
         <div class="mt-3 grid grid-cols-5 gap-2">
           <template x-for="(q, i) in questions" :key="q.n">
             <button type="button" @click="go(i)"
-                    :aria-label="`Question ${q.n}${q.answer !== null || (q.written||'').trim() ? ', answered' : ''}${q.flagged ? ', flagged' : ''}`"
+                    :aria-label="`Question ${q.n}${q.answer !== null ? ', answered' : ''}${q.flagged ? ', flagged' : ''}`"
                     :aria-current="i === current"
                     class="relative grid aspect-square place-items-center rounded-lg text-[13px] font-bold transition-colors"
                     :class="i === current   ? 'bg-ink text-white ring-2 ring-ink ring-offset-2'
@@ -564,7 +543,7 @@
         // function", silently, on every click in the palette and on every
         // option. Alpine reports it as an expression warning and carries on.
         cur() { return this.questions[this.current]; },
-        done(q) { return q.answer !== null || (q.written || "").trim().length > 0; },
+        done(q) { return q.answer !== null; },
         get answered() { return this.questions.filter(q => this.done(q)).length; },
         get flagged()  { return this.questions.filter(q => q.flagged).length; },
 
@@ -593,12 +572,6 @@
           // The words "true"/"false", never 1/0: Django's BooleanField reads
           // only those two words, and the string "0" counts as True.
           this.save({ position: q.n, flagged: q.flagged ? "true" : "false" });
-        },
-
-        saveWritten(q) {
-          if (q.written === q._savedWritten) return;   // nothing new since last save
-          q._savedWritten = q.written;
-          this.save({ position: q.n, written_answer: q.written || "" });
         },
 
         // The receipt. Only ever called once the server has said ok — a tick
@@ -656,17 +629,9 @@
           }
         },
 
-        // Saves the current subjective answer if typing has not paused long
-        // enough for the debounce to have done it.
-        flushWritten() {
-          const q = this.cur();
-          if (q && q.type === "subjective") this.saveWritten(q);
-        },
-
         // Resolves once every queued save has finished, or after 5 seconds —
         // a dead connection must not stop the paper from being submitted.
         drain() {
-          this.flushWritten();
           return Promise.race([
             this._queue,
             new Promise(r => setTimeout(r, 5000)),
@@ -679,7 +644,6 @@
         // still sent.
         holdForSaves(event) {
           if (this._released) return;          // second pass, after the wait
-          this.flushWritten();
           if (this.pending === 0) return;
           event.preventDefault();
           const submitter = event.submitter;
@@ -701,7 +665,6 @@
 
         go(i) {
           if (i < 0 || i >= this.questions.length) return;
-          this.flushWritten();
           this.cur().seen = true;
           this.current = i;
           // Navigation only: no answer field, so the view just moves

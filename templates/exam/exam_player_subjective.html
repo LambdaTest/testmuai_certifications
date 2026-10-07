@@ -120,8 +120,8 @@
 
       The checks are a convenience, so the button is not live for a typo. The
       view must repeat them when this is wired — the disabled attribute can be
-      removed from devtools. Field names (repo_url, pr_url, test_ids) are meant
-      to become the Django form's field names.
+      removed from devtools. Field names (github_repo, github_pr, test_ids) match
+      ExamSheetFormSubjective, which reads request.POST by those names.
 
       A form with no action and type="button" on Submit, so nothing posts yet.
     {% endcomment %}
@@ -133,8 +133,8 @@
 
         {# ---- repository ---- #}
         <div>
-          <label for="repo_url" class="text-[14px] font-semibold text-ink">GitHub repository link <span class="text-danger" aria-hidden="true">*</span></label>
-          <input type="url" id="repo_url" name="repo_url" x-model="repoUrl" required
+          <label for="github_repo" class="text-[14px] font-semibold text-ink">GitHub repository link <span class="text-danger" aria-hidden="true">*</span></label>
+          <input type="url" id="github_repo" name="github_repo" x-model="repoUrl" required
                  placeholder="https://github.com/your-name/your-repo"
                  autocomplete="off" spellcheck="false" aria-describedby="repo_hint"
                  :aria-invalid="showError('repo') ? 'true' : 'false'"
@@ -151,8 +151,8 @@
 
         {# ---- pull request ---- #}
         <div>
-          <label for="pr_url" class="text-[14px] font-semibold text-ink">Pull request link <span class="text-danger" aria-hidden="true">*</span></label>
-          <input type="url" id="pr_url" name="pr_url" x-model="prUrl" required
+          <label for="github_pr" class="text-[14px] font-semibold text-ink">Pull request link <span class="text-danger" aria-hidden="true">*</span></label>
+          <input type="url" id="github_pr" name="github_pr" x-model="prUrl" required
                  placeholder="https://github.com/your-name/your-repo/pull/1"
                  autocomplete="off" spellcheck="false" aria-describedby="pr_hint"
                  :aria-invalid="showError('pr') ? 'true' : 'false'"

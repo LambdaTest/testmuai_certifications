@@ -22,8 +22,9 @@ from django.utils.text import slugify
 
 from . import imports
 from . import timezones
-from .models import AnswerOptions, Audio, Exam, ExamBooking, Image, Question, Subject, Video
+from .models import AnswerOptions, Audio, Exam, ExamBooking, Image, Question, Subject, SubjectiveSubmission, Video
 import math
+import re
 
 #: The design-system classes every text input, select and textarea carries.
 #: Module scope rather than inside AuthoringForm, because ImportQuestionsForm is
@@ -911,10 +912,13 @@ class SaveAnswerForm(forms.Form):
     resolves everything else from the candidate's own sheet.
 
     Every field but position is optional because one endpoint serves three
-    calls: an objective answer (option_id), a subjective answer
-    (written_answer), and plain navigation (neither), which only moves the
-    bookmark. The view tells "not sent" from "sent empty" by checking
-    request.POST directly — cleaned_data turns both into None/"".
+    calls: an objective answer (option_id), a review mark (flagged), and plain
+    navigation (neither), which only moves the bookmark. The view tells "not
+    sent" from "sent empty" by checking request.POST directly — cleaned_data
+    turns both into None/""/False.
+
+    Objective rounds only. A subjective answer is a SubjectiveSubmission, made
+    by ExamSheetFormSubjective.
     """
 
     #: 1-based, matching ExamSheetQuestion.position. min_value here; the upper
@@ -926,9 +930,132 @@ class SaveAnswerForm(forms.Form):
     #: tie — an index could point at a different option on the next read.
     option_id = forms.IntegerField(required=False, min_value=1)
 
-    #: strip=False: leading spaces or blank lines in an answer are the
-    #: candidate's, and autosave must not quietly rewrite what they typed.
-    written_answer = forms.CharField(required=False, strip=False)
-
     # flagged option to check if the candidate has flagged the question for review
     flagged = forms.BooleanField(required=False)
+
+
+#: https://github.com/<owner>/<repo>, optional trailing slash. Groups: owner,
+#: repo. The same patterns as the subjective page's JavaScript, which only
+#: decides whether Submit is live — these are the ones that hold.
+GITHUB_REPO_RE = re.compile(r"^https://github\.com/([\w.-]+)/([\w.-]+)/?$")
+
+#: https://github.com/<owner>/<repo>/pull/<number>, optionally followed by a
+#: tab such as /files. Groups: owner, repo, number.
+GITHUB_PR_RE = re.compile(r"^https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)(?:/[\w-]*)?/?$")
+
+
+class ExamSheetFormSubjective(forms.ModelForm):
+    """
+    The subjective round's answer: the GitHub repository, the pull request in
+    it, and the Test Manager test IDs the candidate ran on TestMu AI.
+
+    A ModelForm on SubjectiveSubmission, limited to those three fields. The
+    question slot it belongs to (entry) is never a form field — the view sets
+    it from the candidate's own sheet, so the browser cannot attach an answer
+    to somebody else's paper.
+
+    All three are required, and that comes from the model: SubjectiveSubmission
+    declares them without blank=True, so the generated fields are required.
+
+    How Django cleans a field, which every method below relies on:
+      1. the field's own clean() runs — required, URL shape, max length —
+         and puts the result in cleaned_data;
+      2. then clean_<fieldname>() runs, if defined, and whatever it returns
+         replaces that value — it may change the type, as clean_test_ids does;
+      3. then clean() runs once with every field, for rules that need two
+         fields at a time.
+    A clean_<field> method only runs if step 1 passed, so it can read
+    cleaned_data[field] without guarding against it being missing.
+    """
+
+    #: Declared here, overriding the field the ModelForm would generate. For an
+    #: ArrayField that would be a SimpleArrayField, which splits on commas only:
+    #: a trailing comma fails as an empty item, and IDs on separate lines come
+    #: back as one. A plain textarea plus clean_test_ids() accepts both, which
+    #: is what the page tells the candidate.
+    test_ids = forms.CharField(
+        widget=forms.Textarea,
+        error_messages={"required": "Enter at least one test ID."},
+    )
+
+    class Meta:
+        model = SubjectiveSubmission
+        fields = ["github_repo", "github_pr", "test_ids"]
+        error_messages = {
+            "github_repo": {"required": "Enter the link to your GitHub repository."},
+            "github_pr": {"required": "Enter the link to your pull request."},
+        }
+
+    def clean_github_repo(self):
+        url = self.cleaned_data["github_repo"].strip()
+        if not GITHUB_REPO_RE.match(url):
+            raise forms.ValidationError(
+                "That does not look like a GitHub repository link. "
+                "It should look like https://github.com/owner/repo."
+            )
+        # Stored without the trailing slash, so one repository is always one
+        # string — an examiner searching for it finds every submission.
+        return url.rstrip("/")
+
+    def clean_github_pr(self):
+        url = self.cleaned_data["github_pr"].strip()
+        match = GITHUB_PR_RE.match(url)
+        if not match:
+            raise forms.ValidationError(
+                "That does not look like a pull request link. "
+                "It should look like https://github.com/owner/repo/pull/123."
+            )
+        # Rebuilt from its parts: /files, /commits or a trailing slash is the
+        # tab the candidate happened to be on, not part of the answer.
+        owner, repo, number = match.groups()
+        return f"https://github.com/{owner}/{repo}/pull/{number}"
+
+    def clean_test_ids(self):
+        # Commas or line breaks separate IDs; spaces around them and blanks
+        # from a trailing or doubled comma are dropped, not treated as errors.
+        ids = [part.strip() for part in re.split(r"[,\n]", self.cleaned_data["test_ids"])]
+        ids = [part for part in ids if part]
+
+        # A repeat is almost certainly a paste slip; keeping it would only make
+        # the examiner look the same run up twice. Order is kept.
+        ids = list(dict.fromkeys(ids))
+
+        if not ids:
+            raise forms.ValidationError("Enter at least one test ID.")
+
+        # Checked here so the message names the ID. Left to the model, the
+        # ArrayField's own check would say "Item 3 in the array did not
+        # validate", which tells the candidate nothing.
+        limit = SubjectiveSubmission._meta.get_field("test_ids").base_field.max_length
+        too_long = [part for part in ids if len(part) > limit]
+        if too_long:
+            raise forms.ValidationError(
+                f"This test ID is longer than {limit} characters: {too_long[0][:40]}…"
+            )
+
+        # A list, not the text: this is what the ArrayField stores.
+        return ids
+
+    def clean(self):
+        cleaned = super().clean()
+        repo = cleaned.get("github_repo")
+        pr = cleaned.get("github_pr")
+
+        # .get(), not [] — either field may have failed its own check, and then
+        # it is simply absent here. Nothing to compare in that case; its own
+        # error is already on the form.
+        if repo and pr:
+            repo_owner, repo_name = GITHUB_REPO_RE.match(repo).groups()
+            pr_owner, pr_name, _ = GITHUB_PR_RE.match(pr).groups()
+            # The repository is the one shared with the examiner, so a pull
+            # request anywhere else is one they may not be able to open.
+            # GitHub names are case-insensitive.
+            if (pr_owner.lower(), pr_name.lower()) != (repo_owner.lower(), repo_name.lower()):
+                # add_error rather than raise: the message belongs under the
+                # pull request field, not at the top of the form.
+                self.add_error(
+                    "github_pr",
+                    "This pull request is not in the repository above. "
+                    "It must be in the repository you shared.",
+                )
+        return cleaned

@@ -31,7 +31,8 @@ from .forms import (
     RescheduleForm,
     SaveAnswerForm,
     SubjectForm,
-    ImportQuestionsForm
+    ImportQuestionsForm,
+    ExamSheetFormSubjective,
 )
 from .models import (Exam, ExamBooking, ExamSheet, ExamSheetQuestion,
                      Subject, Question, Audio, Video)
@@ -753,11 +754,10 @@ def exam_player(request, booking_id):
     field and `is_correct` is not one of them — a serializer shared with
     grading is how that leaks. See docs/conventions.md, "Answer-key safety".
 
-    NOT WIRED YET: answers live in the browser and a reload loses them.
-    Autosave is a POST per answer, writing selected_option / written_answer on
-    the ExamSheetQuestion; submit stamps ExamSheet.submitted_at and moves the
-    booking on. Until those exist this renders the real paper but records
-    nothing.
+    Objective rounds only. Autosave (save_answer) writes selected_option and
+    flagged per question, and this view hands both back so a rejoin resumes
+    where the candidate left off. The subjective round has its own page,
+    exam_player_subjective.
     """
     booking = get_object_or_404(
         ExamBooking.objects.select_related("exam__subject"),
@@ -810,7 +810,6 @@ def exam_player(request, booking_id):
             "text": entry.question.question_text,
             "options": options,
             "answer": answer,
-            "written": entry.written_answer,
             "flagged": entry.flagged,
         })
 
@@ -838,8 +837,13 @@ def exam_player_subjective(request):
     A subjective paper will have only one question and a textbox where github PR can be pasted.
     If the paste is complete, the candidate can submit the exam. They can access this player until 36 hours after starting.
     """
-    return render(request, "exam/exam_player_subjective.html")
-
+    form = ExamSheetFormSubjective(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Your answer has been saved.")
+        return redirect("home:dashboard")
+    else:
+        return render(request, "exam/exam_player_subjective.html", {"form": form})
 
 
 @login_required
@@ -853,10 +857,11 @@ def save_answer(request, booking_id):
     The tick should appear on {"ok": true} and nowhere else; a receipt shown
     before the server confirms is the one that lied before.
 
-    Three kinds of call, told apart by which fields were sent:
-      option_id       – an objective answer; empty clears it
-      written_answer  – a subjective answer; empty clears it
-      neither         – navigation, which only moves current_position
+    Objective rounds only — a subjective answer is a SubjectiveSubmission,
+    saved by its own page. Told apart by which fields were sent:
+      option_id  – an objective answer; empty clears it
+      flagged    – "true"/"false", the review mark; alone or with an answer
+      neither    – navigation, which only moves current_position
 
     Refuses once the paper is closed — submitted, past expires_at, or the
     booking no longer live — so nothing can change an answer after the fact.
@@ -919,13 +924,7 @@ def save_answer(request, booking_id):
             entry.selected_option = option
             fields.append("selected_option")
 
-        elif "written_answer" in request.POST:
-            if entry.question.question_type != Question.Type.SUBJECTIVE:
-                return JsonResponse({"ok": False, "error": "wrong_type"}, status=400)
-            entry.written_answer = data["written_answer"]
-            fields.append("written_answer")
-
-        # Outside the chain above: a flag can arrive on its own or alongside an
+        # Separate from the option check above: a flag can arrive on its own or alongside an
         # answer. Checked against request.POST, not cleaned_data — the form
         # turns "not sent" into False, which would unflag the question on
         # every answer save.
