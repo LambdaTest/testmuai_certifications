@@ -631,6 +631,8 @@ def start_exam_termsandconditions(request, booking_id):
         except ValidationError as exc:
             messages.error(request, exc.messages[0])
             return redirect("exam:start_exam_termsandconditions", booking_id=booking.booking_id)
+        if booking.round_type == Exam.Type.SUBJECTIVE:
+            return redirect("exam:exam_player_subjective", booking_id=booking.booking_id)
         return redirect("exam:exam_player", booking_id=booking.booking_id)
 
     return render(
@@ -764,6 +766,11 @@ def exam_player(request, booking_id):
         booking_id=booking_id,
         candidate=request.user,
     )
+    # Wrong player for this round — reached by a typed URL, a bookmark or
+    # history, never by the flow. A subjective paper here would show its task
+    # with nothing to answer in, so send it to its own page.
+    if booking.round_type == Exam.Type.SUBJECTIVE:
+        return redirect("exam:exam_player_subjective", booking_id=booking.booking_id)
     sheet = (
         ExamSheet.objects
         .filter(booking=booking)
@@ -842,6 +849,10 @@ def exam_player_subjective(request, booking_id):
         booking_id=booking_id,
         candidate=request.user,
     )
+    # The mirror of the check in exam_player: an objective round belongs in the
+    # timed, full-screen player, never on this page.
+    if booking.round_type != Exam.Type.SUBJECTIVE:
+        return redirect("exam:exam_player", booking_id=booking.booking_id)
     # .first(), not the bare filter: filter() returns a QuerySet — a list-like
     # of sheets, never None — and a QuerySet has no .questions.
     exam_sheet = ExamSheet.objects.filter(booking=booking).first()
