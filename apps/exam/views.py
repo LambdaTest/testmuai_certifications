@@ -35,7 +35,7 @@ from .forms import (
     ExamSheetFormSubjective,
 )
 from .models import (Exam, ExamBooking, ExamSheet, ExamSheetQuestion,
-                     Subject, Question, Audio, Video)
+                     Subject, SubjectiveSubmission, Question, Audio, Video)
 from apps.home.models import User
 from apps.home.decorators import role_required
 from datetime import timedelta
@@ -831,19 +831,83 @@ def exam_player(request, booking_id):
     )
 
 @login_required
-def exam_player_subjective(request):
+def exam_player_subjective(request, booking_id):
     """
     This is the exam player for subjective exams. It is similar to the exam_player view but tailored for subjective paper.
     A subjective paper will have only one question and a textbox where github PR can be pasted.
     If the paste is complete, the candidate can submit the exam. They can access this player until 36 hours after starting.
     """
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam__subject"),
+        booking_id=booking_id,
+        candidate=request.user,
+    )
+    # .first(), not the bare filter: filter() returns a QuerySet — a list-like
+    # of sheets, never None — and a QuerySet has no .questions.
+    exam_sheet = ExamSheet.objects.filter(booking=booking).first()
+    if exam_sheet is None:
+        # No sheet means the candidate has not pressed begin yet; the
+        # instructions page is where the paper is drawn.
+        return redirect("exam:start_exam_termsandconditions", booking_id=booking.booking_id)
+
+    # exam_sheet.questions is the related manager — every question row on this
+    # sheet — not a question itself. A subjective paper has one row; take it,
+    # with its Question in the same query.
+    entry = exam_sheet.questions.select_related("question").first()
+    if entry is None:
+        messages.error(request, "No question found for this subjective exam. Please contact support.")
+        return redirect("home:dashboard")
+
+    # Already answered: say so rather than offer the form again. A second
+    # SubjectiveSubmission for the same entry would break the one-to-one and
+    # surface as a 500. Checked again under a lock on POST below — this one
+    # only spares the candidate a form they cannot use.
+    if SubjectiveSubmission.objects.filter(entry=entry).exists():
+        messages.info(request, "You have already submitted this exam.")
+        return redirect("home:dashboard")
+
+    expires_at = exam_sheet.expires_at
+    if expires_at < timezone.now():
+        messages.error(request, "The time to submit this exam has passed. Please contact support or check My Assessments section.")
+        return redirect("home:dashboard")
+
     form = ExamSheetFormSubjective(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        form.save()
-        messages.success(request, "Your answer has been saved.")
+        with transaction.atomic():
+            # Locks the sheet row until the transaction ends, as submit_exam
+            # does. Two POSTs at once (a double click) both passed the check
+            # above; the second now waits here, then finds the first one's
+            # submission and stops instead of crashing on the one-to-one.
+            ExamSheet.objects.select_for_update().get(pk=exam_sheet.pk)
+            if SubjectiveSubmission.objects.filter(entry=entry).exists():
+                messages.info(request, "You have already submitted this exam.")
+                return redirect("home:dashboard")
+
+            # commit=False builds the SubjectiveSubmission from the three form
+            # fields without writing it. entry is deliberately not a form field
+            # — the browser must not choose which paper an answer belongs to —
+            # so the view sets it from the candidate's own sheet, then saves.
+            submission = form.save(commit=False)
+            submission.entry = entry
+            submission.save()
+
+        messages.success(request, "Your answer has been submitted.")
         return redirect("home:dashboard")
     else:
-        return render(request, "exam/exam_player_subjective.html", {"form": form})
+        # The objects themselves, under the names the template documents:
+        # it reads sheet.expires_at for the deadline, and question.marks and
+        # question.question.question_text for the task. A bound form that
+        # failed validation carries its errors and the candidate's values back.
+        return render(
+            request,
+            "exam/exam_player_subjective.html",
+            {
+                "form": form,
+                "booking": booking,
+                "sheet": exam_sheet,
+                "question": entry,
+            },
+        )
 
 
 @login_required

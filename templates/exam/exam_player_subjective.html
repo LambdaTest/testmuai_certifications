@@ -2,16 +2,19 @@
 <!doctype html>
 <html lang="en" class="h-full">
 {% comment %}
-  The subjective round: one task, answered with a link to a GitHub pull request.
+  The subjective round: one task, answered with a GitHub repository, a pull
+  request in it, and the Test Manager test IDs.
 
-  Context it will need from the view (none of it wired yet):
+  Context from apps.exam.views.exam_player_subjective:
+    form      – ExamSheetFormSubjective; bound and carrying errors after a
+                rejected POST, so values and messages come back
     booking   – the ExamBooking (round_type "subjective"), exam selected
     sheet     – its ExamSheet, for expires_at (the 36-hour deadline)
     question  – the single ExamSheetQuestion, with question selected
 
-  NOT WIRED. No POST, no autosave, no view renders this yet. Every value falls
-  back to a placeholder so the page renders with an empty context. The Submit
-  button only enables and disables; clicking it does nothing.
+  Submit POSTs back to the same URL. There is no autosave: the answer is three
+  links, written once at the end, not work in progress. Every value still falls
+  back to a placeholder so the page renders with an empty context.
 
   NO LOCKDOWN, unlike exam_player.html, on purpose. This round is a 36-hour
   task done in an editor and on GitHub. Full screen would have to be left
@@ -118,18 +121,42 @@
       valid; a field shows its red hint only once something has been typed, so
       an empty form does not open as a wall of errors.
 
-      The checks are a convenience, so the button is not live for a typo. The
-      view must repeat them when this is wired — the disabled attribute can be
-      removed from devtools. Field names (github_repo, github_pr, test_ids) match
-      ExamSheetFormSubjective, which reads request.POST by those names.
+      The checks are a convenience, so the button is not live for a typo.
+      ExamSheetFormSubjective repeats every one of them — the disabled
+      attribute can be removed from devtools. Field names (github_repo,
+      github_pr, test_ids) match the form, which reads request.POST by them.
 
-      A form with no action and type="button" on Submit, so nothing posts yet.
+      AFTER A REJECTED POST the form comes back bound, and two things follow
+      from it:
+        · the candidate's values are put back. x-model owns each input, so a
+          value="" attribute would be overwritten; the values go in as data-*
+          attributes and seed the Alpine state instead. Autoescaped, so a
+          quote in a pasted link cannot break out of the attribute.
+        · the server's error shows under its field, until that field is edited
+          — then the live hint takes over, so two messages never argue.
     {% endcomment %}
-    <section class="rounded-2xl border border-line bg-white p-6" x-data="subjectiveAnswer()">
+    <section class="rounded-2xl border border-line bg-white p-6"
+             x-data="subjectiveAnswer($el.dataset)"
+             data-repo="{{ form.github_repo.value|default_if_none:'' }}"
+             data-pr="{{ form.github_pr.value|default_if_none:'' }}"
+             data-ids="{{ form.test_ids.value|default_if_none:'' }}">
       <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Your submission</h2>
       <p class="mt-1.5 text-[13px] text-muted">All three fields are required.</p>
 
-      <form class="mt-4 grid gap-5" onsubmit="return false">
+      {% if form.non_field_errors %}
+        <div class="mt-4 rounded-xl bg-danger-tint px-4 py-3 text-[13.5px] text-danger" role="alert">
+          {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+        </div>
+      {% endif %}
+
+      {% comment %}
+        No action: it posts to the URL it was served from, which is this
+        booking's page. @submit marks the form as submitting so the button
+        cannot fire a second POST while the first is on its way — the view's
+        lock would catch it anyway, but the candidate should not see a bounce.
+      {% endcomment %}
+      <form method="post" class="mt-4 grid gap-5" @submit="submitting = true">
+        {% csrf_token %}
 
         {# ---- repository ---- #}
         <div>
@@ -147,6 +174,9 @@
                        : 'The private repository you shared with admin@testmuaicertifications.com.'">
             The private repository you shared with admin@testmuaicertifications.com.
           </p>
+          {% for error in form.github_repo.errors %}
+            <p class="mt-1 text-[13px] font-semibold text-danger" x-show="!edited('repo')">{{ error }}</p>
+          {% endfor %}
         </div>
 
         {# ---- pull request ---- #}
@@ -163,6 +193,9 @@
              x-text="prMessage()">
             The pull request with your solution, in the repository above.
           </p>
+          {% for error in form.github_pr.errors %}
+            <p class="mt-1 text-[13px] font-semibold text-danger" x-show="!edited('pr')">{{ error }}</p>
+          {% endfor %}
         </div>
 
         {# ---- test IDs ---- #}
@@ -184,12 +217,15 @@
              x-text="idsMessage()">
             Separate the IDs with commas.
           </p>
+          {% for error in form.test_ids.errors %}
+            <p class="mt-1 text-[13px] font-semibold text-danger" x-show="!edited('ids')">{{ error }}</p>
+          {% endfor %}
         </div>
 
         <div class="flex justify-end">
-          <button type="button" :disabled="!allValid" disabled
+          <button type="submit" :disabled="!allValid || submitting" disabled
                   class="inline-flex h-11 items-center justify-center rounded-lg bg-[#111] px-7 text-sm font-bold text-white hover:bg-[#2A2B31] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#111]">
-            Submit
+            <span x-text="submitting ? 'Submitting…' : 'Submit'">Submit</span>
           </button>
         </div>
       </form>
@@ -198,7 +234,9 @@
   </main>
 
   <script>
-    function subjectiveAnswer() {
+    // `initial` is the section's data-* attributes: the candidate's values
+    // after a rejected POST, empty strings on a first visit.
+    function subjectiveAnswer(initial = {}) {
       // https://github.com/<owner>/<repo>, optional trailing slash.
       const REPO = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/?$/;
       // https://github.com/<owner>/<repo>/pull/<number>, optionally followed
@@ -206,9 +244,18 @@
       const PR = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/\d+(\/[\w-]*)?\/?$/;
 
       return {
-        repoUrl: "",
-        prUrl: "",
-        testIds: "",
+        repoUrl: initial.repo || "",
+        prUrl: initial.pr || "",
+        testIds: initial.ids || "",
+        submitting: false,
+
+        // Whether a field has changed since the page loaded. The server's
+        // error for a field shows only until then; after that the live hint
+        // describes the new value instead.
+        edited(field) {
+          const now = { repo: this.repoUrl, pr: this.prUrl, ids: this.testIds }[field];
+          return now !== (initial[field] || "");
+        },
 
         get repoMatch() { return this.repoUrl.trim().match(REPO); },
         get prMatch()   { return this.prUrl.trim().match(PR); },
