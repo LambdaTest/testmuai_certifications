@@ -17,7 +17,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, JsonResponse, request
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from . import imports
 from . import timezones
@@ -838,11 +838,18 @@ def exam_player(request, booking_id):
     )
 
 @login_required
+@require_GET
 def exam_player_subjective(request, booking_id):
     """
-    This is the exam player for subjective exams. It is similar to the exam_player view but tailored for subjective paper.
-    A subjective paper will have only one question and a textbox where github PR can be pasted.
-    If the paste is complete, the candidate can submit the exam. They can access this player until 36 hours after starting.
+    The subjective round's page: instructions, the one task, and a form for
+    the GitHub repository, the pull request and the Test Manager test IDs.
+
+    Display only. The form posts to submit_exam, which validates and saves the
+    answer and closes the round in one transaction — the same place every
+    round, objective or subjective, is finished. A rejected answer comes back
+    from there to this template with its errors.
+
+    Open from begin until the sheet's expires_at (36 hours).
     """
     booking = get_object_or_404(
         ExamBooking.objects.select_related("exam__subject"),
@@ -869,56 +876,31 @@ def exam_player_subjective(request, booking_id):
         messages.error(request, "No question found for this subjective exam. Please contact support.")
         return redirect("home:dashboard")
 
-    # Already answered: say so rather than offer the form again. A second
-    # SubjectiveSubmission for the same entry would break the one-to-one and
-    # surface as a 500. Checked again under a lock on POST below — this one
-    # only spares the candidate a form they cannot use.
-    if SubjectiveSubmission.objects.filter(entry=entry).exists():
+    # Already finished: say so rather than offer a form they cannot use.
+    # submit_exam refuses a second submission under its lock regardless; this
+    # only spares the candidate the page.
+    if exam_sheet.submitted_at is not None or SubjectiveSubmission.objects.filter(entry=entry).exists():
         messages.info(request, "You have already submitted this exam.")
         return redirect("home:dashboard")
 
-    expires_at = exam_sheet.expires_at
-    if expires_at < timezone.now():
+    if exam_sheet.expires_at <= timezone.now():
         messages.error(request, "The time to submit this exam has passed. Please contact support or check My Assessments section.")
         return redirect("home:dashboard")
 
-    form = ExamSheetFormSubjective(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        with transaction.atomic():
-            # Locks the sheet row until the transaction ends, as submit_exam
-            # does. Two POSTs at once (a double click) both passed the check
-            # above; the second now waits here, then finds the first one's
-            # submission and stops instead of crashing on the one-to-one.
-            ExamSheet.objects.select_for_update().get(pk=exam_sheet.pk)
-            if SubjectiveSubmission.objects.filter(entry=entry).exists():
-                messages.info(request, "You have already submitted this exam.")
-                return redirect("home:dashboard")
-
-            # commit=False builds the SubjectiveSubmission from the three form
-            # fields without writing it. entry is deliberately not a form field
-            # — the browser must not choose which paper an answer belongs to —
-            # so the view sets it from the candidate's own sheet, then saves.
-            submission = form.save(commit=False)
-            submission.entry = entry
-            submission.save()
-
-        messages.success(request, "Your answer has been submitted.")
-        return redirect("home:dashboard")
-    else:
-        # The objects themselves, under the names the template documents:
-        # it reads sheet.expires_at for the deadline, and question.marks and
-        # question.question.question_text for the task. A bound form that
-        # failed validation carries its errors and the candidate's values back.
-        return render(
-            request,
-            "exam/exam_player_subjective.html",
-            {
-                "form": form,
-                "booking": booking,
-                "sheet": exam_sheet,
-                "question": entry,
-            },
-        )
+    # The objects themselves, under the names the template documents: it reads
+    # sheet.expires_at for the deadline, and question.marks and
+    # question.question.question_text for the task. An unbound form — the
+    # bound one, with errors, only ever comes back from submit_exam.
+    return render(
+        request,
+        "exam/exam_player_subjective.html",
+        {
+            "form": ExamSheetFormSubjective(),
+            "booking": booking,
+            "sheet": exam_sheet,
+            "question": entry,
+        },
+    )
 
 
 @login_required
@@ -1088,6 +1070,44 @@ def submit_exam(request, booking_id):
             return redirect("home:dashboard")
 
         now = timezone.now()
+
+        # A subjective round's answer arrives with the submit itself: the
+        # repository, PR and test IDs from exam_player_subjective.html. It is
+        # validated and saved here, before anything below stamps the paper, so
+        # a rejected answer leaves the round open and the candidate can fix it.
+        if booking.round_type == Exam.Type.SUBJECTIVE:
+            # Unlike an objective paper — whose answers were saved as it went,
+            # so a late POST only closes it — this POST *is* the answer. Links
+            # sent after the 36 hours are not accepted; the paper stays open
+            # for the sweep to close as a timeout.
+            if now >= sheet.expires_at:
+                messages.error(request, "The time to submit this exam has passed.")
+                return redirect("home:dashboard")
+
+            entry = sheet.questions.select_related("question").first()
+            if entry is None:
+                messages.error(request, "No question found for this subjective exam. Please contact support.")
+                return redirect("home:dashboard")
+
+            form = ExamSheetFormSubjective(request.POST)
+            if not form.is_valid():
+                # Back to the same page with the form bound: its errors show
+                # under each field and the candidate's values are put back.
+                # Nothing has been written, so returning inside the
+                # transaction commits nothing.
+                return render(
+                    request,
+                    "exam/exam_player_subjective.html",
+                    {"form": form, "booking": booking, "sheet": sheet, "question": entry},
+                )
+
+            # entry is set by the view, never by the browser — see
+            # ExamSheetFormSubjective. The sheet is locked and submitted_at was
+            # checked above, so no second submission can get this far.
+            submission = form.save(commit=False)
+            submission.entry = entry
+            submission.save()
+
         # The server's clock decides, not the browser's. A POST after expiry is
         # still accepted — refusing it would leave the paper open forever — but
         # it is recorded as ending at the deadline, as the model asks.

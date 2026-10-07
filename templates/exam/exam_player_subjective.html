@@ -12,9 +12,10 @@
     sheet     – its ExamSheet, for expires_at (the 36-hour deadline)
     question  – the single ExamSheetQuestion, with question selected
 
-  Submit POSTs back to the same URL. There is no autosave: the answer is three
-  links, written once at the end, not work in progress. Every value still falls
-  back to a placeholder so the page renders with an empty context.
+  Submit POSTs to submit_exam, which also renders this template back with the
+  bound form when the answer is rejected. There is no autosave: the answer is
+  three links, written once at the end, not work in progress. `booking` is
+  required — the form's action is built from it.
 
   NO LOCKDOWN, unlike exam_player.html, on purpose. This round is a 36-hour
   task done in an editor and on GitHub. Full screen would have to be left
@@ -150,13 +151,24 @@
       {% endif %}
 
       {% comment %}
-        No action: it posts to the URL it was served from, which is this
-        booking's page. @submit marks the form as submitting so the button
-        cannot fire a second POST while the first is on its way — the view's
-        lock would catch it anyway, but the candidate should not see a bounce.
+        Posts to submit_exam, the one place every round is finished: it
+        validates and saves the answer, then stamps the paper and marks the
+        booking attended in the same transaction. A rejected answer is
+        rendered back into this template from there.
+
+        action=submit_action as a hidden input, not the button's name/value:
+        the button is disabled the moment the form submits, and a disabled
+        button's value is not always sent. Without it submit_exam would
+        record a deliberate submission as a time-out.
+
+        @submit marks the form as submitting so the button cannot fire a
+        second POST while the first is on its way — submit_exam's lock would
+        catch it anyway, but the candidate should not see a bounce.
       {% endcomment %}
-      <form method="post" class="mt-4 grid gap-5" @submit="submitting = true">
+      <form method="post" action="{% url 'exam:submit_exam' booking.booking_id %}"
+            class="mt-4 grid gap-5" @submit="submitting = true">
         {% csrf_token %}
+        <input type="hidden" name="action" value="submit_action">
 
         {# ---- repository ---- #}
         <div>
@@ -237,11 +249,13 @@
     // `initial` is the section's data-* attributes: the candidate's values
     // after a rejected POST, empty strings on a first visit.
     function subjectiveAnswer(initial = {}) {
-      // https://github.com/<owner>/<repo>, optional trailing slash.
-      const REPO = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/?$/;
-      // https://github.com/<owner>/<repo>/pull/<number>, optionally followed
-      // by a tab such as /files.
-      const PR = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/\d+(\/[\w-]*)?\/?$/;
+      // https://github.com/<owner>/<repo>, with or without "www.", optional
+      // trailing slash. Must match GITHUB_REPO_RE in apps/exam/forms.py.
+      const REPO = /^https:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)\/?$/;
+      // https://github.com/<owner>/<repo>/pull/<number>, with or without
+      // "www.", optionally followed by a tab such as /files. Must match
+      // GITHUB_PR_RE in apps/exam/forms.py.
+      const PR = /^https:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/\d+(\/[\w-]*)?\/?$/;
 
       return {
         repoUrl: initial.repo || "",

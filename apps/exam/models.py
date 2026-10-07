@@ -596,6 +596,19 @@ class ExamBooking(models.Model):
         return self.scheduled_at + timedelta(minutes=Exam.DURATION_BY_TYPE[self.round_type])
 
     @property
+    def duration_display(self):
+        """
+        How long *this round* takes, for a candidate: "45 min" or "36 hrs".
+
+        The booking-level counterpart of Exam.duration_display. A booking is
+        one round, so a page about a booking shows that round's time — on a
+        two-round exam, "45 min + 36 hrs" on each booking read as if each one
+        were both. Exam.duration_display stays for pages about the exam as a
+        whole, such as the catalogue.
+        """
+        return Exam._humanise_minutes(Exam.DURATION_BY_TYPE[self.round_type])
+
+    @property
     def local_scheduled_at(self):
         from .timezones import to_local
 

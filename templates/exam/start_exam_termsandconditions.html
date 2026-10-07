@@ -44,7 +44,7 @@
     <p class="mt-2 text-[15px] text-muted">
       {{ booking.exam.subject.name }} ·
       {{ booking.exam.get_exam_level_display }} ·
-      {{ booking.exam.get_exam_type_display }}
+      {{ booking.get_round_type_display }}
     </p>
   </header>
   <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -54,15 +54,13 @@
     </div>
     <div class="rounded-xl border border-line bg-white px-4 py-3.5">
       {% comment %}
-        Smaller type than the other tiles: "45 min + 36 hrs" is three times the
-        width of a bare number and would either wrap or shrink the tile. The
-        figure matters more than the flourish here.
+        This round's time, from the booking — not the exam's, which on a
+        two-round exam is both rounds together. The label follows the round
+        too: a time limit to sit, or a window to submit in.
       {% endcomment %}
-      <p class="text-xl font-extrabold tracking-tight">{{ booking.exam.duration_display }}</p>
+      <p class="text-xl font-extrabold tracking-tight">{{ booking.duration_display }}</p>
       <p class="mt-0.5 text-[13px] text-muted">
-        {% if booking.exam.exam_type == 'objective' %}Time limit
-        {% elif booking.exam.exam_type == 'subjective' %}To submit
-        {% else %}Across two rounds{% endif %}
+        {% if booking.round_type == 'subjective' %}To submit{% else %}Time limit{% endif %}
       </p>
     </div>
     <div class="rounded-xl border border-line bg-white px-4 py-3.5">

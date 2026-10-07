@@ -43,8 +43,8 @@
         </p>
       {% endtimezone %}
       <p class="mt-0.5 text-sm text-muted">
-        {{ booking.booked_timezone }} · {{ booking.exam.get_exam_type_display }} ·
-        {{ booking.exam.duration_display }}
+        {{ booking.booked_timezone }} · {{ booking.get_round_type_display }} ·
+        {{ booking.duration_display }}
       </p>
     </div>
 

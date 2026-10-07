@@ -934,14 +934,15 @@ class SaveAnswerForm(forms.Form):
     flagged = forms.BooleanField(required=False)
 
 
-#: https://github.com/<owner>/<repo>, optional trailing slash. Groups: owner,
-#: repo. The same patterns as the subjective page's JavaScript, which only
-#: decides whether Submit is live — these are the ones that hold.
-GITHUB_REPO_RE = re.compile(r"^https://github\.com/([\w.-]+)/([\w.-]+)/?$")
+#: https://github.com/<owner>/<repo>, with or without "www.", optional trailing
+#: slash. Groups: owner, repo. The same patterns as the subjective page's
+#: JavaScript, which only decides whether Submit is live — these are the ones
+#: that hold.
+GITHUB_REPO_RE = re.compile(r"^https://(?:www\.)?github\.com/([\w.-]+)/([\w.-]+)/?$")
 
-#: https://github.com/<owner>/<repo>/pull/<number>, optionally followed by a
-#: tab such as /files. Groups: owner, repo, number.
-GITHUB_PR_RE = re.compile(r"^https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)(?:/[\w-]*)?/?$")
+#: https://github.com/<owner>/<repo>/pull/<number>, with or without "www.",
+#: optionally followed by a tab such as /files. Groups: owner, repo, number.
+GITHUB_PR_RE = re.compile(r"^https://(?:www\.)?github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)(?:/[\w-]*)?/?$")
 
 
 class ExamSheetFormSubjective(forms.ModelForm):
@@ -988,14 +989,17 @@ class ExamSheetFormSubjective(forms.ModelForm):
 
     def clean_github_repo(self):
         url = self.cleaned_data["github_repo"].strip()
-        if not GITHUB_REPO_RE.match(url):
+        match = GITHUB_REPO_RE.match(url)
+        if not match:
             raise forms.ValidationError(
                 "That does not look like a GitHub repository link. "
                 "It should look like https://github.com/owner/repo."
             )
-        # Stored without the trailing slash, so one repository is always one
-        # string — an examiner searching for it finds every submission.
-        return url.rstrip("/")
+        # Rebuilt from its parts, so one repository is always one string —
+        # no "www.", no trailing slash — and an examiner searching for it
+        # finds every submission. Same shape as clean_github_pr below.
+        owner, repo = match.groups()
+        return f"https://github.com/{owner}/{repo}"
 
     def clean_github_pr(self):
         url = self.cleaned_data["github_pr"].strip()
