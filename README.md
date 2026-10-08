@@ -3,9 +3,10 @@
 In-house platform for delivering TestMu AI professional certifications — booking, exam delivery,
 grading, and credential issuance. Replaces our current external vendor.
 
-> **Status:** four journeys work end to end.
+> **Status:** five journeys work end to end.
 >
-> - **Candidate** — book, reschedule, cancel, calendar invites, dashboard, assessments.
+> - **Candidate** — book, reschedule and cancel (until 10 minutes before), calendar invites,
+>   dashboard, and My Assessments lists that follow the clock, not only the stored status.
 > - **Admin authoring** — Subject Center and Exam Center: create and edit subjects and exams
 >   (objective, subjective, or both rounds), with derived slugs, derived marks, and draft/publish.
 > - **Question Center** — write questions with answer options and media, browse the bank, or
@@ -13,11 +14,13 @@ grading, and credential issuance. Replaces our current external vendor.
 > - **Objective exam** — join inside the booked window, T&C, a full-screen timed player with
 >   autosave, review flags and resume after a dropped connection, submit or time-out, automatic
 >   grading, and a completion page showing the score.
+> - **Subjective exam** — join inside the 36-hour window, submit a GitHub repository, a pull
+>   request in it and Test Manager test IDs; on a two-round exam it follows the objective round
+>   automatically.
 >
-> The **subjective round** is the current work: its page, form and `SubjectiveSubmission` model
-> exist, but the page is not yet tied to a booking. The examiner dashboard is a shell, so
-> subjective grading, combined two-round results and credentials are not started. See
-> [`docs/master-spec.md`](docs/master-spec.md).
+> The examiner side is next: the examiner dashboard is a shell, so subjective grading, combined
+> two-round results and credentials are not started. Reminder emails and the scheduled job behind
+> them are planned. See [`docs/master-spec.md`](docs/master-spec.md).
 
 ## Stack
 
@@ -26,7 +29,8 @@ grading, and credential issuance. Replaces our current external vendor.
 | Backend | Django 5.2 |
 | Database | PostgreSQL 17 — everywhere, including local development |
 | Frontend | Django templates + Tailwind + Alpine.js *(both from CDN, no build step yet)* |
-| Background jobs | A cron-run management command for the sweep of missed bookings and abandoned papers *(planned)*; Celery + Redis later, for emails and regrades *(not wired up — commented out in `requirements.txt`)* |
+| Background jobs | One management command run by cron every minute: reminder emails 60 and 30 minutes before each exam, plus the sweep of missed bookings and abandoned papers *(planned)*; Celery + Redis later, for regrades and heavier work *(not wired up — commented out in `requirements.txt`)* |
+| Email | SMTP *(credentials available; not wired up yet)* |
 | Hosting | AWS — EC2/Elastic Beanstalk + RDS *(not set up yet)* |
 
 ## Running it
@@ -270,15 +274,29 @@ duration; `ExamBooking.stage` reads `upcoming` before the window, `underway` ins
 after. A booking for 10:00 PM on a 45-minute round can be started from 10:00 to 10:45.
 
 - **Join exam** (assessment page and dashboard) is a live link only while `underway`; otherwise a
-  disabled button. Before the window, Reschedule and Add to calendar still work; once lapsed, all
-  three are disabled.
+  disabled button. Reschedule and Cancel close earlier, `BOOKING_CHANGE_CUTOFF_MINUTES` (10) before
+  the start (`ExamBooking.can_change`); Add to calendar works until the window has passed. Once
+  lapsed, all of them are disabled.
 - **The server enforces the same window.** `_start_or_resume` refuses to draw a *new* paper before
   `scheduled_at` or after `join_closes_at`. The buttons are display; this check is what holds.
 - **Whoever starts inside the window gets the full duration from the moment they press begin** —
   a 10:44 start runs to 11:29.
+- **Getting back in after the window has closed** is by the link in the reminder emails (planned,
+  60 and 30 minutes before the start), which leads to the T&C page; begin there resumes an existing
+  paper whatever the time.
 
 The T&C page is reachable by GET at any time on purpose: reading the rules changes nothing, and the
-begin POST is where the window is checked.
+begin POST is where the window is checked. After begin it sends each round to its own player —
+`exam_player` for objective, `exam_player_subjective` for subjective — and each player redirects a
+round of the other kind to the right one, so a bookmarked or typed URL cannot open a paper in the
+wrong player.
+
+**Durations are per round on every booking page.** `ExamBooking.duration_display` shows "45 min"
+or "36 hrs" and the pages label a booking with its round, not the exam's type — on a two-round exam
+`Exam.duration_display` ("45 min + 36 hrs") and the type "Both" describe the whole exam and appear
+only in the exam catalogue. Calendar invites (`.ics` and Google Calendar) use the round's duration
+too: a 45-minute block for an objective round, a capped one-hour block plus a "Submit by" deadline
+for a subjective one.
 
 ### Sitting the paper
 
@@ -330,11 +348,17 @@ right or wrong.
 `submit_exam` is POST-only and runs in one transaction, holding a lock on the sheet:
 
 1. Refuses a repeat (already submitted) or a booking that is not `booked`.
-2. Stamps `submitted_at = min(now, expires_at)`, so a late POST records when the exam actually
-   ended. `submission_status` is `self` only for the Submit button pressed before the deadline;
-   the timer's own POST, or anything after `expires_at`, is `timedout`.
-3. Marks the booking `attended` and runs `grade_exam`.
-4. On the objective round of a "both" exam, creates the subjective booking.
+2. **For a subjective round, validates and saves the answer first** — see
+   [The subjective round](#the-subjective-round). A rejected or late answer stops here, so the
+   round stays open.
+3. Stamps `submitted_at = min(now, expires_at)`, so a late POST records when the exam actually
+   ended. `submission_status` is `self` only for a submission made before the deadline (the form
+   sends `action=submit_action`); the timer's own POST, or anything after `expires_at`, is
+   `timedout`.
+4. Marks the booking `attended` and runs `grade_exam`.
+5. On the objective round of a "both" exam, creates the subjective booking.
+
+Every round, objective or subjective, is finished in this one function.
 
 The Submit button opens a "Ready to submit?" dialog with answered, unanswered and flagged counts.
 Both Submit and the timer wait (up to 5 seconds) for queued autosaves before posting, so a last
@@ -372,19 +396,30 @@ otherwise.
 
 ### The subjective round
 
-A separate page, `exam_player_subjective.html`: instructions, the task shown in full on the page,
+A separate page, `exam_player_subjective.html` at `exam/player/subjective/<booking_id>/`:
+instructions, the task shown in full on the page (not a downloadable PDF as on the vendor platform),
 and three required fields — the GitHub repository (private, shared with the admin address), a pull
-request **in that repository**, and the Test Manager test IDs. Submit enables only when all three
-are valid. There is no full-screen or copy lockdown: it is a 36-hour task done in an editor and on
-GitHub, and blocking copy would stop the candidate pasting their links.
+request **in that repository**, and the Test Manager test IDs. The red Submit enables only when all
+three are valid. There is no full-screen or copy lockdown: it is a 36-hour task done in an editor
+and on GitHub, and blocking copy would stop the candidate pasting their links. There is no autosave
+either — the answer is three links written once, not work in progress.
 
-`ExamSheetFormSubjective` repeats every check on the server: GitHub-only URL patterns, the PR
-belonging to the repository, and test IDs split on commas or new lines, blanks and repeats dropped,
-returned as a list for the `ArrayField`. Links are stored normalised — no trailing slash, no
-`/files` tab.
+**The page is display only (`@require_GET`); the form posts to `submit_exam`.** There the answer is
+validated and saved inside the same transaction that closes the round, before anything is stamped:
 
-> **Not tied to a booking yet.** The route (`exam/player/subjective/`) carries no booking id, so the
-> view cannot set `SubjectiveSubmission.entry`, and saving fails until it does.
+- an answer after `expires_at` is refused — unlike an objective paper, this POST *is* the answer;
+- a rejected answer is rendered back into the same template with the bound form, so each field
+  shows its server error and the candidate's values are put back (seeded through `data-*`
+  attributes, since `x-model` owns the inputs);
+- a valid answer is saved with `form.save(commit=False)` and `entry` set by the view — `entry` is
+  never a form field, so the browser cannot attach an answer to another paper.
+
+`ExamSheetFormSubjective` repeats every browser check: GitHub-only URL patterns (with or without
+`www.`), the PR belonging to the repository, and test IDs split on commas or new lines, blanks and
+repeats dropped, returned as a list for the `ArrayField`. Links are stored normalised — no `www.`,
+no trailing slash, no `/files` tab — so one repository is always one string. Subjective rounds are
+not auto-graded: `marks_obtained` stays `None` until an examiner marks them, and the completion
+page shows no score.
 
 ### Integrity rules worth knowing
 
@@ -441,15 +476,37 @@ A candidate may hold only one open booking per exam **and round**, enforced by a
 index (`one_open_booking_per_exam`, over candidate, exam and `round_type`) rather than a view check.
 It counts `booked`, `under_review` and `attended` rows.
 
-> **A missed booking is a dead end for now.** Nothing marks a booking `no_show`, so one whose join
-> window passed stays `booked` — it cannot be started, cannot be rescheduled (the buttons are
-> disabled), and blocks a new booking for that exam through the index above. The planned fix is a
-> cron-run management command that marks these `no_show` and submits abandoned papers as timeouts;
-> see `TRACKER.md`.
+**The stored status lags reality**, so the candidate's lists don't read it alone. A booking stays
+`booked` until something changes it, and today only a submit does. `ExamBookingQuerySet`
+(`ExamBooking.objects`) works the buckets out in the database from the clock and the paper:
+
+| Method | Matches |
+|---|---|
+| `upcoming()` | `booked` and the join window not yet closed |
+| `no_show()` | marked `no_show`, or `booked` with the window closed and **no paper** drawn |
+| `attended()` | `attended`, or `booked` with a paper started, never submitted and past its deadline |
+
+My Assessments uses them for Upcoming (soonest first), No show and Attended; Cancelled stays a plain
+status filter, and an unknown filter in the URL is a 404. The dashboard card picks the soonest
+`upcoming()` booking, so a booking stays there through its join window — when its Join button is
+live — rather than vanishing at its start time.
+
+Nothing here writes: each call reads the clock and filters, and a booking falls into a bucket
+whenever someone asks. The queries start from one candidate's bookings (`candidate_id` is indexed),
+so they stay cheap however large the table grows. One case is in no bucket on purpose: a paper
+begun inside the window and still running after it closed — the way back to it is the reminder
+email.
+
+> **What the lists can't fix.** Anything reading the stored status still sees `booked`: the unique
+> index above (so a candidate cannot rebook an exam they missed), grading of abandoned papers, and
+> admin counts. The planned per-minute job that sends reminder emails will also write the result —
+> marking missed bookings `no_show` and submitting abandoned papers as timeouts — reusing these
+> same methods. See `TRACKER.md`.
 
 **My Assessments** labels each booking with its round — Objective in blue, Subjective in amber —
 read from `round_type` rather than the exam's type, which says "both" for both rounds. An attended
-booking shows Show Results (still pointing at a placeholder route) and a disabled Get Certificate.
+booking shows Show Results (still pointing at a placeholder route; results are not in scope yet)
+and a disabled Get Certificate.
 
 ## Management commands
 
@@ -482,10 +539,19 @@ When it is fixed, the design it had is worth keeping:
 Seed scripts are preferred over hand-entry through the admin — repeatable for fresh local
 databases, staging, and CI, and they show up in a diff.
 
-Recurring work starts as a management command run by cron, not a Celery task: the sweep that marks
-missed bookings `no_show` and submits abandoned papers needs no broker and is easy to run by hand.
-Celery arrives with the first work that must happen right after a request — result emails,
-certificate generation, regrades — and the command's logic can move into a beat task unchanged.
+Recurring work starts as one management command run by cron every minute, not a Celery task. It
+will send the reminder emails and run the sweep that marks missed bookings `no_show` and submits
+abandoned papers — no broker needed, and easy to run by hand. Two rules for it:
+
+- **"Due and not yet sent", never "exactly now".** Each reminder is stamped on the booking when
+  sent, and each run sends whatever is due and unstamped — so a late or skipped run delays an email
+  rather than losing it, and no run sends one twice.
+- **One server only.** On several instances, a cron on each would send every email several times;
+  run it leader-only, with a row lock as the safety net.
+
+It reuses `ExamBookingQuerySet`, so "missed" and "abandoned" mean the same thing in the job as on
+the pages. Celery arrives with work that must happen right after a request — certificate
+generation, regrades — and the command's logic can move into a beat task unchanged.
 
 ## Documentation
 
@@ -502,10 +568,10 @@ Specs live in [`docs/`](docs/), all rewritten for Django:
 
 ## Not yet built
 
-The subjective round tied to its booking · examiner grading of subjective answers · combined
-two-round results against the pass percentage · saving the completion page's profile links and
-feedback · result release and Show Results · credentials and public verification · the cron sweep
-for missed bookings and abandoned papers · recording lockdown events · `delete_question` (routed
+Examiner grading of subjective answers · combined two-round results against the pass percentage ·
+saving the completion page's profile links and feedback · result release and Show Results ·
+credentials and public verification · email (SMTP) and the per-minute job that sends reminders and
+closes missed bookings and abandoned papers · recording lockdown events · `delete_question` (routed
 but stubbed) · Candidate Center · authentication (the OIDC integration with the TestMu AI login is
 deferred, which is why `ExamBooking.candidate` is nullable) · automated tests · the Tailwind
 production build.
