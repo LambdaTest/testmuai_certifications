@@ -97,9 +97,9 @@
     clickable and keyboard-focusable however it looks.
 
     Reads booking.stage, the same property as the badge above, so "Time has
-    passed" and the dead buttons always agree. Display only: the reschedule and
-    join views do not check the time themselves yet, so a URL typed directly
-    still works.
+    passed" and the dead buttons always agree. The buttons are display; the
+    views hold the same rules — _start_or_resume refuses outside the join
+    window, and reschedule/cancel refuse once booking.can_change is false.
   {% endcomment %}
   {% if booking.stage == 'lapsed' %}
     <div class="mt-6 flex flex-wrap items-center gap-3">
@@ -119,10 +119,22 @@
 
   {% elif booking.status == 'booked' %}
     <div class="mt-6 flex flex-wrap items-center gap-3">
-      <a href="{% url 'exam:reschedule' booking.booking_id %}"
-         class="inline-flex h-11 items-center rounded-lg border border-line px-5 text-sm font-semibold text-body hover:border-[#B9BFC9]">
-        Reschedule
-      </a>
+      {% comment %}
+        Reschedule closes BOOKING_CHANGE_CUTOFF_MINUTES (10) before the start —
+        booking.can_change, the same property the reschedule and cancel views
+        check, so the disabled button and a refused URL always agree.
+      {% endcomment %}
+      {% if booking.can_change %}
+        <a href="{% url 'exam:reschedule' booking.booking_id %}"
+           class="inline-flex h-11 items-center rounded-lg border border-line px-5 text-sm font-semibold text-body hover:border-[#B9BFC9]">
+          Reschedule
+        </a>
+      {% else %}
+        <button type="button" disabled title="Changes close 10 minutes before the exam starts"
+                class="inline-flex h-11 cursor-not-allowed items-center rounded-lg border border-line px-5 text-sm font-semibold text-body opacity-40">
+          Reschedule
+        </button>
+      {% endif %}
 
       <div class="relative" x-data="{ open: false }" @click.outside="open = false">
         <button type="button" @click="open = !open" :aria-expanded="open"

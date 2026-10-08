@@ -118,3 +118,8 @@ BOOKING_MAX_MONTHS_AHEAD = 3
 #: Clear time required between the end of one exam and the start of the
 #: next, so a candidate is never double-booked or rushed between sittings.
 BOOKING_GAP_MINUTES = 60
+#: Reschedule and cancel close this long before the scheduled start. By then
+#: the candidate should be getting ready, not moving the slot — and since a
+#: paper can only be begun from the start time, closing before it also means a
+#: started paper can never be rescheduled or cancelled out from under itself.
+BOOKING_CHANGE_CUTOFF_MINUTES = 10

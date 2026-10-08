@@ -699,6 +699,26 @@ class ExamBooking(models.Model):
         return self.scheduled_at + timedelta(minutes=Exam.DURATION_BY_TYPE[self.round_type])
 
     @property
+    def changes_close_at(self):
+        """
+        When Reschedule and Cancel stop being allowed:
+        settings.BOOKING_CHANGE_CUTOFF_MINUTES before the scheduled start.
+        """
+        return self.scheduled_at - timedelta(minutes=settings.BOOKING_CHANGE_CUTOFF_MINUTES)
+
+    @property
+    def can_change(self):
+        """
+        Whether this booking can still be rescheduled or cancelled.
+
+        Only an open booking, and only until changes_close_at. One property
+        for the buttons (assessment page, dashboard) and the views that act
+        (reschedule, cancel_booking_page, cancel_booking), so a disabled
+        button and a refused URL always agree.
+        """
+        return self.status == self.Status.BOOKED and dj_timezone.now() < self.changes_close_at
+
+    @property
     def duration_display(self):
         """
         How long *this round* takes, for a candidate: "45 min" or "36 hrs".

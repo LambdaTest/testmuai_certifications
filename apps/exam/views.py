@@ -149,6 +149,14 @@ def booking_ics(request, booking_id):
     response["Content-Disposition"] = f'attachment; filename="exam-{booking.booking_id}.ics"'
     return response
 
+
+def _change_closed_message():
+    """Why Reschedule and Cancel refused — one wording for all three views."""
+    return (
+        "This booking can no longer be rescheduled or cancelled. Changes close "
+        f"{settings.BOOKING_CHANGE_CUTOFF_MINUTES} minutes before the exam starts."
+    )
+
 @login_required
 def reschedule(request, booking_id):
     """
@@ -163,6 +171,12 @@ def reschedule(request, booking_id):
         candidate=request.user,
         status=ExamBooking.Status.BOOKED,
     )
+    # Closed from BOOKING_CHANGE_CUTOFF_MINUTES before the start. Checked on
+    # GET as well as POST: the button is disabled by then, so arriving here
+    # means a typed or stale URL, and the form should not be offered at all.
+    if not booking.can_change:
+        messages.error(request, _change_closed_message())
+        return redirect("exam:explore_assessment", booking_id=booking.booking_id)
 
     form = RescheduleForm(
         request.POST or None, booking=booking, candidate=request.user
@@ -272,6 +286,10 @@ def cancel_booking_page(request, booking_id):
         booking_id=booking_id,
         candidate=request.user,
     )
+    # Same rule as reschedule: no confirm page once changes have closed.
+    if not booking.can_change:
+        messages.error(request, _change_closed_message())
+        return redirect("exam:explore_assessment", booking_id=booking.booking_id)
 
     return render(
         request,
@@ -292,6 +310,11 @@ def cancel_booking(request, booking_id):
         candidate=request.user,
         status=ExamBooking.Status.BOOKED,
     )
+    # The check that actually holds: the confirm page may have been opened
+    # at 9:45 and submitted at 9:55, after changes closed.
+    if not booking.can_change:
+        messages.error(request, _change_closed_message())
+        return redirect("exam:explore_assessment", booking_id=booking.booking_id)
 
     if request.method == "POST":
         booking.status = ExamBooking.Status.CANCELLED
@@ -1169,29 +1192,57 @@ def submit_exam(request, booking_id):
         messages.info(request, "Your objective round is completed. You have been booked for the subjective round.")
     else:
         messages.info(request, "Thank you for completing the exam.")
-    # Every round ends on the completed page now, including the first round of
-    # a two-round exam — that candidate is the one who needs telling where the
+    # Every round ends on the completed page, including the first round of a
+    # two-round exam — that candidate is the one who needs telling where the
     # second round is.
-    candidate_name = booking.candidate.get_full_name()
-    marks_obtained = booking.marks_obtained
-    # The round, not exam.exam_type: on a two-round exam the type is "both"
-    # for both bookings, so it cannot say whether this paper was objective.
-    round_type = booking.round_type
-    # Keyword arguments, not a dict: exam_completed collects them through
-    # **kwargs, which accepts keywords only — a dict passed positionally
-    # raises TypeError.
-    return exam_completed(
-        request,
-        candidate_name=candidate_name,
-        marks_obtained=marks_obtained,
-        round_type=round_type,
-        has_next_round=is_first_of_two,
-    )
-    # return redirect("exam:exam_completed", {"candidate_name": candidate_name, "marks_obtained": marks_obtained})
+    #
+    # A redirect, not a render (Post/Redirect/Get). Rendered as the reply to
+    # this POST, the page sat on the /submit/ URL and a refresh re-sent the
+    # submit, bouncing the candidate to the dashboard. After a redirect the
+    # browser holds a plain GET, which is safe to refresh. Only the booking id
+    # travels in the URL; exam_completed reads everything else itself. The
+    # messages added above survive the redirect and show on that page.
+    return redirect("exam:exam_completed", booking_id=booking.booking_id)
 
 @login_required
-def exam_completed(request, **kwargs):
+def exam_completed(request, booking_id):
     """
-    Displays a confirmation page after the exam is completed.
+    The page a candidate lands on after submitting any round.
+
+    Reads everything from the booking rather than receiving it from
+    submit_exam — a redirect carries only the URL, and a refresh or a revisit
+    must show the same page.
+
+    Only for a submitted paper. Owned by the candidate (part of the lookup, so
+    someone else's id is a 404), and refused while the paper is still open, so
+    the URL cannot be used to peek at a score early or to fake a finish.
     """
-    return render(request, "exam/exam_completed.html", kwargs)
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam", "candidate"),
+        booking_id=booking_id,
+        candidate=request.user,
+    )
+    sheet = ExamSheet.objects.filter(booking=booking).first()
+    if sheet is None or sheet.submitted_at is None:
+        return redirect("exam:explore_assessment", booking_id=booking.booking_id)
+
+    return render(
+        request,
+        "exam/exam_completed.html",
+        {
+            "booking": booking,
+            # display_name, not get_full_name(): User has no first_name or
+            # last_name, so the inherited get_full_name() returns "None None".
+            "candidate_name": booking.candidate.display_name,
+            "marks_obtained": booking.marks_obtained,
+            # The round, not exam.exam_type: on a two-round exam the type is
+            # "both" for both bookings, so it cannot say whether this paper
+            # was objective.
+            "round_type": booking.round_type,
+            # The first round of a two-round exam: the second is still to come.
+            "has_next_round": (
+                booking.exam.exam_type == Exam.Type.BOTH
+                and booking.round_type == Exam.Type.OBJECTIVE
+            ),
+        },
+    )

@@ -68,10 +68,24 @@ def _fold(line):
     return "\r\n ".join(c.decode("utf-8") for c in chunks)
 
 
+def _round_minutes(booking):
+    """
+    How long this booking's round runs: 45 for objective, 2160 for subjective.
+
+    The round's, not exam.duration_minutes. A booking is one round, and on a
+    two-round exam that field is both added together (2205) — an objective
+    round's invite then claimed a 2205-minute exam and, past the cap, a
+    "submit by" 37 hours out for a 45-minute sitting.
+    """
+    from .models import Exam  # here, not at the top: keeps this module free of model imports at load time
+
+    return Exam.DURATION_BY_TYPE[booking.round_type]
+
+
 def event_window(booking):
     """(start, end) for the calendar entry — see CALENDAR_BLOCK_MAX_MINUTES."""
     start = booking.scheduled_at
-    minutes = min(booking.exam.duration_minutes, CALENDAR_BLOCK_MAX_MINUTES)
+    minutes = min(_round_minutes(booking), CALENDAR_BLOCK_MAX_MINUTES)
     return start, start + timedelta(minutes=minutes)
 
 
@@ -81,12 +95,14 @@ def _summary(booking):
 
 
 def _description(booking):
-    exam = booking.exam
+    minutes = _round_minutes(booking)
     parts = [
-        f"{exam.get_exam_type_display()} exam · {exam.duration_minutes} minutes.",
+        # The round and its own length, e.g. "Objective round · 45 min." —
+        # booking.duration_display is the same wording the booking pages use.
+        f"{booking.get_round_type_display()} round · {booking.duration_display}.",
     ]
-    if exam.duration_minutes > CALENDAR_BLOCK_MAX_MINUTES:
-        deadline = booking.scheduled_at + timedelta(minutes=exam.duration_minutes)
+    if minutes > CALENDAR_BLOCK_MAX_MINUTES:
+        deadline = booking.scheduled_at + timedelta(minutes=minutes)
         local = to_local(deadline, booking.booked_timezone)
         parts.append(f"Submit by {local:%a, %d %b %Y %H:%M} {booking.booked_timezone}.")
     parts.append("Join from your TestMu AI Certifications dashboard.")

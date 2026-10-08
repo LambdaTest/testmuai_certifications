@@ -352,9 +352,9 @@ why it is not defaulted to `0`.
 **The completion page** (`exam_completed.html`) shows "You Scored: N" for an objective round, and
 after the first round of a two-round exam, a pointer to My Assessments for the second. It also
 collects LinkedIn and GitHub (required) plus three 1–5 ratings and suggestions — **none of which is
-saved yet.** `submit_exam` renders it directly as the response to the submit POST rather than
-redirecting, so a refresh re-sends the POST; the repeat guard catches it and returns the candidate
-to the dashboard.
+saved yet.** `submit_exam` redirects to it (`…/<booking_id>/completed/`) rather than rendering it
+as the reply to the POST, so a refresh is a harmless GET. The page reads everything from the
+booking, is owned by the candidate, and refuses while the paper is still open.
 
 ### Two-round exams
 
@@ -432,6 +432,10 @@ pre-defined slots and no capacity, so there is no seat contention. Rules live in
 - `BOOKING_GAP_MINUTES = 60` — clear time required either side of an exam a candidate has
   already booked. An objective exam occupies its full duration; a subjective one is a
   36-hour window with a deadline, so it only blocks around its start.
+- `BOOKING_CHANGE_CUTOFF_MINUTES = 10` — Reschedule and Cancel close this long before the start.
+  `ExamBooking.can_change` is the one rule: it disables the buttons and the reschedule and cancel
+  views refuse on it. A paper can only be begun from the start time, so a started paper can never
+  be moved or cancelled out from under itself.
 
 A candidate may hold only one open booking per exam **and round**, enforced by a partial unique
 index (`one_open_booking_per_exam`, over candidate, exam and `round_type`) rather than a view check.
