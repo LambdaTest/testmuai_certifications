@@ -45,14 +45,16 @@ def _countdown(scheduled_at, now=None):
 
 def _next_booking(user):
     """The candidate's soonest upcoming booking, or None."""
+    # upcoming(), not scheduled_at >= now: that dropped a booking off the
+    # dashboard the moment it started — exactly when the candidate needs its
+    # Join button. upcoming() keeps it until the join window closes, the same
+    # rule as My Assessments and the assessment page's badge.
+    #
     # ExamBooking orders newest-first by default, so ask for the other
     # direction explicitly — we want the nearest one, not the furthest.
     return (
-        ExamBooking.objects.filter(
-            candidate=user,
-            status=ExamBooking.Status.BOOKED,
-            scheduled_at__gte=timezone.now(),
-        )
+        ExamBooking.objects.filter(candidate=user)
+        .upcoming()
         .select_related("exam__subject")
         .order_by("scheduled_at")
         .first()

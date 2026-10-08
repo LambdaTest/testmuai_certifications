@@ -204,12 +204,33 @@ def reschedule(request, booking_id):
 def my_assessments(request, status):
     """
     Shows the candidate's bookings, filtered by status.
+
+    Three of the four filters are worked out from the clock as well as the
+    stored status — see ExamBookingQuerySet. A booking stays "booked" until
+    something changes it, so filtering on the column alone listed missed
+    exams under Upcoming.
     """
-    bookings = (
-        ExamBooking.objects.filter(candidate=request.user, status=status)
-        .select_related("exam__subject")
-        .order_by("-scheduled_at")
-    )
+    # Before anything reads `status`: ExamBooking.Status(status) below raises
+    # ValueError on an unknown value, which reached the candidate as a 500.
+    # The filter is chosen from a dropdown, so only a typed or stale URL gets
+    # here, and "not found" is the honest answer to it.
+    if status not in ExamBooking.Status.values:
+        raise Http404
+
+    mine = ExamBooking.objects.filter(candidate=request.user)
+    if status == ExamBooking.Status.BOOKED:
+        # Not started, or inside the join window right now.
+        bookings = mine.upcoming().order_by("scheduled_at")   # soonest first
+    elif status == ExamBooking.Status.NO_SHOW:
+        # Marked no_show, or the window closed with no paper ever drawn.
+        bookings = mine.no_show().order_by("-scheduled_at")
+    elif status == ExamBooking.Status.ATTENDED:
+        # Submitted, or started and abandoned past the deadline.
+        bookings = mine.attended().order_by("-scheduled_at")
+    else:
+        # Cancelled is a decision, not a time — the stored status is the truth.
+        bookings = mine.filter(status=status).order_by("-scheduled_at")
+    bookings = bookings.select_related("exam__subject")
 
     return render(
         request,

@@ -20,6 +20,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone as dj_timezone
 from django.core.validators import (FileExtensionValidator, MaxValueValidator,
                                     MinValueValidator)
 from django.contrib.postgres.fields import ArrayField
@@ -422,6 +423,104 @@ class Exam(models.Model):
         super().save(*args, **kwargs)
 
 
+class ExamBookingQuerySet(models.QuerySet):
+    """
+    The buckets a candidate sees their bookings in, worked out in the database
+    from the clock and the paper, not only from the stored status.
+
+    The stored status lags reality: a booking stays BOOKED until something
+    changes it, and today only a submit does. So "booked" alone cannot tell an
+    exam tomorrow from one missed last week, or from one sat and abandoned.
+    These methods can, and they chain like any filter:
+
+        ExamBooking.objects.filter(candidate=user).upcoming()
+
+    Nothing here writes. Each call reads the clock and filters; the status
+    column is unchanged. A booking does not *have* a bucket — it falls into one
+    whenever someone asks. The planned per-minute cron job will reuse these to
+    write the result (no_show, closing abandoned papers), which is what the
+    unique constraint, grading and admin counts need, since they read the
+    stored status. See TRACKER.md.
+
+    Cheap at any scale: page queries start from one candidate's bookings
+    (candidate_id is indexed), so they touch a handful of rows however large
+    the table grows.
+
+    The rule they share is ExamBooking.join_closes_at — scheduled_at plus the
+    round's own duration. Change one and change the other.
+
+    Deliberately in no bucket: a paper begun inside the window and still
+    running after it closed (began 10:44, now 10:50, paper until 11:29). The
+    window is closed, so not upcoming; a paper exists, so not a no-show; its
+    deadline has not passed, so not abandoned. The way back into it is the
+    reminder email's link, not this list.
+    """
+
+    @staticmethod
+    def _window_open(now):
+        """
+        Q: the join window has not closed yet.
+
+        join_closes_at > now, rewritten as scheduled_at > now - duration so the
+        database compares a column against a constant. One term per round
+        type, because the rounds have different durations.
+        """
+        terms = models.Q()
+        for round_type in (Exam.Type.OBJECTIVE, Exam.Type.SUBJECTIVE):
+            minutes = Exam.DURATION_BY_TYPE[round_type]
+            terms |= models.Q(
+                round_type=round_type,
+                scheduled_at__gt=now - timedelta(minutes=minutes),
+            )
+        return terms
+
+    @staticmethod
+    def _abandoned(now):
+        """
+        Q: a paper was started, never submitted, and its deadline has passed.
+        `sheet` is the reverse of ExamSheet.booking (its related_name).
+        """
+        return models.Q(
+            sheet__isnull=False,
+            sheet__submitted_at__isnull=True,
+            sheet__expires_at__lte=now,
+        )
+
+    def upcoming(self):
+        """Booked and still joinable: not started yet, or inside the window."""
+        now = dj_timezone.now()
+        return self.filter(
+            models.Q(status=ExamBooking.Status.BOOKED) & self._window_open(now)
+        )
+
+    def no_show(self):
+        """
+        Marked no_show, or booked with the window closed and no paper ever
+        drawn. "No paper" is what separates a missed exam from an abandoned
+        one: a candidate who began has a sheet, and belongs under attended().
+        """
+        now = dj_timezone.now()
+        return self.filter(
+            models.Q(status=ExamBooking.Status.NO_SHOW)
+            | (
+                models.Q(status=ExamBooking.Status.BOOKED, sheet__isnull=True)
+                & ~self._window_open(now)
+            )
+        )
+
+    def attended(self):
+        """
+        Submitted, or started and abandoned past the deadline. The second kind
+        has saved answers and the candidate did sit the exam, so it is listed
+        with the ones they finished — until the cron job closes and grades it.
+        """
+        now = dj_timezone.now()
+        return self.filter(
+            models.Q(status=ExamBooking.Status.ATTENDED)
+            | (models.Q(status=ExamBooking.Status.BOOKED) & self._abandoned(now))
+        )
+
+
 class ExamBooking(models.Model):
     """
     Self-scheduled, not slot-based: candidates pick their own date and time.
@@ -517,6 +616,10 @@ class ExamBooking(models.Model):
     feedback = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    #: ExamBooking.objects keeps everything a default manager does and adds
+    #: upcoming(), no_show() and attended(). Not stored, so no migration.
+    objects = ExamBookingQuerySet.as_manager()
 
     class Meta:
         db_table = "bookings"
