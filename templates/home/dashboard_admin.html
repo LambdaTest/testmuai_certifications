@@ -23,8 +23,8 @@
       {# user_name #}
       <h1 class="mt-1 text-2xl font-bold tracking-tight">Welcome, {{user_name}}</h1>
     </div>
-    {# Hands unassigned subjective attempts to examiners/ other admins. Objective grades itself. #}
-    <a href="{% url 'exam:assign_grading' %}" class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
+    {# Opens the Assign Grading page: subjective papers under review, each assignable to an examiner or admin. Objective grades itself. #}
+    <a href="{% url 'exam:assign_grading_template' %}" class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-[14.5px] font-bold text-white hover:bg-[#2A2B31]">
       Assign Grading →
     </a>
   </div>

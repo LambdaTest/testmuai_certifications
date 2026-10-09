@@ -12,6 +12,7 @@ urlpatterns = [
     path("assessment/<uuid:booking_id>", views.explore_assessment, name="explore_assessment"),
     path("bookings/<uuid:booking_id>/cancel/", views.cancel_booking, name="cancel_booking"),
     path("bookings/<uuid:booking_id>/cancelpage/", views.cancel_booking_page, name="cancel_booking_page"),
+    path("assign_grading_page/", views.assign_grading_template, name="assign_grading_template"),
     path("assign_grading/", views.assign_grading, name="assign_grading"),
     path("subject_center/create_subject/", views.create_subject, name="create_subject"),
     path("subject_center/explore_subjects/", views.explore_subjects, name="explore_subjects"),

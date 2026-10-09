@@ -4,150 +4,135 @@
   Assign Grading — submitted subjective papers waiting for an examiner, one
   box per paper, each assignable to an admin or examiner.
 
-  Context it will need from apps.exam.views.assign_grading (NOT WIRED YET):
-    papers     – the under-review bookings, oldest first, as a list of dicts:
-                 {"id": booking_id, "exam": exam_name, "ref": short booking
-                  reference, "pending_days": whole days since the paper's
-                  submitted_at, "assigned_to": an assignee id, or null}
-    assignees  – the admins and examiners other than the person viewing,
-                 as [{"id": ..., "name": ...}]
-
-  Both arrive through json_script, so names and exam titles containing quotes
-  or angle brackets cannot break the page. Until the view passes them the page
-  falls back to SAMPLE data in the script below, so it can be looked at now.
+  Context from apps.exam.views.assign_grading_template:
+    ungraded_attempts – the under-review subjective bookings, oldest
+                        submission first, with exam and sheet selected
+                        (select_related("exam", "sheet"))
+    assignees         – admins and examiners other than the person viewing
+                        (the viewer is "Self"), each with id and display_name
 
   BLIND ON PURPOSE. A paper is identified by exam and booking reference, never
-  the candidate's name or email — the same rule as the grading screens, so this
-  page stays safe if examiners are ever given it too.
+  the candidate's name or email — the same rule as the grading screens, so
+  this page stays safe if examiners are ever given it too. The view does not
+  select the candidate, and nothing here reads it.
 
   "Self" is always the first option and the default, and the viewer is not
-  repeated further down the list. Assign and Unassign change the page only;
-  nothing is saved until this is wired to a view.
+  repeated further down the list.
+
+  NOT SAVED YET. Assign and Unassign change the page only: ExamBooking has no
+  assigned_to field to store the choice in. When it exists, a row starts
+  assigned from attempt.assigned_to (already read below — empty until then),
+  and the two buttons POST to exam:assign_grading.
 {% endcomment %}
 
 {% block title %}Assign Grading · TestMu AI Certifications{% endblock %}
 
 {% block staff_content %}
-{{ papers|json_script:"papers-data" }}
-{{ assignees|json_script:"assignees-data" }}
+<header class="mb-6">
+  <h1 class="text-2xl font-bold tracking-tight">Assign Grading</h1>
+  <p class="mt-1.5 text-[14.5px] text-muted">
+    {% with count=ungraded_attempts|length %}
+      {% if count %}
+        {{ count }} paper{{ count|pluralize:" is,s are" }} waiting to be graded, oldest first.
+      {% else %}
+        No papers are waiting to be graded.
+      {% endif %}
+    {% endwith %}
+  </p>
+</header>
 
-<div x-data="assignGrading()">
+{# ---- One box per submitted paper ---- #}
+<div class="grid gap-3">
+  {% for attempt in ungraded_attempts %}
+    {% comment %}
+      Per-row state lives on the row. data-submitted is the sheet's
+      submitted_at in ISO 8601 — the browser turns it into "Pending N days"
+      against its own clock, so the badge is right even on a page left open.
+      data-assigned is the name of whoever already has it (empty until the
+      assigned_to field exists). Both autoescaped, so a quote in a name cannot
+      break out of the attribute.
+    {% endcomment %}
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-line bg-white px-5 py-4"
+         x-data="assignRow($el.dataset)"
+         data-submitted="{{ attempt.sheet.submitted_at|date:'c' }}"
+         data-assigned="{{ attempt.assigned_to.display_name|default:'' }}">
 
-  <header class="mb-6">
-    <h1 class="text-2xl font-bold tracking-tight">Assign Grading</h1>
-    <p class="mt-1.5 text-[14.5px] text-muted"
-       x-text="papers.length === 0
-                 ? 'No papers are waiting to be graded.'
-                 : `${papers.length} ${papers.length === 1 ? 'paper is' : 'papers are'} waiting to be graded, oldest first.`">
-    </p>
-  </header>
-
-  {# ---- One box per submitted paper ---- #}
-  <div class="grid gap-3">
-    <template x-for="paper in papers" :key="paper.id">
-      <div class="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-line bg-white px-5 py-4">
-
-        {# ---- Left: what the paper is, and how long it has waited ---- #}
-        <div class="min-w-0 flex-1">
-          <div class="flex flex-wrap items-center gap-2.5">
-            <span class="truncate font-semibold text-ink" x-text="paper.exam"></span>
-            {% comment %}
-              Always red, as specified — every paper here is work someone is
-              waiting on. Counted from submission, not from the booked time.
-            {% endcomment %}
-            <span class="rounded-full bg-danger-tint px-2.5 py-0.5 text-[11.5px] font-bold text-danger"
-                  x-text="pendingLabel(paper.pending_days)"></span>
-          </div>
-          <p class="mt-1 text-[13px] text-muted">
-            Subjective round · Ref <span class="font-mono text-ink" x-text="paper.ref"></span>
-          </p>
+      {# ---- Left: what the paper is, and how long it has waited ---- #}
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <span class="truncate font-semibold text-ink">{{ attempt.exam.exam_name }}</span>
+          {% comment %}
+            Always red, as specified — every paper here is work someone is
+            waiting on. Counted from submission, not from the booked time.
+          {% endcomment %}
+          <span class="rounded-full bg-danger-tint px-2.5 py-0.5 text-[11.5px] font-bold text-danger"
+                x-text="pendingLabel()">Pending</span>
         </div>
-
-        {# ---- Right: not yet assigned — choose someone, then Assign ---- #}
-        <div x-show="!paper.assigned_to" class="flex flex-wrap items-center gap-2.5">
-          <label class="sr-only" :for="`assignee-${paper.id}`">Assign to</label>
-          <select :id="`assignee-${paper.id}`" x-model="paper.choice"
-                  class="h-11 min-w-48 rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
-            <option value="self">Self</option>
-            <template x-for="person in assignees" :key="person.id">
-              <option :value="person.id" x-text="person.name"></option>
-            </template>
-          </select>
-          <button type="button" @click="assign(paper)"
-                  class="inline-flex h-11 items-center rounded-lg bg-[#111] px-5 text-sm font-bold text-white hover:bg-[#2A2B31]">
-            Assign
-          </button>
-        </div>
-
-        {# ---- Right: assigned — say to whom, with a way back ---- #}
-        <div x-show="paper.assigned_to" x-cloak class="flex flex-wrap items-center gap-3">
-          <span class="text-sm text-body">
-            Assigned to <span class="font-semibold text-ink" x-text="nameOf(paper.assigned_to)"></span>
-          </span>
-          <button type="button" @click="unassign(paper)"
-                  class="inline-flex h-11 items-center rounded-lg bg-danger px-5 text-sm font-bold text-white hover:bg-[#A83522]">
-            Unassign
-          </button>
-        </div>
-
+        <p class="mt-1 text-[13px] text-muted">
+          Subjective round · Ref
+          <span class="font-mono text-ink">{{ attempt.booking_id|stringformat:"s"|slice:":8" }}</span>
+        </p>
       </div>
-    </template>
 
-    <p x-show="papers.length === 0" x-cloak
-       class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
+      {# ---- Right: not yet assigned — choose someone, then Assign ---- #}
+      <div x-show="!assignedName" class="flex flex-wrap items-center gap-2.5">
+        <label class="sr-only" for="assignee-{{ attempt.booking_id }}">Assign to</label>
+        <select id="assignee-{{ attempt.booking_id }}" x-ref="select"
+                class="h-11 min-w-48 rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+          <option value="self" selected>Self</option>
+          {% for person in assignees %}
+            <option value="{{ person.id }}">{{ person.display_name|default:person.email }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" @click="assign()"
+                class="inline-flex h-11 items-center rounded-lg bg-[#111] px-5 text-sm font-bold text-white hover:bg-[#2A2B31]">
+          Assign
+        </button>
+      </div>
+
+      {# ---- Right: assigned — say to whom, with a way back ---- #}
+      <div x-show="assignedName" x-cloak class="flex flex-wrap items-center gap-3">
+        <span class="text-sm text-body">
+          Assigned to <span class="font-semibold text-ink" x-text="assignedName"></span>
+        </span>
+        <button type="button" @click="unassign()"
+                class="inline-flex h-11 items-center rounded-lg bg-danger px-5 text-sm font-bold text-white hover:bg-[#A83522]">
+          Unassign
+        </button>
+      </div>
+
+    </div>
+  {% empty %}
+    <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
       No papers are waiting to be graded.
     </p>
-  </div>
+  {% endfor %}
 </div>
 
 <script>
-  function assignGrading() {
-    // The view's data when it passes it. Until then the variables are missing,
-    // json_script renders an empty string, and the || below picks the samples.
-    const fromView = (id) => JSON.parse(document.getElementById(id).textContent);
-
-    // SAMPLE DATA — only used while the view passes nothing. Delete once
-    // assign_grading renders this template with real papers and assignees.
-    const SAMPLE_PAPERS = [
-      { id: "s1", exam: "Kane CLI Certification", ref: "198f572b", pending_days: 5, assigned_to: null },
-      { id: "s2", exam: "TestMu AI Certification Exam", ref: "6be4d55a", pending_days: 2, assigned_to: null },
-      { id: "s3", exam: "Selenium Advanced", ref: "a7aa58fb", pending_days: 0, assigned_to: "e2" },
-    ];
-    const SAMPLE_ASSIGNEES = [
-      { id: "e1", name: "Ananya Rao" },
-      { id: "e2", name: "Vikram Mehta" },
-      { id: "e3", name: "Priya Nair" },
-    ];
-
-    const papers = (fromView("papers-data") || SAMPLE_PAPERS)
-      // Each row keeps its own dropdown choice, starting at Self.
-      .map(p => ({ ...p, choice: "self" }));
-
+  // One instance per row. `data` is that row's data-* attributes.
+  function assignRow(data) {
     return {
-      papers,
-      assignees: fromView("assignees-data") || SAMPLE_ASSIGNEES,
+      assignedName: data.assigned || "",
 
-      pendingLabel(days) {
-        if (!days) return "Pending today";
+      pendingLabel() {
+        if (!data.submitted) return "Pending";
+        const days = Math.floor((Date.now() - new Date(data.submitted)) / 86400000);
+        if (days < 1) return "Pending today";
         return `Pending ${days} day${days === 1 ? "" : "s"}`;
       },
 
-      // "self" or an assignee id → the name to show.
-      nameOf(id) {
-        if (id === "self") return "Self";
-        const person = this.assignees.find(a => String(a.id) === String(id));
-        return person ? person.name : "Unknown";
+      // Page only for now. When wired, these POST to exam:assign_grading and
+      // change the row only once the server confirms — the same rule as the
+      // player's "Saved".
+      assign() {
+        // The visible text of the chosen option: "Self" or the person's name.
+        this.assignedName = this.$refs.select.selectedOptions[0].text;
       },
 
-      // Page only for now. When wired, these POST to the view and change the
-      // row only once it confirms — the same rule as the player's "Saved".
-      assign(paper) {
-        paper.assigned_to = paper.choice;
-      },
-
-      unassign(paper) {
-        paper.assigned_to = null;
-        paper.choice = "self";   // back to the default
+      unassign() {
+        this.assignedName = "";
+        this.$refs.select.value = "self";   // back to the default
       },
     };
   }

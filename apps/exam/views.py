@@ -323,65 +323,35 @@ def cancel_booking(request, booking_id):
 
     return redirect("home:dashboard")
 
-# ─── TEMPORARY: dummy-data preview of the Assign Grading page ───────────────
-# To revert: delete from this line down to "END TEMPORARY", then uncomment the
-# original assign_grading below it. Nothing here touches the database.
-@role_required(User.Role.ADMIN)
 def assign_grading(request):
     """
-    TEMPORARY preview: renders assign_grading.html with dummy papers and
-    assignees in the exact shape the real view will pass, so the page can be
-    checked in the browser before it is wired to the database.
+    Assigns ungraded subjective attempts to examiners or other admins.
     """
-    dummy_papers = [
-        {"id": "d1", "exam": "Kane CLI Certification", "ref": "198f572b", "pending_days": 7, "assigned_to": None},
-        {"id": "d2", "exam": "TestMu AI Certification Exam", "ref": "6be4d55a", "pending_days": 5, "assigned_to": None},
-        {"id": "d3", "exam": "Selenium Advanced", "ref": "a7aa58fb", "pending_days": 3, "assigned_to": "u2"},
-        {"id": "d4", "exam": "Playwright Fundamentals", "ref": "dd967d6b", "pending_days": 1, "assigned_to": None},
-        {"id": "d5", "exam": "API Testing with HyperExecute", "ref": "92682436", "pending_days": 0, "assigned_to": None},
-    ]
-    dummy_assignees = [
-        {"id": "u1", "name": "Ananya Rao (Examiner)"},
-        {"id": "u2", "name": "Vikram Mehta (Examiner)"},
-        {"id": "u3", "name": "Priya Nair (Admin)"},
-        {"id": "u4", "name": "Rahul Verma (Examiner)"},
-    ]
-    return render(
-        request,
-        "exam/assign_grading.html",
-        {"papers": dummy_papers, "assignees": dummy_assignees},
-    )
-# ─── END TEMPORARY ───────────────────────────────────────────────────────────
+    # Only allow superusers to access this view
+    if not request.user.role != User.Role.ADMIN:
+        return redirect("home:dashboard")
 
-# ORIGINAL assign_grading — commented out for the preview above; restore it
-# when reverting. (Note when you do: the role check below is a double
-# negative, and exam__subject__is_subjective / grade are not fields.)
-#
-# def assign_grading(request):
-#     """
-#     Assigns ungraded subjective attempts to examiners or other admins.
-#     """
-#     # Only allow superusers to access this view
-#     if not request.user.role != User.Role.ADMIN:
-#         return redirect("home:dashboard")
-#
-#     # Get all ungraded subjective attempts
-#     ungraded_attempts = ExamBooking.objects.filter(
-#         status=ExamBooking.Status.UNDER_REVIEW,
-#         exam__subject__is_subjective=True,
-#         grade__isnull=True,
-#     ).select_related("exam", "candidate")
-#
-#     # Assign each ungraded attempt to an examiner/ admin
-#     for attempt in ungraded_attempts:
-#         # Here you can implement your logic to assign the attempt to an examiner/ admin
-#         # For example, you can assign it to the first available superuser
-#         examiner = User.objects.filter(is_superuser=True).first()
-#         if examiner:
-#             attempt.examiner = examiner
-#             attempt.save()
-#
-#     return redirect("home:dashboard")
+    # Get all ungraded subjective attempts
+
+    return redirect("home:dashboard")
+
+@login_required
+@role_required(User.Role.ADMIN)
+def assign_grading_template(request):
+    """
+    Renders the template for assigning grading.
+    """
+    ungraded_attempts = ExamBooking.objects.filter(
+        status=ExamBooking.Status.UNDER_REVIEW,
+        round_type=Exam.Type.SUBJECTIVE,
+    ).select_related("exam", "sheet").order_by("sheet__submitted_at")
+
+    assignees = (
+      User.objects.filter(role__in=[User.Role.ADMIN, User.Role.EXAMINER])
+      .exclude(pk=request.user.pk)
+      .order_by("display_name"))
+
+    return render(request, "exam/assign_grading.html", {"ungraded_attempts": ungraded_attempts, "assignees": assignees})
 
 @role_required(User.Role.ADMIN)
 def explore_subjects(request):
