@@ -98,12 +98,10 @@
   <main class="flex-1">
 
     {% comment %}
-      Flash messages, rendered once here so no candidate page has to think about
-      them. django.contrib.messages was configured from the start — app,
-      middleware and context processor — but only base_staff.html displayed it,
-      so every message a candidate-facing view added was silently discarded.
-      That is why pressing "I'm ready to begin" on an exam that could not be
-      drawn simply reloaded the page saying nothing.
+      Flash messages, rendered once here for every page — candidate and staff
+      alike, since base_staff.html extends this template. Do not render them
+      again in a child template: messages stay readable for the whole request,
+      so a second loop shows each one twice.
 
       Iterating `messages` is what marks them read; they survive exactly one
       response, which is why a view can add one and then redirect.

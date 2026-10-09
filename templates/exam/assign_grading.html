@@ -6,8 +6,8 @@
 
   Context from apps.exam.views.assign_grading_template:
     ungraded_attempts – the under-review subjective bookings, oldest
-                        submission first, with exam and sheet selected
-                        (select_related("exam", "sheet"))
+                        submission first, with exam, sheet, assigned_to and
+                        assigned_by selected
     assignees         – admins and examiners other than the person viewing
                         (the viewer is "Self"), each with id and display_name
 
@@ -19,10 +19,10 @@
   "Self" is always the first option and the default, and the viewer is not
   repeated further down the list.
 
-  NOT SAVED YET. Assign and Unassign change the page only: ExamBooking has no
-  assigned_to field to store the choice in. When it exists, a row starts
-  assigned from attempt.assigned_to (already read below — empty until then),
-  and the two buttons POST to exam:assign_grading.
+  SAVED. Assign and Unassign are real forms posting to exam:assign_grading,
+  which validates the choice (AssignGradingForm), saves assigned_to /
+  assigned_by / assigned_at, and redirects back here with a message. So what
+  a row shows is what the database holds — a reload never loses an assignment.
 {% endcomment %}
 
 {% block title %}Assign Grading · TestMu AI Certifications{% endblock %}
@@ -45,17 +45,12 @@
 <div class="grid gap-3">
   {% for attempt in ungraded_attempts %}
     {% comment %}
-      Per-row state lives on the row. data-submitted is the sheet's
-      submitted_at in ISO 8601 — the browser turns it into "Pending N days"
-      against its own clock, so the badge is right even on a page left open.
-      data-assigned is the name of whoever already has it (empty until the
-      assigned_to field exists). Both autoescaped, so a quote in a name cannot
-      break out of the attribute.
+      data-submitted is the sheet's submitted_at in ISO 8601; the browser turns
+      it into "Pending N days" against its own clock, so the badge stays right
+      on a page left open.
     {% endcomment %}
     <div class="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-line bg-white px-5 py-4"
-         x-data="assignRow($el.dataset)"
-         data-submitted="{{ attempt.sheet.submitted_at|date:'c' }}"
-         data-assigned="{{ attempt.assigned_to.display_name|default:'' }}">
+         x-data="{ submitted: '{{ attempt.sheet.submitted_at|date:'c' }}' }">
 
       {# ---- Left: what the paper is, and how long it has waited ---- #}
       <div class="min-w-0 flex-1">
@@ -66,7 +61,7 @@
             waiting on. Counted from submission, not from the booked time.
           {% endcomment %}
           <span class="rounded-full bg-danger-tint px-2.5 py-0.5 text-[11.5px] font-bold text-danger"
-                x-text="pendingLabel()">Pending</span>
+                x-text="pendingLabel(submitted)">Pending</span>
         </div>
         <p class="mt-1 text-[13px] text-muted">
           Subjective round · Ref
@@ -74,32 +69,53 @@
         </p>
       </div>
 
-      {# ---- Right: not yet assigned — choose someone, then Assign ---- #}
-      <div x-show="!assignedName" class="flex flex-wrap items-center gap-2.5">
-        <label class="sr-only" for="assignee-{{ attempt.booking_id }}">Assign to</label>
-        <select id="assignee-{{ attempt.booking_id }}" x-ref="select"
-                class="h-11 min-w-48 rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
-          <option value="self" selected>Self</option>
-          {% for person in assignees %}
-            <option value="{{ person.id }}">{{ person.display_name|default:person.email }}</option>
-          {% endfor %}
-        </select>
-        <button type="button" @click="assign()"
-                class="inline-flex h-11 items-center rounded-lg bg-[#111] px-5 text-sm font-bold text-white hover:bg-[#2A2B31]">
-          Assign
-        </button>
-      </div>
-
-      {# ---- Right: assigned — say to whom, with a way back ---- #}
-      <div x-show="assignedName" x-cloak class="flex flex-wrap items-center gap-3">
-        <span class="text-sm text-body">
-          Assigned to <span class="font-semibold text-ink" x-text="assignedName"></span>
-        </span>
-        <button type="button" @click="unassign()"
-                class="inline-flex h-11 items-center rounded-lg bg-danger px-5 text-sm font-bold text-white hover:bg-[#A83522]">
-          Unassign
-        </button>
-      </div>
+      {% if attempt.assigned_to %}
+        {# ---- Right: assigned — say to whom and by whom, with a way back ---- #}
+        <div class="flex flex-wrap items-center gap-3">
+          <span class="text-sm text-body">
+            Assigned to
+            <span class="font-semibold text-ink">
+              {% if attempt.assigned_to_id == request.user.id %}Self{% else %}{{ attempt.assigned_to.display_name|default:attempt.assigned_to.email }}{% endif %}
+            </span>
+            {% if attempt.assigned_by %}
+              <span class="block text-[12.5px] text-muted">
+                by {% if attempt.assigned_by_id == request.user.id %}you{% else %}{{ attempt.assigned_by.display_name|default:attempt.assigned_by.email }}{% endif %},
+                {{ attempt.assigned_at|timesince }} ago
+              </span>
+            {% endif %}
+          </span>
+          {% comment %}
+            A POST, never a link: it changes a record. The hidden action field
+            is what tells the view this is an unassign.
+          {% endcomment %}
+          <form method="post" action="{% url 'exam:assign_grading' attempt.booking_id %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="unassign">
+            <button type="submit"
+                    class="inline-flex h-11 items-center rounded-lg bg-danger px-5 text-sm font-bold text-white hover:bg-[#A83522]">
+              Unassign
+            </button>
+          </form>
+        </div>
+      {% else %}
+        {# ---- Right: not yet assigned — choose someone, then Assign ---- #}
+        <form method="post" action="{% url 'exam:assign_grading' attempt.booking_id %}"
+              class="flex flex-wrap items-center gap-2.5">
+          {% csrf_token %}
+          <label class="sr-only" for="assignee-{{ attempt.booking_id }}">Assign to</label>
+          <select id="assignee-{{ attempt.booking_id }}" name="assignee"
+                  class="h-11 min-w-48 rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+            <option value="self" selected>Self</option>
+            {% for person in assignees %}
+              <option value="{{ person.id }}">{{ person.display_name|default:person.email }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit"
+                  class="inline-flex h-11 items-center rounded-lg bg-[#111] px-5 text-sm font-bold text-white hover:bg-[#2A2B31]">
+            Assign
+          </button>
+        </form>
+      {% endif %}
 
     </div>
   {% empty %}
@@ -110,31 +126,13 @@
 </div>
 
 <script>
-  // One instance per row. `data` is that row's data-* attributes.
-  function assignRow(data) {
-    return {
-      assignedName: data.assigned || "",
-
-      pendingLabel() {
-        if (!data.submitted) return "Pending";
-        const days = Math.floor((Date.now() - new Date(data.submitted)) / 86400000);
-        if (days < 1) return "Pending today";
-        return `Pending ${days} day${days === 1 ? "" : "s"}`;
-      },
-
-      // Page only for now. When wired, these POST to exam:assign_grading and
-      // change the row only once the server confirms — the same rule as the
-      // player's "Saved".
-      assign() {
-        // The visible text of the chosen option: "Self" or the person's name.
-        this.assignedName = this.$refs.select.selectedOptions[0].text;
-      },
-
-      unassign() {
-        this.assignedName = "";
-        this.$refs.select.value = "self";   // back to the default
-      },
-    };
+  // "Pending N days" from an ISO timestamp. The only script left on the page:
+  // assigning is a plain form post, so the page works without JavaScript too.
+  function pendingLabel(submitted) {
+    if (!submitted) return "Pending";
+    const days = Math.floor((Date.now() - new Date(submitted)) / 86400000);
+    if (days < 1) return "Pending today";
+    return `Pending ${days} day${days === 1 ? "" : "s"}`;
   }
 </script>
 {% endblock %}

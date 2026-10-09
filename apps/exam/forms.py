@@ -14,6 +14,7 @@ from datetime import timedelta
 
 from django import forms
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.validators import FileExtensionValidator
 from django.forms import inlineformset_factory
 from django.forms.models import BaseInlineFormSet
@@ -1063,3 +1064,52 @@ class ExamSheetFormSubjective(forms.ModelForm):
                     "It must be in the repository you shared.",
                 )
         return cleaned
+
+class AssignGradingForm(forms.Form):
+    """
+    Who a subjective paper is being handed to, from the Assign Grading page.
+
+    The dropdown posts "self" or a user id. Everything that could go wrong
+    with that value is handled here, so the view gets either a User or a
+    form error — never a crash:
+      "self"                 → the admin doing the assigning (passed in as viewer)
+      an admin/examiner id   → that user
+      anything else          → a form error: a candidate's id, an id that does
+                               not exist, a missing value, or "abc"
+
+    A CharField plus clean_assignee rather than a ModelChoiceField, because
+    "self" is not a database id: one method can accept both and return a
+    User either way.
+
+    get_user_model() rather than importing apps.home.models.User — the exam
+    app reaches the user model only through settings.AUTH_USER_MODEL (see
+    the README's "Dependencies point one way").
+    """
+
+    assignee = forms.CharField(
+        error_messages={"required": "Choose who should grade this paper."},
+    )
+
+    def __init__(self, *args, viewer, **kwargs):
+        # Keyword-only, so the view cannot forget it: "self" means nothing
+        # without knowing who is asking.
+        super().__init__(*args, **kwargs)
+        self.viewer = viewer
+
+    @staticmethod
+    def assignable_users():
+        """Everyone a paper may be assigned to: admins and examiners."""
+        User = get_user_model()
+        return User.objects.filter(role__in=[User.Role.ADMIN, User.Role.EXAMINER])
+
+    def clean_assignee(self):
+        value = self.cleaned_data["assignee"].strip()
+        if value == "self":
+            return self.viewer
+        # isdigit first: User.objects.get(pk="abc") raises ValueError, not
+        # DoesNotExist, and would surface as a 500.
+        if value.isdigit():
+            user = self.assignable_users().filter(pk=int(value)).first()
+            if user is not None:
+                return user
+        raise forms.ValidationError("Choose an admin or examiner from the list.")

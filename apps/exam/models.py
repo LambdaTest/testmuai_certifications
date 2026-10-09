@@ -603,6 +603,21 @@ class ExamBooking(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    #: Who has been asked to grade this paper. Null until an admin assigns it;
+    #: cleared by Unassign. Separate from graded_by, which records who actually did.
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="assigned_bookings", blank=True, null=True,
+    )
+
+    #: The admin who made the current assignment — "Self" looks the same to every
+    #: admin on the page, so this is what says which one.
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="assignments_made", blank=True, null=True,
+    )
+    assigned_at = models.DateTimeField(blank=True, null=True)
+
     #: ExamBooking.objects keeps everything a default manager does and adds
     #: upcoming(), no_show() and attended(). Not stored, so no migration.
     objects = ExamBookingQuerySet.as_manager()

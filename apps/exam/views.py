@@ -25,6 +25,7 @@ from .calendar import build_ics
 from . import forms as exam_forms
 from .forms import (
     AnswerOptionFormSet,
+    AssignGradingForm,
     BookingForm,
     ExamForm,
     QuestionForm,
@@ -323,17 +324,42 @@ def cancel_booking(request, booking_id):
 
     return redirect("home:dashboard")
 
-def assign_grading(request):
+@login_required
+@role_required(User.Role.ADMIN)
+@require_POST
+def assign_grading(request, booking_id):
     """
-    Assigns ungraded subjective attempts to examiners or other admins.
+    Assigns one submitted subjective paper to an admin or examiner, or
+    unassigns it (action=unassign). Posted by the Assign and Unassign buttons
+    on the Assign Grading page, and always returns there.
+
+    Only a paper still under review can be (un)assigned — anything else is a
+    404 from the lookup itself.
     """
-    # Only allow superusers to access this view
-    if not request.user.role != User.Role.ADMIN:
-        return redirect("home:dashboard")
+    booking = get_object_or_404(ExamBooking, booking_id=booking_id, status=ExamBooking.Status.UNDER_REVIEW)
 
-    # Get all ungraded subjective attempts
+    if request.POST.get("action") == "unassign":
+        booking.assigned_to = booking.assigned_by = booking.assigned_at = None
+        message = "Unassigned."
+    else:
+        # The form turns the dropdown's value into a User — "self" into the
+        # viewer — and refuses anything else, so a hand-crafted POST is a
+        # message, not a crash.
+        form = AssignGradingForm(request.POST, viewer=request.user)
+        if not form.is_valid():
+            messages.error(request, form.errors["assignee"][0])
+            return redirect("exam:assign_grading_template")
+        assignee = form.cleaned_data["assignee"]
+        booking.assigned_to = assignee
+        booking.assigned_by = request.user
+        booking.assigned_at = timezone.now()
+        message = f"Assigned to {'yourself' if assignee == request.user else assignee.display_name}."
 
-    return redirect("home:dashboard")
+    # Only these columns, so a change made elsewhere to the booking meanwhile
+    # is not overwritten with this request's stale copy.
+    booking.save(update_fields=["assigned_to", "assigned_by", "assigned_at", "updated_at"])
+    messages.success(request, message)
+    return redirect("exam:assign_grading_template")
 
 @login_required
 @role_required(User.Role.ADMIN)
@@ -344,12 +370,16 @@ def assign_grading_template(request):
     ungraded_attempts = ExamBooking.objects.filter(
         status=ExamBooking.Status.UNDER_REVIEW,
         round_type=Exam.Type.SUBJECTIVE,
-    ).select_related("exam", "sheet").order_by("sheet__submitted_at")
+    # assigned_to and assigned_by too: the page names both on every assigned
+    # row, and without them each name would cost its own query.
+    ).select_related("exam", "sheet", "assigned_to", "assigned_by").order_by("sheet__submitted_at")
 
+    # The same set the form accepts, minus the viewer — they are "Self".
     assignees = (
-      User.objects.filter(role__in=[User.Role.ADMIN, User.Role.EXAMINER])
-      .exclude(pk=request.user.pk)
-      .order_by("display_name"))
+        AssignGradingForm.assignable_users()
+        .exclude(pk=request.user.pk)
+        .order_by("display_name")
+    )
 
     return render(request, "exam/assign_grading.html", {"ungraded_attempts": ungraded_attempts, "assignees": assignees})
 
