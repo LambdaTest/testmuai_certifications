@@ -41,6 +41,15 @@
         <span class="rounded-full bg-warn-tint px-3 py-1 text-xs font-bold text-warn">Time has passed</span>
       {% elif booking.status == 'attended' %}
         <span class="rounded-full bg-ok-tint px-3 py-1 text-xs font-bold text-ok">Attended</span>
+      {% comment %}
+        A submitted subjective round waits for an examiner. Its own badge —
+        without it the chain fell through to the final else and called the
+        candidate a no-show.
+      {% endcomment %}
+      {% elif booking.status == 'under_review' %}
+        <span class="rounded-full bg-warn-tint px-3 py-1 text-xs font-bold text-warn">Under review</span>
+      {% elif booking.status == 'graded' %}
+        <span class="rounded-full bg-ok-tint px-3 py-1 text-xs font-bold text-ok">Graded</span>
       {% elif booking.status == 'cancelled' %}
         <span class="rounded-full bg-danger-tint px-3 py-1 text-xs font-bold text-danger">Cancelled</span>
       {% else %}

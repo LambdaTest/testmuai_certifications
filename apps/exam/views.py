@@ -233,13 +233,13 @@ def my_assessments(request, status):
 
     mine = ExamBooking.objects.filter(candidate=request.user)
     if status == ExamBooking.Status.BOOKED:
-        # Not started, or inside the join window right now.
+        # Not begun, and before the start or inside the join window.
         bookings = mine.upcoming().order_by("scheduled_at")   # soonest first
     elif status == ExamBooking.Status.NO_SHOW:
-        # Marked no_show, or the window closed with no paper ever drawn.
+        # Marked no_show, or still booked (never begun) with the window closed.
         bookings = mine.no_show().order_by("-scheduled_at")
     elif status == ExamBooking.Status.ATTENDED:
-        # Submitted, or started and abandoned past the deadline.
+        # Begun: finished, in progress or abandoned — "I'm ready to begin" sets it.
         bookings = mine.attended().order_by("-scheduled_at")
     else:
         # Cancelled is a decision, not a time — the stored status is the truth.
@@ -323,31 +323,65 @@ def cancel_booking(request, booking_id):
 
     return redirect("home:dashboard")
 
+# ─── TEMPORARY: dummy-data preview of the Assign Grading page ───────────────
+# To revert: delete from this line down to "END TEMPORARY", then uncomment the
+# original assign_grading below it. Nothing here touches the database.
+@role_required(User.Role.ADMIN)
 def assign_grading(request):
     """
-    Assigns ungraded subjective attempts to examiners or other admins.
+    TEMPORARY preview: renders assign_grading.html with dummy papers and
+    assignees in the exact shape the real view will pass, so the page can be
+    checked in the browser before it is wired to the database.
     """
-    # Only allow superusers to access this view
-    if not request.user.role != User.Role.ADMIN:
-        return redirect("home:dashboard")
+    dummy_papers = [
+        {"id": "d1", "exam": "Kane CLI Certification", "ref": "198f572b", "pending_days": 7, "assigned_to": None},
+        {"id": "d2", "exam": "TestMu AI Certification Exam", "ref": "6be4d55a", "pending_days": 5, "assigned_to": None},
+        {"id": "d3", "exam": "Selenium Advanced", "ref": "a7aa58fb", "pending_days": 3, "assigned_to": "u2"},
+        {"id": "d4", "exam": "Playwright Fundamentals", "ref": "dd967d6b", "pending_days": 1, "assigned_to": None},
+        {"id": "d5", "exam": "API Testing with HyperExecute", "ref": "92682436", "pending_days": 0, "assigned_to": None},
+    ]
+    dummy_assignees = [
+        {"id": "u1", "name": "Ananya Rao (Examiner)"},
+        {"id": "u2", "name": "Vikram Mehta (Examiner)"},
+        {"id": "u3", "name": "Priya Nair (Admin)"},
+        {"id": "u4", "name": "Rahul Verma (Examiner)"},
+    ]
+    return render(
+        request,
+        "exam/assign_grading.html",
+        {"papers": dummy_papers, "assignees": dummy_assignees},
+    )
+# ─── END TEMPORARY ───────────────────────────────────────────────────────────
 
-    # Get all ungraded subjective attempts
-    ungraded_attempts = ExamBooking.objects.filter(
-        status=ExamBooking.Status.ATTENDED,
-        exam__subject__is_subjective=True,
-        grade__isnull=True,
-    ).select_related("exam", "candidate")
-
-    # Assign each ungraded attempt to an examiner/ admin
-    for attempt in ungraded_attempts:
-        # Here you can implement your logic to assign the attempt to an examiner/ admin
-        # For example, you can assign it to the first available superuser
-        examiner = User.objects.filter(is_superuser=True).first()
-        if examiner:
-            attempt.examiner = examiner
-            attempt.save()
-
-    return redirect("home:dashboard")
+# ORIGINAL assign_grading — commented out for the preview above; restore it
+# when reverting. (Note when you do: the role check below is a double
+# negative, and exam__subject__is_subjective / grade are not fields.)
+#
+# def assign_grading(request):
+#     """
+#     Assigns ungraded subjective attempts to examiners or other admins.
+#     """
+#     # Only allow superusers to access this view
+#     if not request.user.role != User.Role.ADMIN:
+#         return redirect("home:dashboard")
+#
+#     # Get all ungraded subjective attempts
+#     ungraded_attempts = ExamBooking.objects.filter(
+#         status=ExamBooking.Status.UNDER_REVIEW,
+#         exam__subject__is_subjective=True,
+#         grade__isnull=True,
+#     ).select_related("exam", "candidate")
+#
+#     # Assign each ungraded attempt to an examiner/ admin
+#     for attempt in ungraded_attempts:
+#         # Here you can implement your logic to assign the attempt to an examiner/ admin
+#         # For example, you can assign it to the first available superuser
+#         examiner = User.objects.filter(is_superuser=True).first()
+#         if examiner:
+#             attempt.examiner = examiner
+#             attempt.save()
+#
+#     return redirect("home:dashboard")
 
 @role_required(User.Role.ADMIN)
 def explore_subjects(request):
@@ -663,8 +697,22 @@ def start_exam_termsandconditions(request, booking_id):
         ExamBooking.objects.select_related("exam__subject"),
         booking_id=booking_id,
         candidate=request.user,
-        status=ExamBooking.Status.BOOKED,
+        status__in=[
+            ExamBooking.Status.BOOKED,
+            ExamBooking.Status.ATTENDED,
+            ExamBooking.Status.UNDER_REVIEW,
+            ExamBooking.Status.GRADED,
+        ],
     )
+    # Anything past BOOKED is a candidate coming back to a paper they began —
+    # the reminder email's link lands here, and begin resumes it. A finished
+    # paper (attended and submitted, under review, graded) has nothing to come
+    # back to, so they are told so rather than shown a 404.
+    if booking.status != ExamBooking.Status.BOOKED:
+        sheet = ExamSheet.objects.filter(booking=booking).first()
+        if sheet is None or sheet.submitted_at is not None:
+            messages.info(request, "You have already submitted this exam.")
+            return redirect("home:dashboard")
 
     # POST is the begin button. It has to be a POST: it draws the paper and
     # starts the clock, and a GET that does that is one browser prefetch or one
@@ -784,6 +832,17 @@ def _start_or_resume(booking):
             )
             for index, question in enumerate(drawn, start=1)
         ])
+        # Pressing "I'm ready to begin" is attending: the paper is drawn and
+        # the clock is running. From here the booking's status says the
+        # candidate turned up, and the sheet's submitted_at says whether they
+        # finished — two questions, two fields. In the same transaction as the
+        # draw, so a paper never exists on a booking still marked booked.
+        #
+        # Only on this first begin; a resume returns above and changes nothing.
+        # It also closes Reschedule and Cancel for good (can_change needs
+        # booked) and takes the booking out of Upcoming.
+        booking.status = ExamBooking.Status.ATTENDED
+        booking.save(update_fields=["status", "updated_at"])
     return sheet
 
 @login_required
@@ -995,7 +1054,10 @@ def save_answer(request, booking_id):
         if (
             sheet.submitted_at is not None
             or timezone.now() >= sheet.expires_at
-            or booking.status != ExamBooking.Status.BOOKED
+            # Attended, not booked: beginning the paper marks the booking
+            # attended, so that is the state of every live paper. Anything
+            # else (cancelled, no_show) has no business writing answers.
+            or booking.status != ExamBooking.Status.ATTENDED
         ):
             return JsonResponse({"ok": False, "error": "closed"}, status=409)
 
@@ -1107,9 +1169,10 @@ def submit_exam(request, booking_id):
             messages.info(request, "You have already submitted this exam.")
             return redirect("home:dashboard")
 
-        # Only a live booking can be sat. A cancelled or no-show booking that
-        # still has a sheet must not be turned into an attended one.
-        if booking.status != ExamBooking.Status.BOOKED:
+        # Only a paper actually begun can be submitted. Beginning marks the
+        # booking attended (_start_or_resume), so that is the open state here;
+        # a cancelled or no-show booking that somehow has a sheet is refused.
+        if booking.status != ExamBooking.Status.ATTENDED:
             messages.error(request, "This booking is not open for submission.")
             return redirect("home:dashboard")
 
@@ -1165,9 +1228,15 @@ def submit_exam(request, booking_id):
         else:
             sheet.submission_status = ExamSheet.SubmissionStatus.TIMEDOUT
         sheet.save()
-        # Update the booking status to attended
-        booking.status = ExamBooking.Status.ATTENDED
-        booking.save()
+        # The booking became attended when the paper was begun; finishing is
+        # recorded on the sheet (submitted_at above). An objective round stays
+        # attended — grade_exam marks it right here. A subjective round now
+        # waits for an examiner, and says so: UNDER_REVIEW is the queue the
+        # admin dashboard's "awaiting grading" count already reads. Only a
+        # submitted answer gets here — a late or rejected one returned above.
+        if booking.round_type == Exam.Type.SUBJECTIVE:
+            booking.status = ExamBooking.Status.UNDER_REVIEW
+            booking.save(update_fields=["status", "updated_at"])
         marks_obtained = grade_exam(booking, sheet)
         # create a new booking if the exam is a two-round exam and the current round is objective
         is_first_of_two = (

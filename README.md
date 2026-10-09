@@ -355,7 +355,7 @@ right or wrong.
    ended. `submission_status` is `self` only for a submission made before the deadline (the form
    sends `action=submit_action`); the timer's own POST, or anything after `expires_at`, is
    `timedout`.
-4. Marks the booking `attended` and runs `grade_exam`.
+4. Runs `grade_exam`. The booking is already `attended` — beginning set it.
 5. On the objective round of a "both" exam, creates the subjective booking.
 
 Every round, objective or subjective, is finished in this one function.
@@ -476,32 +476,41 @@ A candidate may hold only one open booking per exam **and round**, enforced by a
 index (`one_open_booking_per_exam`, over candidate, exam and `round_type`) rather than a view check.
 It counts `booked`, `under_review` and `attended` rows.
 
-**The stored status lags reality**, so the candidate's lists don't read it alone. A booking stays
-`booked` until something changes it, and today only a submit does. `ExamBookingQuerySet`
-(`ExamBooking.objects`) works the buckets out in the database from the clock and the paper:
+**Status means attendance; the sheet means completion.** "I'm ready to begin" marks the booking
+`attended` (in `_start_or_resume`, in the same transaction that draws the paper) — the candidate
+turned up. Whether they *finished* is `ExamSheet.submitted_at`. So `attended` covers papers finished,
+in progress and abandoned alike, and `save_answer` and `submit_exam` treat `attended` as the state
+of a live paper. A submitted **subjective** round then moves to `under_review` — the examiner's
+queue, which the admin dashboard's "awaiting grading" count reads — while an objective round stays
+`attended`, graded at submit. `attended()` lists all of `attended`, `under_review` and `graded`. From begin on, Reschedule and Cancel are closed for good and the booking leaves
+Upcoming and the dashboard; a candidate who drops out returns through the reminder email's link to
+the T&C page, which accepts an `attended` booking with an unsubmitted paper and resumes it.
+
+**The one thing the stored status still misses is a miss.** A booking nobody began stays `booked`
+after its window has closed. `ExamBookingQuerySet` (`ExamBooking.objects`) works the candidate's
+buckets out in the database from the clock as well as the status:
 
 | Method | Matches |
 |---|---|
 | `upcoming()` | `booked` and the join window not yet closed |
-| `no_show()` | marked `no_show`, or `booked` with the window closed and **no paper** drawn |
-| `attended()` | `attended`, or `booked` with a paper started, never submitted and past its deadline |
+| `no_show()` | marked `no_show`, or still `booked` with the window closed |
+| `attended()` | `attended` — begun, whether finished or not |
 
 My Assessments uses them for Upcoming (soonest first), No show and Attended; Cancelled stays a plain
 status filter, and an unknown filter in the URL is a 404. The dashboard card picks the soonest
-`upcoming()` booking, so a booking stays there through its join window — when its Join button is
-live — rather than vanishing at its start time.
+`upcoming()` booking, so a booking stays there from before its start through its join window —
+when its Join button is live — until the candidate begins.
 
 Nothing here writes: each call reads the clock and filters, and a booking falls into a bucket
 whenever someone asks. The queries start from one candidate's bookings (`candidate_id` is indexed),
-so they stay cheap however large the table grows. One case is in no bucket on purpose: a paper
-begun inside the window and still running after it closed — the way back to it is the reminder
-email.
+so they stay cheap however large the table grows.
 
-> **What the lists can't fix.** Anything reading the stored status still sees `booked`: the unique
-> index above (so a candidate cannot rebook an exam they missed), grading of abandoned papers, and
-> admin counts. The planned per-minute job that sends reminder emails will also write the result —
-> marking missed bookings `no_show` and submitting abandoned papers as timeouts — reusing these
-> same methods. See `TRACKER.md`.
+> **What the lists can't fix.** For a missed booking, anything reading the stored status still sees
+> `booked`: the unique index above (so a candidate cannot rebook an exam they missed) and admin
+> counts. And an abandoned paper is correctly `attended` but never submitted, so it is never
+> graded. The planned per-minute job that sends reminder emails will also write both — marking
+> missed bookings `no_show` (reusing `no_show()`) and submitting abandoned papers as timeouts and
+> grading them. See `TRACKER.md`.
 
 **My Assessments** labels each booking with its round — Objective in blue, Subjective in amber —
 read from `round_type` rather than the exam's type, which says "both" for both rounds. An attended

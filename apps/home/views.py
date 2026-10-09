@@ -75,7 +75,7 @@ def dashboard(request):
     # is "admin" while the label is "Admin", and comparing to the label gives a
     # branch that silently never matches.
     if user_role == User.Role.ADMIN:
-        exams_underway = ExamBooking.objects.filter(status=ExamBooking.Status.ATTENDED, scheduled_at__gte=timezone.now()).count()
+        exams_underway = ExamBooking.objects.filter(status=ExamBooking.Status.ATTENDED).count()
         awaiting_grading = ExamBooking.objects.filter(status=ExamBooking.Status.UNDER_REVIEW).count()
         upcoming_exams = ExamBooking.objects.filter(status=ExamBooking.Status.BOOKED, scheduled_at__gte=timezone.now()).count()
         return render(request, 
