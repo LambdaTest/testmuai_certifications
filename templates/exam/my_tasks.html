@@ -18,10 +18,8 @@
   the candidate's name or email. The view does not select the candidate, and
   nothing here reads it — this is the page an examiner grades from.
 
-  GRADE IS NOT WIRED YET. Each paper will open its own grading page (task,
-  repository, pull request, test IDs, marks) — one paper per page, with its
-  own URL. Until that view exists the button is shown disabled rather than as
-  a link that goes nowhere.
+  GRADE opens the paper's own grading page (exam:grading_page) — task,
+  repository, pull request, test IDs and the marks form, one paper per page.
 {% endcomment %}
 
 {% block title %}My Tasks · TestMu AI Certifications{% endblock %}
@@ -70,14 +68,13 @@
 
       {# ---- Right: open the paper to grade it ---- #}
       {% comment %}
-        Disabled until the grading page exists. It becomes a plain link —
-        GET, it only opens the paper — to that page's URL with this booking's
-        id; the marks are submitted from there.
+        A plain link — GET, it only opens the paper. The marks are submitted
+        from the grading page itself.
       {% endcomment %}
-      <button type="button" disabled title="Grading page coming soon"
-              class="inline-flex h-11 cursor-not-allowed items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white opacity-40">
+      <a href="{% url 'exam:grading_page' task.booking_id %}"
+         class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31]">
         Grade
-      </button>
+      </a>
 
     </div>
   {% empty %}

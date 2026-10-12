@@ -28,6 +28,7 @@ from .forms import (
     AssignGradingForm,
     BookingForm,
     ExamForm,
+    GradeForm,
     QuestionForm,
     RescheduleForm,
     SaveAnswerForm,
@@ -1328,3 +1329,102 @@ def my_tasks(request):
     # admin one. The page is the same for both — only the frame around it differs.
     layout = "base_examiner.html" if request.user.role == User.Role.EXAMINER else "base_staff.html"
     return render(request, "exam/my_tasks.html", {"assigned_tasks": assigned_tasks, "layout": layout})
+
+def _paper_for_grading(request, booking_id, lock=False):
+    """
+    The paper the viewer may grade, as (booking, entry) — or a 404.
+
+    One definition of "may grade" for both the page and the save: assigned to
+    the viewer and still under review. A paper someone else holds, or one
+    already graded, is a 404 from the lookup itself — the same rule whether it
+    is being looked at or submitted.
+
+    entry is the paper's one ExamSheetQuestion: the task, the marks available
+    and the candidate's answer hang off it. A paper without one cannot be
+    graded, so that is a 404 too rather than a broken page.
+
+    lock=True (inside a transaction) holds the booking row until it commits, so
+    two submits of the same paper — two tabs, a double click — are graded one
+    after the other, and the second finds it no longer under review.
+    """
+    bookings = ExamBooking.objects.select_related("exam", "sheet")
+    if lock:
+        # of=("self",): lock the booking row only, not the joined exam and
+        # sheet rows select_related pulls in alongside it.
+        bookings = bookings.select_for_update(of=("self",))
+    booking = get_object_or_404(
+        bookings,
+        booking_id=booking_id,
+        assigned_to=request.user,
+        status=ExamBooking.Status.UNDER_REVIEW,
+    )
+    entry = booking.sheet.questions.select_related("question", "submission").first()
+    if entry is None:
+        raise Http404("This paper has no question to grade.")
+    return booking, entry
+
+
+def _render_grading_page(request, booking, entry, form):
+    # Examiners get their own sidebar; admins keep the admin one.
+    layout = "base_examiner.html" if request.user.role == User.Role.EXAMINER else "base_staff.html"
+    return render(
+        request,
+        "exam/grading_page.html",
+        {"booking": booking, "entry": entry, "form": form, "layout": layout},
+    )
+
+
+@role_required(User.Role.ADMIN, User.Role.EXAMINER)
+@require_POST
+def grade_an_exam(request, booking_id):
+    """
+    Saves the examiner's grade for one subjective paper, posted from the
+    grading page.
+
+    The marks go on the paper's question row (entry.marks_awarded) — a
+    subjective paper is one question, so that is also the round's result,
+    copied to booking.marks_obtained. The booking records who graded it and
+    when, keeps the feedback, and moves from under_review to graded, which
+    takes it off My Tasks, Assign Grading and the "awaiting grading" count.
+
+    Invalid marks render the grading page again with the error and what was
+    typed, rather than redirecting — a redirect would lose the feedback.
+    """
+    with transaction.atomic():
+        booking, entry = _paper_for_grading(request, booking_id, lock=True)
+
+        form = GradeForm(request.POST, max_marks=entry.marks)
+        if not form.is_valid():
+            # Nothing written yet, so returning inside the transaction is safe.
+            return _render_grading_page(request, booking, entry, form)
+
+        marks = form.cleaned_data["marks_awarded"]
+        entry.marks_awarded = marks
+        entry.save(update_fields=["marks_awarded"])
+
+        booking.marks_obtained = marks
+        booking.feedback = form.cleaned_data["feedback"]
+        booking.graded_by = request.user
+        booking.graded_at = timezone.now()
+        booking.status = ExamBooking.Status.GRADED
+        booking.save(update_fields=[
+            "marks_obtained", "feedback", "graded_by", "graded_at", "status", "updated_at",
+        ])
+
+    messages.success(
+        request,
+        f"Graded {booking.exam.exam_name} (Ref {str(booking.booking_id)[:8]}): {marks} out of {entry.marks}.",
+    )
+    return redirect("exam:my_tasks")
+
+
+@role_required(User.Role.ADMIN, User.Role.EXAMINER)
+@require_GET
+def grading_page(request, booking_id):
+    """
+    Shows one assigned subjective paper — the task, the candidate's repository,
+    pull request and test IDs, the marks available — with the form to grade it.
+    Display only: the form posts to grade_an_exam.
+    """
+    booking, entry = _paper_for_grading(request, booking_id)
+    return _render_grading_page(request, booking, entry, GradeForm(max_marks=entry.marks))

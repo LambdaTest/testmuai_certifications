@@ -1,0 +1,192 @@
+{% extends layout|default:"base_staff.html" %}
+
+{% comment %}
+  Grading page — one assigned subjective paper: the task, what the candidate
+  submitted, and the form to grade it. Opened from the Grade button on My Tasks.
+
+  Context from apps.exam.views.grading_page:
+    booking  – the ExamBooking (under review, assigned to the viewer), with
+               exam and sheet selected
+    entry    – its one ExamSheetQuestion, with question and submission
+               selected: the task, the marks available, the answer
+    layout   – base_examiner.html for an examiner, base_staff.html otherwise
+
+  BLIND ON PURPOSE. Nothing here reads booking.candidate — no name, no email.
+  The paper is identified by exam and booking reference only. Do not add the
+  candidate: `booking` can still reach it, and a template that wrote
+  {% templatetag openvariable %} booking.candidate {% templatetag closevariable %} would quietly load it from the database.
+
+    form     – GradeForm: empty from grading_page; bound, with errors and the
+               examiner's input, when grade_an_exam rejects a grade
+
+  DISPLAY ONLY. The form posts to exam:grade_an_exam, a separate view that
+  validates and saves the grade, and renders this page again if it is
+  invalid. It sends:
+    marks_awarded – whole number, 0 to entry.marks (the browser checks the
+                    range; the view must check it again)
+    feedback      – optional text for the candidate (ExamBooking.feedback)
+{% endcomment %}
+
+{% block title %}Grade · {{ booking.exam.exam_name }} · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<a href="{% url 'exam:my_tasks' %}" class="text-[13.5px] font-semibold text-muted hover:text-ink">← My Tasks</a>
+
+{# ---------------- Header: which paper, how long it has waited ---------------- #}
+<header class="mt-3 mb-6" x-data="{ submitted: '{{ booking.sheet.submitted_at|date:'c' }}' }">
+  <div class="flex flex-wrap items-center gap-2.5">
+    <h1 class="text-2xl font-bold tracking-tight">{{ booking.exam.exam_name }}</h1>
+    <span class="rounded-full bg-warn-tint px-2.5 py-0.5 text-[11.5px] font-bold text-warn">Subjective round</span>
+    <span class="rounded-full bg-danger-tint px-2.5 py-0.5 text-[11.5px] font-bold text-danger"
+          x-text="pendingLabel(submitted)">Pending</span>
+  </div>
+  <p class="mt-1.5 text-[13.5px] text-muted">
+    Ref <span class="font-mono text-ink">{{ booking.booking_id|stringformat:"s"|slice:":8" }}</span>
+    {% if booking.sheet.submitted_at %}
+      · Submitted {{ booking.sheet.submitted_at|timesince }} ago
+    {% endif %}
+    · Quote the reference if anything needs an admin's attention.
+  </p>
+</header>
+
+{% if not entry %}
+  {# A sheet with no question row should not exist; say so rather than show an empty page. #}
+  <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
+    This paper has no question attached. Please contact an admin with the reference above.
+  </p>
+{% else %}
+
+<div class="grid gap-4">
+
+  {# ---------------- The task ---------------- #}
+  <section class="rounded-2xl border border-line bg-white p-6">
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">The task</h2>
+      <span class="text-[13px] font-semibold text-muted">{{ entry.marks }} marks</span>
+    </div>
+    {% comment %}
+      linebreaks keeps the author's paragraphs; the text is escaped first, so
+      markup in a question renders as text — the same as the candidate saw it.
+    {% endcomment %}
+    <div class="mt-3 text-[15.5px] leading-[1.6] text-ink">
+      {{ entry.question.question_text|linebreaks }}
+    </div>
+  </section>
+
+  {# ---------------- What the candidate submitted ---------------- #}
+  <section class="rounded-2xl border border-line bg-white p-6">
+    <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Submission</h2>
+
+    {% if entry.submission %}
+      {% comment %}
+        Links open in a new tab so the page — and anything typed in the grade
+        form — stays put. noopener + noreferrer: GitHub learns nothing about
+        this page. The repository is private and shared with the admin
+        address, so opening it needs that account's access.
+      {% endcomment %}
+      <dl class="mt-4 grid gap-4 text-[14.5px]">
+        <div>
+          <dt class="font-semibold text-ink">Repository</dt>
+          <dd class="mt-1">
+            <a href="{{ entry.submission.github_repo }}" target="_blank" rel="noopener noreferrer"
+               class="break-all font-mono text-[13.5px] text-brand hover:underline">{{ entry.submission.github_repo }}</a>
+          </dd>
+        </div>
+        <div>
+          <dt class="font-semibold text-ink">Pull request</dt>
+          <dd class="mt-1">
+            <a href="{{ entry.submission.github_pr }}" target="_blank" rel="noopener noreferrer"
+               class="break-all font-mono text-[13.5px] text-brand hover:underline">{{ entry.submission.github_pr }}</a>
+          </dd>
+        </div>
+        <div>
+          <dt class="font-semibold text-ink">
+            Test Manager test IDs
+            <span class="font-normal text-muted">({{ entry.submission.test_ids|length }})</span>
+          </dt>
+          <dd class="mt-2 flex flex-wrap gap-2">
+            {% for test_id in entry.submission.test_ids %}
+              <span class="rounded-md border border-line bg-surface px-2.5 py-1 font-mono text-[13px] text-ink">{{ test_id }}</span>
+            {% endfor %}
+          </dd>
+        </div>
+        <div class="text-[13px] text-muted">
+          Submitted {{ entry.submission.submitted_at|date:"j M Y, H:i" }} UTC.
+          Commits pushed after this time are not part of the submission.
+        </div>
+      </dl>
+    {% else %}
+      <p class="mt-3 text-[14.5px] text-muted">
+        No submission was saved for this paper. Please contact an admin with the reference above.
+      </p>
+    {% endif %}
+  </section>
+
+  {# ---------------- Grade ---------------- #}
+  {% comment %}
+    Posts to exam:grade_an_exam. The number input's min/max stop an obvious
+    slip in the browser; the view must refuse anything outside 0..entry.marks
+    itself, since the attributes can be removed from devtools.
+  {% endcomment %}
+  <section class="rounded-2xl border border-line bg-white p-6">
+    <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Grade</h2>
+
+    <form method="post" action="{% url 'exam:grade_an_exam' booking.booking_id %}" class="mt-4 grid gap-5">
+      {% csrf_token %}
+
+      <div>
+        <label for="marks_awarded" class="text-[14px] font-semibold text-ink">
+          Marks awarded <span class="text-danger" aria-hidden="true">*</span>
+        </label>
+        <div class="mt-1.5 flex items-center gap-3">
+          {% comment %}
+            value= puts the examiner's number back when grade_an_exam renders
+            this page again with an error; empty on a first visit.
+          {% endcomment %}
+          <input type="number" id="marks_awarded" name="marks_awarded" required
+                 min="0" max="{{ entry.marks }}" step="1" inputmode="numeric"
+                 value="{{ form.marks_awarded.value|default_if_none:'' }}"
+                 {% if form.marks_awarded.errors %}aria-invalid="true" aria-describedby="marks_error"{% endif %}
+                 class="h-11 w-32 rounded-lg border bg-white px-3.5 text-[15px] text-ink focus:outline-none {% if form.marks_awarded.errors %}border-danger{% else %}border-line focus:border-brand{% endif %}">
+          <span class="text-[14.5px] text-muted">out of {{ entry.marks }}</span>
+        </div>
+        {% for error in form.marks_awarded.errors %}
+          <p id="marks_error" class="mt-2 text-[13px] font-semibold text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+
+      <div>
+        <label for="feedback" class="text-[14px] font-semibold text-ink">
+          Feedback <span class="font-normal text-muted">(optional)</span>
+        </label>
+        <textarea id="feedback" name="feedback" rows="5"
+                  placeholder="What was done well, and what was missing."
+                  class="mt-1.5 w-full rounded-lg border border-line bg-white px-3.5 py-2.5 text-[14.5px] text-ink placeholder:text-faint focus:border-brand focus:outline-none">{{ form.feedback.value|default_if_none:'' }}</textarea>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-end gap-3">
+        <a href="{% url 'exam:my_tasks' %}"
+           class="inline-flex h-11 items-center rounded-lg border border-line px-5 text-sm font-semibold text-body hover:border-[#B9BFC9]">
+          Cancel
+        </a>
+        <button type="submit"
+                class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31]">
+          Submit grade
+        </button>
+      </div>
+    </form>
+  </section>
+
+</div>
+{% endif %}
+
+<script>
+  // "Pending N days" from an ISO timestamp — the same rule as My Tasks.
+  function pendingLabel(submitted) {
+    if (!submitted) return "Pending";
+    const days = Math.floor((Date.now() - new Date(submitted)) / 86400000);
+    if (days < 1) return "Pending today";
+    return `Pending ${days} day${days === 1 ? "" : "s"}`;
+  }
+</script>
+{% endblock %}

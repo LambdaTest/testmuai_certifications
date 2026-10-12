@@ -1113,3 +1113,41 @@ class AssignGradingForm(forms.Form):
             if user is not None:
                 return user
         raise forms.ValidationError("Choose an admin or examiner from the list.")
+
+
+class GradeForm(forms.Form):
+    """
+    The examiner's grade for one subjective paper, from the grading page.
+
+    The maximum is per paper — the marks snapshot on its question row
+    (ExamSheetQuestion.marks) — so it is passed in rather than fixed on the
+    field: GradeForm(request.POST, max_marks=entry.marks).
+
+    The browser's min/max on the number input stop an obvious slip; this is
+    the check that holds, since those attributes can be removed in devtools.
+    """
+
+    marks_awarded = forms.IntegerField(
+        min_value=0,
+        error_messages={
+            "required": "Enter the marks awarded.",
+            "invalid": "Marks must be a whole number.",
+            "min_value": "Marks cannot be negative.",
+        },
+    )
+    #: Optional, and kept as typed: the candidate reads it as the examiner wrote it.
+    feedback = forms.CharField(required=False, strip=True, widget=forms.Textarea)
+
+    def __init__(self, *args, max_marks, **kwargs):
+        # Keyword-only, so a view cannot build the form without saying what
+        # the paper is out of.
+        super().__init__(*args, **kwargs)
+        self.max_marks = max_marks
+
+    def clean_marks_awarded(self):
+        # Runs only after the field's own checks passed, so this is already a
+        # whole number, 0 or more.
+        marks = self.cleaned_data["marks_awarded"]
+        if marks > self.max_marks:
+            raise forms.ValidationError(f"Marks cannot be more than {self.max_marks}.")
+        return marks
