@@ -1,0 +1,94 @@
+{% extends "base_staff.html" %}
+
+{% comment %}
+  My Tasks — the subjective papers assigned to the person viewing, still
+  waiting for a grade. One box per paper, the same shape as Assign Grading.
+
+  Context from apps.exam.views.my_tasks:
+    assigned_tasks – this user's under-review bookings (assigned_to = them),
+                     oldest submission first, with exam, sheet and
+                     assigned_by selected
+
+  BLIND ON PURPOSE. A paper is identified by exam and booking reference, never
+  the candidate's name or email. The view does not select the candidate, and
+  nothing here reads it — this is the page an examiner grades from.
+
+  GRADE IS NOT WIRED YET. Each paper will open its own grading page (task,
+  repository, pull request, test IDs, marks) — one paper per page, with its
+  own URL. Until that view exists the button is shown disabled rather than as
+  a link that goes nowhere.
+{% endcomment %}
+
+{% block title %}My Tasks · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<header class="mb-6">
+  <h1 class="text-2xl font-bold tracking-tight">My Tasks</h1>
+  <p class="mt-1.5 text-[14.5px] text-muted">
+    {% with count=assigned_tasks|length %}
+      {% if count %}
+        {{ count }} paper{{ count|pluralize:" is,s are" }} assigned to you for grading, oldest first.
+      {% else %}
+        No papers are assigned to you right now.
+      {% endif %}
+    {% endwith %}
+  </p>
+</header>
+
+{# ---- One box per assigned paper ---- #}
+<div class="grid gap-3">
+  {% for task in assigned_tasks %}
+    {% comment %}
+      submitted is the sheet's submitted_at in ISO 8601; the browser turns it
+      into "Pending N days" against its own clock, the same as Assign Grading.
+    {% endcomment %}
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-line bg-white px-5 py-4"
+         x-data="{ submitted: '{{ task.sheet.submitted_at|date:'c' }}' }">
+
+      {# ---- Left: what the paper is, how long it has waited, who sent it ---- #}
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <span class="truncate font-semibold text-ink">{{ task.exam.exam_name }}</span>
+          <span class="rounded-full bg-danger-tint px-2.5 py-0.5 text-[11.5px] font-bold text-danger"
+                x-text="pendingLabel(submitted)">Pending</span>
+        </div>
+        <p class="mt-1 text-[13px] text-muted">
+          Subjective round · Ref
+          <span class="font-mono text-ink">{{ task.booking_id|stringformat:"s"|slice:":8" }}</span>
+          {% if task.assigned_by %}
+            · Assigned by
+            {% if task.assigned_by_id == request.user.id %}you{% else %}{{ task.assigned_by.display_name|default:task.assigned_by.email }}{% endif %},
+            {{ task.assigned_at|timesince }} ago
+          {% endif %}
+        </p>
+      </div>
+
+      {# ---- Right: open the paper to grade it ---- #}
+      {% comment %}
+        Disabled until the grading page exists. It becomes a plain link —
+        GET, it only opens the paper — to that page's URL with this booking's
+        id; the marks are submitted from there.
+      {% endcomment %}
+      <button type="button" disabled title="Grading page coming soon"
+              class="inline-flex h-11 cursor-not-allowed items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white opacity-40">
+        Grade
+      </button>
+
+    </div>
+  {% empty %}
+    <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
+      No papers are assigned to you right now.
+    </p>
+  {% endfor %}
+</div>
+
+<script>
+  // "Pending N days" from an ISO timestamp — the same rule as Assign Grading.
+  function pendingLabel(submitted) {
+    if (!submitted) return "Pending";
+    const days = Math.floor((Date.now() - new Date(submitted)) / 86400000);
+    if (days < 1) return "Pending today";
+    return `Pending ${days} day${days === 1 ? "" : "s"}`;
+  }
+</script>
+{% endblock %}

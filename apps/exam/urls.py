@@ -30,4 +30,5 @@ urlpatterns = [
     path("exam/player/<uuid:booking_id>/submit/", views.submit_exam, name="submit_exam"),
     path("exam/player/<uuid:booking_id>/completed/", views.exam_completed, name="exam_completed"),
     path("exam/player/subjective/<uuid:booking_id>/", views.exam_player_subjective, name="exam_player_subjective"),
+    path("my_tasks/", views.my_tasks, name="my_tasks"),
 ]

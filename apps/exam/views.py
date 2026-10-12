@@ -1315,3 +1315,13 @@ def exam_completed(request, booking_id):
             ),
         },
     )
+
+@login_required
+@role_required(User.Role.ADMIN, User.Role.EXAMINER)
+def my_tasks(request):
+    """
+    This method will help display all the assigned tasks to the examiner/admin.
+    """
+    assigned_tasks = ExamBooking.objects.filter(assigned_to=request.user, 
+                                                status=ExamBooking.Status.UNDER_REVIEW).select_related("exam", "sheet", "assigned_by").order_by("sheet__submitted_at")
+    return render(request, "exam/my_tasks.html", {"assigned_tasks": assigned_tasks})
