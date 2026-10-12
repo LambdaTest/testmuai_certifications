@@ -57,8 +57,12 @@
           My Tasks
         </a>
 
-        {# Admins grade too (Assign Grading → Self), so they get the same history as examiners. Not built yet. #}
-        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Grading History</a>
+        {# Admins grade too (Assign Grading → Self), so they get the same history as examiners. #}
+        <a href="{% url 'exam:grading_history' %}"
+           {% if url_name == "grading_history" %}aria-current="page"{% endif %}
+           class="rounded-lg px-3 py-2.5 text-[14.5px] {% if url_name == "grading_history" %}bg-brand-tint font-semibold text-brand-dark{% else %}font-medium text-body hover:bg-[#F3F5F8] hover:text-ink{% endif %}">
+          Grading History
+        </a>
 
         {# ---- Exam Center ---- #}
         <button type="button" @click="toggle('exam')" :aria-expanded="section === 'exam'"

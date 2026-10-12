@@ -46,13 +46,16 @@
            class="rounded-lg px-3 py-2.5 text-[14.5px] {% if url_name == "my_tasks" %}bg-brand-tint font-semibold text-brand-dark{% else %}font-medium text-body hover:bg-[#F3F5F8] hover:text-ink{% endif %}">
           My Tasks
         </a>
+        <a href="{% url 'exam:grading_history' %}"
+           {% if url_name == "grading_history" %}aria-current="page"{% endif %}
+           class="rounded-lg px-3 py-2.5 text-[14.5px] {% if url_name == "grading_history" %}bg-brand-tint font-semibold text-brand-dark{% else %}font-medium text-body hover:bg-[#F3F5F8] hover:text-ink{% endif %}">
+          Grading History
+        </a>
         {% comment %}
           Not built yet:
-            Grading History  read-only list of completed evaluations
-            Settings         absence dates; name and email are read-only,
-                             since they come from the TestMu AI account
+            Settings  absence dates; name and email are read-only, since they
+                      come from the TestMu AI account
         {% endcomment %}
-        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Grading History</a>
         <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Settings</a>
 
         <div class="my-1 border-t border-line"></div>

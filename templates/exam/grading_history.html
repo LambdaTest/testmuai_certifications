@@ -1,0 +1,88 @@
+{% extends layout|default:"base_staff.html" %}
+
+{% comment %}
+  Grading History — the papers the viewer has graded. Read-only: a plain
+  list of booking reference, marks given out of the maximum, and when it was
+  graded. Nothing here edits a
+  grade; a change to a grade is a regrade, which is its own audited job
+  (TRACKER.md, Grading).
+
+  Context from apps.exam.views.grading_history:
+    my_grading_records – the viewer's graded bookings, newest first: either
+                         a queryset or a Paginator page of one. A page adds
+                         Previous / Next below the list; a plain queryset
+                         simply has no has_other_pages, so the links stay
+                         hidden.
+    layout             – base_examiner.html for an examiner, base_staff.html
+                         otherwise
+
+  BLIND, like every grading page: a reference, never the candidate.
+{% endcomment %}
+
+{% block title %}Grading History · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<header class="mb-6">
+  <h1 class="text-2xl font-bold tracking-tight">Grading History</h1>
+  <p class="mt-1.5 text-[14.5px] text-muted">Papers you have graded, newest first.</p>
+</header>
+
+{% if my_grading_records %}
+  {% comment %}
+    One plain list rather than a box per paper: there is nothing to act on
+    here, so the rows stay quiet and dense. Times are shown in UTC, labelled,
+    with how long ago beside them.
+  {% endcomment %}
+  <div class="overflow-hidden rounded-2xl border border-line bg-white">
+    <div class="flex items-center gap-4 border-b border-line bg-surface px-5 py-3 text-[11.5px] font-bold tracking-[1.2px] text-faint uppercase">
+      <span class="flex-1">Booking reference</span>
+      <span class="w-24 text-right">Marks</span>
+      <span class="text-right">Graded</span>
+    </div>
+    <ul>
+      {% for record in my_grading_records %}
+        <li class="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[#F0F1F3] px-5 py-3.5 last:border-0">
+          <span class="flex-1 font-mono text-[14px] text-ink">{{ record.booking_id|stringformat:"s"|slice:":8" }}</span>
+          {% comment %}
+            marks_obtained / maximum_marks, both snapshotted on the booking by
+            grade_an_exam, so this costs no query per row. A grade recorded
+            before maximum_marks was saved shows the marks alone.
+          {% endcomment %}
+          {# One box, "12/15" — read as a single score rather than two numbers. #}
+          <span class="flex w-24 justify-end">
+            {% if record.marks_obtained is not None %}
+              <span class="inline-flex min-w-14 justify-center rounded-lg border border-line bg-surface px-2.5 py-1 font-mono text-[13.5px] font-semibold tabular-nums text-ink">{{ record.marks_obtained }}{% if record.maximum_marks %}/{{ record.maximum_marks }}{% endif %}</span>
+            {% else %}
+              <span class="text-[14px] text-muted">—</span>
+            {% endif %}
+          </span>
+          <span class="text-right text-[13.5px] text-body">
+            {% if record.graded_at %}
+              {{ record.graded_at|date:"j M Y, H:i" }} UTC
+              <span class="text-muted">· {{ record.graded_at|timesince }} ago</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  {% if my_grading_records.has_other_pages %}
+    <nav class="mt-4 flex items-center justify-between text-[14px]" aria-label="Pages">
+      {% if my_grading_records.has_previous %}
+        <a href="?page={{ my_grading_records.previous_page_number }}" class="font-semibold text-brand hover:underline">← Newer</a>
+      {% else %}<span></span>{% endif %}
+      <span class="text-muted">Page {{ my_grading_records.number }} of {{ my_grading_records.paginator.num_pages }}</span>
+      {% if my_grading_records.has_next %}
+        <a href="?page={{ my_grading_records.next_page_number }}" class="font-semibold text-brand hover:underline">Older →</a>
+      {% else %}<span></span>{% endif %}
+    </nav>
+  {% endif %}
+{% else %}
+  <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
+    You have not graded any papers yet.
+  </p>
+{% endif %}
+{% endblock %}

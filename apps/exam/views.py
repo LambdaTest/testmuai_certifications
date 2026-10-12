@@ -1403,12 +1403,16 @@ def grade_an_exam(request, booking_id):
         entry.save(update_fields=["marks_awarded"])
 
         booking.marks_obtained = marks
+        # What the grade was out of, frozen now — the field's own rule is
+        # "written at grading time, never read live", so a later change to the
+        # question's marks cannot turn "12 out of 15" into "12 out of 20".
+        booking.maximum_marks = entry.marks
         booking.feedback = form.cleaned_data["feedback"]
         booking.graded_by = request.user
         booking.graded_at = timezone.now()
         booking.status = ExamBooking.Status.GRADED
         booking.save(update_fields=[
-            "marks_obtained", "feedback", "graded_by", "graded_at", "status", "updated_at",
+            "marks_obtained", "maximum_marks", "feedback", "graded_by", "graded_at", "status", "updated_at",
         ])
 
     messages.success(
@@ -1428,3 +1432,15 @@ def grading_page(request, booking_id):
     """
     booking, entry = _paper_for_grading(request, booking_id)
     return _render_grading_page(request, booking, entry, GradeForm(max_marks=entry.marks))
+
+
+@login_required
+@role_required(User.Role.ADMIN, User.Role.EXAMINER)
+def grading_history(request):
+    """
+    Shows the grading history for the logged-in examiner/admin.
+    """
+    my_grading_records = ExamBooking.objects.filter(graded_by=request.user).order_by("-graded_at")
+    layout = "base_examiner.html" if request.user.role == User.Role.EXAMINER else "base_staff.html"
+    return render(request, "exam/grading_history.html", {"my_grading_records": my_grading_records, "layout": layout})
+    
