@@ -1324,4 +1324,7 @@ def my_tasks(request):
     """
     assigned_tasks = ExamBooking.objects.filter(assigned_to=request.user, 
                                                 status=ExamBooking.Status.UNDER_REVIEW).select_related("exam", "sheet", "assigned_by").order_by("sheet__submitted_at")
-    return render(request, "exam/my_tasks.html", {"assigned_tasks": assigned_tasks})
+    # Examiners get their own sidebar (base_examiner.html); admins keep the
+    # admin one. The page is the same for both — only the frame around it differs.
+    layout = "base_examiner.html" if request.user.role == User.Role.EXAMINER else "base_staff.html"
+    return render(request, "exam/my_tasks.html", {"assigned_tasks": assigned_tasks, "layout": layout})

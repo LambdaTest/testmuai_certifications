@@ -57,6 +57,9 @@
           My Tasks
         </a>
 
+        {# Admins grade too (Assign Grading → Self), so they get the same history as examiners. Not built yet. #}
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Grading History</a>
+
         {# ---- Exam Center ---- #}
         <button type="button" @click="toggle('exam')" :aria-expanded="section === 'exam'"
                 class="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">

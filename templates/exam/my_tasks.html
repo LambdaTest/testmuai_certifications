@@ -1,10 +1,15 @@
-{% extends "base_staff.html" %}
+{% extends layout|default:"base_staff.html" %}
 
 {% comment %}
   My Tasks — the subjective papers assigned to the person viewing, still
   waiting for a grade. One box per paper, the same shape as Assign Grading.
 
+  Shared by admins and examiners, so it does not pick its own layout: the
+  view passes `layout` — base_examiner.html for an examiner (their own
+  sidebar), base_staff.html otherwise. Both fill {% templatetag openblock %} block staff_content {% templatetag closeblock %}.
+
   Context from apps.exam.views.my_tasks:
+    layout         – "base_examiner.html" or "base_staff.html"
     assigned_tasks – this user's under-review bookings (assigned_to = them),
                      oldest submission first, with exam, sheet and
                      assigned_by selected

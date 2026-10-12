@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% comment %}
+  Shell for every examiner page: site chrome from base.html, plus the
+  examiner's own sidebar. The examiner counterpart of base_staff.html.
+
+  A separate template, not {% templatetag openblock %} if {% templatetag closeblock %} blocks inside base_staff.html —
+  the same rule as dashboard_examiner.html. An examiner should be structurally
+  unable to render admin navigation; with conditionals that is one bad
+  condition away, and "what can an examiner reach?" is answered by reading
+  this file alone.
+
+  SAME BLOCK NAME AS base_staff.html — {% templatetag openblock %} block staff_content {% templatetag closeblock %}. A page
+  both roles use (My Tasks, and the grading page to come) is written once and
+  rendered inside whichever layout its view passes as `layout`:
+
+      {% templatetag openblock %} extends layout|default:"base_staff.html" {% templatetag closeblock %}
+
+  The current item is worked out from request.resolver_match.url_name, so no
+  view has to pass anything for the highlight. Unbuilt destinations stay
+  href="#" until their views exist.
+{% endcomment %}
+
+{% block content %}
+{% with url_name=request.resolver_match.url_name %}
+<div class="mx-auto max-w-[1200px] px-4 sm:px-6" x-data="{ nav: false }">
+
+  <button type="button" @click="nav = !nav"
+          class="mt-6 inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm font-semibold text-body lg:hidden">
+    <svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5.5h14M3 10h14M3 14.5h14"/></svg>
+    Menu
+  </button>
+
+  <div class="flex gap-8 py-6 lg:py-10">
+
+    {# ---------------- Sidebar ---------------- #}
+    <aside class="w-56 shrink-0" :class="nav ? 'block' : 'hidden lg:block'">
+      <nav class="flex flex-col gap-1">
+        <a href="{% url 'home:dashboard' %}"
+           {% if url_name == "dashboard" %}aria-current="page"{% endif %}
+           class="rounded-lg px-3 py-2.5 text-[14.5px] {% if url_name == "dashboard" %}bg-brand-tint font-semibold text-brand-dark{% else %}font-medium text-body hover:bg-[#F3F5F8] hover:text-ink{% endif %}">
+          Dashboard
+        </a>
+        <a href="{% url 'exam:my_tasks' %}"
+           {% if url_name == "my_tasks" %}aria-current="page"{% endif %}
+           class="rounded-lg px-3 py-2.5 text-[14.5px] {% if url_name == "my_tasks" %}bg-brand-tint font-semibold text-brand-dark{% else %}font-medium text-body hover:bg-[#F3F5F8] hover:text-ink{% endif %}">
+          My Tasks
+        </a>
+        {% comment %}
+          Not built yet:
+            Grading History  read-only list of completed evaluations
+            Settings         absence dates; name and email are read-only,
+                             since they come from the TestMu AI account
+        {% endcomment %}
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Grading History</a>
+        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Settings</a>
+
+        <div class="my-1 border-t border-line"></div>
+
+        <a href="#" class="flex items-center justify-between rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">
+          Support Tickets
+          <span class="rounded-full bg-[#F0F1F4] px-2 py-0.5 text-[10px] font-bold text-faint">SOON</span>
+        </a>
+      </nav>
+    </aside>
+
+    {# ---------------- Page ---------------- #}
+    <div class="min-w-0 flex-1">
+      {% block staff_content %}{% endblock %}
+    </div>
+  </div>
+</div>
+{% endwith %}
+{% endblock %}

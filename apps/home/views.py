@@ -85,7 +85,28 @@ def dashboard(request):
     elif user_role == User.Role.EXAMINER:
         # Its own template, not a variant of the admin one: an examiner should
         # be structurally unable to render admin controls.
-        return render(request, "home/dashboard_examiner.html", {"user_name": user_name, "user_role": user_role})
+        #
+        # The same papers as My Tasks — assigned to them, still under review,
+        # oldest submission first — but only a glance: the five that have
+        # waited longest. The full queue is My Tasks. [:5] becomes LIMIT 5 in
+        # the SQL, so a thousand pending papers still loads five rows; the
+        # total comes from a separate COUNT, never from loading them all.
+        pending = (
+            request.user.assigned_bookings
+            .filter(status=ExamBooking.Status.UNDER_REVIEW)
+            .select_related("exam", "sheet")
+            .order_by("sheet__submitted_at")
+        )
+        return render(
+            request,
+            "home/dashboard_examiner.html",
+            {
+                "user_name": user_name,
+                "user_role": user_role,
+                "pending_preview": pending[:5],
+                "pending_count": pending.count(),
+            },
+        )
     elif user_role == User.Role.CANDIDATE:
         booking = _next_booking(request.user)
         return render(
