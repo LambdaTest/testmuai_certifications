@@ -64,51 +64,44 @@
             {% if c.display_name %}{{ c.display_name|slice:":1"|upper }}{% else %}{{ c.email|slice:":1"|upper|default:"?" }}{% endif %}
           </span>
           <div class="min-w-0">
-            <p class="truncate font-semibold text-ink">{{ c.display_name|default:"(no name)" }}</p>
+            <div class="flex min-w-0 items-center gap-2">
+              <a href="{% url 'home:candidate_detail' c.id %}"
+                 class="truncate font-semibold text-ink hover:text-brand hover:underline">{{ c.display_name|default:"(no name)" }}</a>
+              {% comment %}
+                Profile icons, only when the candidate has given one — an
+                absent icon says "none" without a column of dashes. Each opens
+                the profile in a new tab; noopener + noreferrer so the profile
+                site learns nothing about this admin page. aria-label carries
+                the meaning, since the icon alone is not read out.
+              {% endcomment %}
+              {% if c.linkedin_link %}
+                <a href="{{ c.linkedin_link }}" target="_blank" rel="noopener noreferrer"
+                   aria-label="LinkedIn profile" title="LinkedIn profile"
+                   class="grid size-6 shrink-0 place-items-center rounded-md text-[#0A66C2] hover:bg-[#EAF2FD]">
+                  <svg class="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z"/>
+                  </svg>
+                </a>
+              {% endif %}
+              {% if c.github_link %}
+                <a href="{{ c.github_link }}" target="_blank" rel="noopener noreferrer"
+                   aria-label="GitHub profile" title="GitHub{% if c.github_username %}: {{ c.github_username }}{% endif %}"
+                   class="grid size-6 shrink-0 place-items-center rounded-md text-ink hover:bg-[#F0F1F4]">
+                  <svg class="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57v-2.02c-3.34.73-4.04-1.6-4.04-1.6-.55-1.4-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.07 1.83 2.8 1.3 3.49 1 .1-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.25 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.61-2.8 5.62-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.21.7.83.57A12 12 0 0 0 12 .3"/>
+                  </svg>
+                </a>
+              {% endif %}
+            </div>
             <p class="truncate text-[13.5px] text-muted">{{ c.email|default:"(no email)" }}</p>
           </div>
         </div>
 
-        {# ---- Details ---- #}
-        {% comment %}
-          LinkedIn and GitHub are the profiles the candidate gives at the end of
-          an exam, kept on their account (User.linkedin_link, github_link) since
-          they describe the person, not one sitting. Links open in a new tab;
-          noopener + noreferrer so the profile site learns nothing about this
-          admin page. "—" until the candidate has given one.
-        {% endcomment %}
-        <dl class="grid grid-cols-3 gap-x-6 gap-y-2 text-[13px] sm:grid-cols-5">
-          <div>
-            <dt class="text-faint">Login id</dt>
-            <dd class="font-mono text-ink">{{ c.external_id|default:"—" }}</dd>
-          </div>
-          <div>
-            <dt class="text-faint">Phone</dt>
-            <dd class="text-ink">{{ c.contact_number|default:"—" }}</dd>
-          </div>
-          <div>
-            <dt class="text-faint">Joined</dt>
-            <dd class="text-ink">{{ c.created_at|date:"j M Y" }}</dd>
-          </div>
-          <div>
-            <dt class="text-faint">LinkedIn</dt>
-            <dd>
-              {% if c.linkedin_link %}
-                <a href="{{ c.linkedin_link }}" target="_blank" rel="noopener noreferrer"
-                   class="font-semibold text-brand hover:underline">Profile ↗</a>
-              {% else %}<span class="text-ink">—</span>{% endif %}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-faint">GitHub</dt>
-            <dd>
-              {% if c.github_link %}
-                <a href="{{ c.github_link }}" target="_blank" rel="noopener noreferrer"
-                   class="font-semibold text-brand hover:underline">{{ c.github_username|default:"Profile" }} ↗</a>
-              {% else %}<span class="text-ink">—</span>{% endif %}
-            </dd>
-          </div>
-        </dl>
+        {# ---- Joined — the rest (login id, phone, profiles in full) is on the detail page ---- #}
+        <div class="text-right text-[13px]">
+          <p class="text-faint">Joined</p>
+          <p class="text-ink">{{ c.created_at|date:"j M Y" }}</p>
+        </div>
 
       </div>
     {% endfor %}

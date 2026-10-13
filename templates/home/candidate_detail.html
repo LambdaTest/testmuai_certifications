@@ -1,0 +1,140 @@
+{% extends "base_staff.html" %}
+{% load tz %}
+
+{% comment %}
+  Candidate detail — one candidate's account and every booking they have made.
+  Admin-only; opened from Candidate Info.
+
+  Context from apps.home.views.candidate_detail:
+    candidate – the User (role candidate)
+    bookings  – their ExamBookings, newest scheduled first, with exam and
+                subject selected
+
+  The booking reference is on every row and is the identifier to quote: the
+  same 8 characters an examiner sees on a grading page and the Candidate Info
+  search accepts. Hover shows the full id.
+
+  Booking-level facts only — status, round, time, marks. No answers, pull
+  requests or feedback here; those belong to the grading screens.
+
+  Times are shown in the zone each booking was made in, labelled, the same
+  rule as every candidate page: a time read in the wrong zone is a missed exam.
+{% endcomment %}
+
+{% block title %}{{ candidate.display_name|default:candidate.email }} · Candidate Info · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<a href="{% url 'home:candidate_info' %}" class="text-[13.5px] font-semibold text-muted hover:text-ink">← Candidate Info</a>
+
+{# ---------------- The person ---------------- #}
+<section class="mt-3 rounded-2xl border border-line bg-white p-6">
+  <div class="flex flex-wrap items-center gap-4">
+    <span class="grid size-14 shrink-0 place-items-center rounded-full bg-brand-tint text-[18px] font-bold text-brand-dark" aria-hidden="true">
+      {% if candidate.display_name %}{{ candidate.display_name|slice:":1"|upper }}{% else %}{{ candidate.email|slice:":1"|upper|default:"?" }}{% endif %}
+    </span>
+    <div class="min-w-0">
+      <h1 class="truncate text-2xl font-bold tracking-tight">{{ candidate.display_name|default:"(no name)" }}</h1>
+      <p class="truncate text-[14.5px] text-muted">{{ candidate.email|default:"(no email)" }}</p>
+    </div>
+  </div>
+
+  <dl class="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-5 text-[13.5px] sm:grid-cols-5">
+    <div>
+      <dt class="text-faint">Login id</dt>
+      <dd class="font-mono text-ink">{{ candidate.external_id|default:"—" }}</dd>
+    </div>
+    <div>
+      <dt class="text-faint">Phone</dt>
+      <dd class="text-ink">{{ candidate.contact_number|default:"—" }}</dd>
+    </div>
+    <div>
+      <dt class="text-faint">Joined</dt>
+      <dd class="text-ink">{{ candidate.created_at|date:"j M Y" }}</dd>
+    </div>
+    <div>
+      <dt class="text-faint">LinkedIn</dt>
+      <dd>
+        {% if candidate.linkedin_link %}
+          <a href="{{ candidate.linkedin_link }}" target="_blank" rel="noopener noreferrer"
+             class="font-semibold text-brand hover:underline">Profile ↗</a>
+        {% else %}<span class="text-ink">—</span>{% endif %}
+      </dd>
+    </div>
+    <div>
+      <dt class="text-faint">GitHub</dt>
+      <dd>
+        {% if candidate.github_link %}
+          <a href="{{ candidate.github_link }}" target="_blank" rel="noopener noreferrer"
+             class="font-semibold text-brand hover:underline">{{ candidate.github_username|default:"Profile" }} ↗</a>
+        {% else %}<span class="text-ink">—</span>{% endif %}
+      </dd>
+    </div>
+  </dl>
+</section>
+
+{# ---------------- Their bookings ---------------- #}
+<div class="mt-7 mb-3 flex items-baseline justify-between gap-3">
+  <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Bookings</h2>
+  <span class="text-[13px] text-faint">{{ bookings|length }} in total, newest first</span>
+</div>
+
+{% if bookings %}
+  <div class="grid gap-3">
+    {% for b in bookings %}
+      <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
+
+        {# ---- Which exam, which round, which booking ---- #}
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2.5">
+            <span class="truncate font-semibold text-ink">{{ b.exam.exam_name }}</span>
+            <span class="rounded-full px-2.5 py-0.5 text-[11.5px] font-bold
+                         {% if b.round_type == 'subjective' %}bg-warn-tint text-warn{% else %}bg-brand-tint text-brand-dark{% endif %}">
+              {{ b.get_round_type_display }}
+            </span>
+          </div>
+          <p class="mt-1 text-[13px] text-muted">
+            Ref <span class="font-mono text-ink" title="{{ b.booking_id }}">{{ b.booking_id|stringformat:"s"|slice:":8" }}</span>
+            ·
+            {% timezone b.booked_timezone %}{{ b.scheduled_at|date:"j M Y, g:i A" }}{% endtimezone %}
+            <span class="text-faint">({{ b.booked_timezone }})</span>
+          </p>
+        </div>
+
+        {# ---- Marks, once there are any ---- #}
+        {% if b.marks_obtained is not None %}
+          <span class="inline-flex min-w-14 justify-center rounded-lg border border-line bg-surface px-2.5 py-1 font-mono text-[13.5px] font-semibold tabular-nums text-ink"
+                title="Marks">{{ b.marks_obtained }}{% if b.maximum_marks %}/{{ b.maximum_marks }}{% endif %}</span>
+        {% endif %}
+
+        {% comment %}
+          Status. An open booking is described by stage, not the stored status,
+          which stays "booked" until something changes it — the same rule as
+          the candidate's own pages.
+        {% endcomment %}
+        {% if b.stage == 'upcoming' %}
+          <span class="rounded-full bg-brand-tint px-3 py-1 text-xs font-bold text-brand-dark">Upcoming</span>
+        {% elif b.stage == 'underway' %}
+          <span class="rounded-full bg-ok-tint px-3 py-1 text-xs font-bold text-ok">Ready to join</span>
+        {% elif b.stage == 'lapsed' %}
+          <span class="rounded-full bg-warn-tint px-3 py-1 text-xs font-bold text-warn">Missed</span>
+        {% elif b.status == 'attended' %}
+          <span class="rounded-full bg-ok-tint px-3 py-1 text-xs font-bold text-ok">Attended</span>
+        {% elif b.status == 'under_review' %}
+          <span class="rounded-full bg-warn-tint px-3 py-1 text-xs font-bold text-warn">Under review</span>
+        {% elif b.status == 'graded' %}
+          <span class="rounded-full bg-ok-tint px-3 py-1 text-xs font-bold text-ok">Graded</span>
+        {% elif b.status == 'cancelled' %}
+          <span class="rounded-full bg-danger-tint px-3 py-1 text-xs font-bold text-danger">Cancelled</span>
+        {% else %}
+          <span class="rounded-full bg-[#F0F1F4] px-3 py-1 text-xs font-bold text-faint">{{ b.get_status_display }}</span>
+        {% endif %}
+
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
+    This candidate has not booked any exams yet.
+  </p>
+{% endif %}
+{% endblock %}

@@ -17,6 +17,7 @@ from apps.exam.models import ExamBooking
 
 from .models import User
 from .decorators import role_required
+from django.shortcuts import get_object_or_404
 
 
 def _countdown(scheduled_at, now=None):
@@ -170,6 +171,6 @@ def candidate_detail(request, candidate_id):
     """
     Shows the candidate's details to the admin: personal info and all bookings.
     """
-    candidate = User.objects.filter(role=User.Role.CANDIDATE).get(id=candidate_id)
+    candidate =  get_object_or_404(User, id=candidate_id, role=User.Role.CANDIDATE)
     bookings = ExamBooking.objects.filter(candidate=candidate).select_related("exam__subject").order_by("-scheduled_at")
     return render(request, "home/candidate_detail.html", {"candidate": candidate, "bookings": bookings})

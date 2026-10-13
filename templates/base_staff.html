@@ -29,7 +29,7 @@
 <div class="mx-auto max-w-[1200px] px-4 sm:px-6"
      x-data="{
        nav: false,
-       section: {% if url_name == 'explore_subjects' or url_name == 'create_subject' %}'subject'{% elif url_name == 'candidate_info' %}'candidate'{% else %}null{% endif %},
+       section: {% if url_name == 'explore_subjects' or url_name == 'create_subject' %}'subject'{% elif url_name == 'candidate_info' or url_name == 'candidate_detail' %}'candidate'{% else %}null{% endif %},
        toggle(name) { this.section = this.section === name ? null : name },
      }">
 
