@@ -9,4 +9,6 @@ urlpatterns = [
     # will live here once there is something to show.
     path("", RedirectView.as_view(pattern_name="exam:book", permanent=False), name="index"),
     path("dashboard/", views.dashboard, name="dashboard"),
+    path("candidates/", views.candidate_info, name="candidate_info"),
+    path("candidate_detail/<int:candidate_id>/", views.candidate_detail, name="candidate_detail"),
 ]

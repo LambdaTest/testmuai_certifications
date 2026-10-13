@@ -5,6 +5,8 @@ Anything about certifications, booking, sitting an exam, grading, or
 credentials belongs in ``apps.exam``.
 """
 
+from django.core.paginator import Paginator
+from django.db.models import Q
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
@@ -14,6 +16,7 @@ from apps.exam.calendar import google_calendar_url
 from apps.exam.models import ExamBooking
 
 from .models import User
+from .decorators import role_required
 
 
 def _countdown(scheduled_at, now=None):
@@ -130,4 +133,43 @@ def dashboard(request):
         # templates/404.html with a 404 status. Rendering that template
         # directly would return HTTP 200 with a "not found" page on it.
         raise Http404("No dashboard for this role.")
-    
+
+@role_required(User.Role.ADMIN)
+def candidate_info(request):
+    """
+    Shows the candidate information to the admin: searched and paginated on
+    the server, 25 to a page, so the page costs the same with 50 candidates or
+    50,000.
+
+    ?q= matches name, email, login id, phone, or a booking reference — the
+    "Ref 198f572b" an examiner quotes from a grading page. That last match is
+    what lets an admin turn a blind reference back into a person, and it is
+    why the search runs here: the page itself never contains bookings.
+    """
+    q = request.GET.get("q", "").strip()
+    candidates = User.objects.filter(role=User.Role.CANDIDATE)
+    if q:
+        candidates = candidates.filter(
+            Q(display_name__icontains=q)
+            | Q(email__icontains=q)
+            | Q(external_id__icontains=q)
+            | Q(contact_number__icontains=q)
+            # bookings = ExamBooking.candidate's related_name. istartswith on
+            # the UUID accepts the 8-character reference, any case.
+            | Q(bookings__booking_id__istartswith=q)
+        ).distinct()   # one candidate can match through several bookings
+    candidates = candidates.order_by("display_name", "email")
+
+    # get_page, not page: a missing, non-numeric or too-large ?page= falls back
+    # to the first or last page instead of raising.
+    page = Paginator(candidates, 25).get_page(request.GET.get("page"))
+    return render(request, "home/candidate_info.html", {"candidates": page, "q": q})
+
+@role_required(User.Role.ADMIN)
+def candidate_detail(request, candidate_id):
+    """
+    Shows the candidate's details to the admin: personal info and all bookings.
+    """
+    candidate = User.objects.filter(role=User.Role.CANDIDATE).get(id=candidate_id)
+    bookings = ExamBooking.objects.filter(candidate=candidate).select_related("exam__subject").order_by("-scheduled_at")
+    return render(request, "home/candidate_detail.html", {"candidate": candidate, "bookings": bookings})

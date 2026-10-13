@@ -87,6 +87,9 @@ class User(AbstractUser):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    github_link = models.URLField(blank=True)
+    github_username = models.CharField(max_length=255, blank=True)
+    linkedin_link = models.URLField(blank=True)
 
     USERNAME_FIELD = "external_id"
     REQUIRED_FIELDS = []

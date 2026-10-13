@@ -113,6 +113,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Booking rules -----------------------------------------------------------
 # Enforced in forms and models, not only in the UI.
+#
+# Changed here, by a developer, on request — deliberately no admin page for
+# them (decided 12 Oct). They change rarely, and editing a number here is a far
+# smaller job than building and securing a settings screen.
 BOOKING_MIN_DAYS_AHEAD = 1  # no same-day booking
 BOOKING_MAX_MONTHS_AHEAD = 3
 #: Clear time required between the end of one exam and the start of the

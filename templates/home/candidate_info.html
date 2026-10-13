@@ -1,0 +1,136 @@
+{% extends "base_staff.html" %}
+
+{% comment %}
+  Candidate Info — candidate accounts, searched and paginated on the server.
+  Admin-only.
+
+  Context from apps.home.views.candidate_info:
+    candidates – a Paginator page (25 per page) of candidate users, ordered
+                 by name; candidates.paginator.count is the total matched
+    q          – the search as typed, or ""
+
+  ADMIN ONLY, AND ON PURPOSE. This is the one place a person is shown by name
+  and email; grading screens show a booking reference and nothing else, and
+  this page is how an admin turns an examiner's "Ref 198f572b" back into a
+  candidate. It must never be opened to examiners.
+
+  Search is a plain GET form: it runs on the server across every candidate,
+  not just the page on screen, and it can match a booking reference — the page
+  itself never holds bookings. Page links carry ?q= so paging stays inside
+  the results.
+{% endcomment %}
+
+{% block title %}Candidate Info · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<header class="mb-6">
+  <h1 class="text-2xl font-bold tracking-tight">Candidate Info</h1>
+  <p class="mt-1.5 text-[14.5px] text-muted">
+    {% with total=candidates.paginator.count %}
+      {% if q %}
+        {{ total }} candidate{{ total|pluralize }} matching “{{ q }}”.
+        <a href="{% url 'home:candidate_info' %}" class="font-semibold text-brand hover:underline">Clear search</a>
+      {% else %}
+        {{ total }} candidate{{ total|pluralize }}. Search by name, email, login id, phone or booking reference.
+      {% endif %}
+    {% endwith %}
+  </p>
+</header>
+
+<form method="get" action="{% url 'home:candidate_info' %}" class="relative mb-6" role="search">
+  <input type="search" name="q" value="{{ q }}"
+         placeholder="Name, email, login id, phone or booking reference — press Enter"
+         aria-label="Search candidates"
+         class="h-11 w-full rounded-lg border border-zinc-300 bg-white pr-3 pl-10 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+  <svg class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-zinc-400"
+       viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"
+       stroke-linecap="round" aria-hidden="true">
+    <circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/>
+  </svg>
+</form>
+
+{% if candidates %}
+  <div class="grid gap-3">
+    {% for c in candidates %}
+      <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
+
+        {# ---- Who ---- #}
+        <div class="flex min-w-0 flex-1 items-center gap-3.5">
+          {% comment %}
+            Initial from the display name, falling back to the email's first
+            letter — the same avatar as the site header.
+          {% endcomment %}
+          <span class="grid size-10 shrink-0 place-items-center rounded-full bg-brand-tint text-[13px] font-bold text-brand-dark" aria-hidden="true">
+            {% if c.display_name %}{{ c.display_name|slice:":1"|upper }}{% else %}{{ c.email|slice:":1"|upper|default:"?" }}{% endif %}
+          </span>
+          <div class="min-w-0">
+            <p class="truncate font-semibold text-ink">{{ c.display_name|default:"(no name)" }}</p>
+            <p class="truncate text-[13.5px] text-muted">{{ c.email|default:"(no email)" }}</p>
+          </div>
+        </div>
+
+        {# ---- Details ---- #}
+        {% comment %}
+          LinkedIn and GitHub are the profiles the candidate gives at the end of
+          an exam, kept on their account (User.linkedin_link, github_link) since
+          they describe the person, not one sitting. Links open in a new tab;
+          noopener + noreferrer so the profile site learns nothing about this
+          admin page. "—" until the candidate has given one.
+        {% endcomment %}
+        <dl class="grid grid-cols-3 gap-x-6 gap-y-2 text-[13px] sm:grid-cols-5">
+          <div>
+            <dt class="text-faint">Login id</dt>
+            <dd class="font-mono text-ink">{{ c.external_id|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="text-faint">Phone</dt>
+            <dd class="text-ink">{{ c.contact_number|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="text-faint">Joined</dt>
+            <dd class="text-ink">{{ c.created_at|date:"j M Y" }}</dd>
+          </div>
+          <div>
+            <dt class="text-faint">LinkedIn</dt>
+            <dd>
+              {% if c.linkedin_link %}
+                <a href="{{ c.linkedin_link }}" target="_blank" rel="noopener noreferrer"
+                   class="font-semibold text-brand hover:underline">Profile ↗</a>
+              {% else %}<span class="text-ink">—</span>{% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-faint">GitHub</dt>
+            <dd>
+              {% if c.github_link %}
+                <a href="{{ c.github_link }}" target="_blank" rel="noopener noreferrer"
+                   class="font-semibold text-brand hover:underline">{{ c.github_username|default:"Profile" }} ↗</a>
+              {% else %}<span class="text-ink">—</span>{% endif %}
+            </dd>
+          </div>
+        </dl>
+
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if candidates.has_other_pages %}
+    {% comment %}
+      urlencode keeps a search with spaces or symbols intact across pages.
+    {% endcomment %}
+    <nav class="mt-4 flex items-center justify-between text-[14px]" aria-label="Pages">
+      {% if candidates.has_previous %}
+        <a href="?{% if q %}q={{ q|urlencode }}&amp;{% endif %}page={{ candidates.previous_page_number }}" class="font-semibold text-brand hover:underline">← Previous</a>
+      {% else %}<span></span>{% endif %}
+      <span class="text-muted">Page {{ candidates.number }} of {{ candidates.paginator.num_pages }}</span>
+      {% if candidates.has_next %}
+        <a href="?{% if q %}q={{ q|urlencode }}&amp;{% endif %}page={{ candidates.next_page_number }}" class="font-semibold text-brand hover:underline">Next →</a>
+      {% else %}<span></span>{% endif %}
+    </nav>
+  {% endif %}
+{% else %}
+  <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
+    {% if q %}No candidates match “{{ q }}”.{% else %}No candidates yet.{% endif %}
+  </p>
+{% endif %}
+{% endblock %}
