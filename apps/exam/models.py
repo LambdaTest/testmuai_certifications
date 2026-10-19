@@ -532,6 +532,26 @@ class ExamBooking(models.Model):
         null=True,
         blank=True,
     )
+
+    #: Who made the booking. The candidate themselves (booked_by == candidate),
+    #: an admin booking on their behalf from Candidate Center → Book Exam, or
+    #: nobody: null means the system created it — the subjective round that
+    #: submit_exam books after the objective one.
+    #:
+    #: A user rather than a SELF/ADMIN choice: "self or admin" falls out of
+    #: comparing it with candidate, and it also answers "which admin?", which a
+    #: choice cannot. Same shape as assigned_by and graded_by.
+    #:
+    #: PROTECT: someone who has made bookings is deactivated, not deleted.
+    #: related_name "bookings_made", since "bookings" is already the
+    #: candidate's own.
+    booked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="bookings_made",
+        null=True,
+        blank=True,
+    )
     booking_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
 
     #: Which round of the exam this booking is for.

@@ -1,0 +1,215 @@
+{% extends layout|default:"base_staff.html" %}
+{% load static %}
+
+{% comment %}
+  Book Exam (admin) — an admin books an exam on a candidate's behalf.
+  Candidate Center → Book Exam.
+
+  The picker is the candidate /book page's own: published exams, a calendar
+  that greys out days outside the booking window, a time box and a timezone
+  list, all driven by static/js/booking.js (bookingPage). Reusing it keeps one
+  booking UI and one set of rules rather than two that drift.
+
+  Context from apps.exam.views.book_exam_admin_page:
+    exams_json, timezone_options_json, default_timezone,
+    min_days_ahead, max_months_ahead  – the same as exam:book
+    candidate_prefill                 – ?candidate=, or ""
+
+  WHO IT IS FOR: the admin types the candidate's email or login id rather than
+  picking from a list — a dropdown of every candidate stops working at a few
+  thousand. The saving view resolves it to a candidate and refuses anything
+  that is not one.
+
+  NOT SAVED YET. There is no view to post to, so Confirm booking is shown
+  disabled. When the save view exists it receives the fields below — the same
+  names BookingForm reads, plus `candidate`:
+    candidate, exam (slug), date, hour, minute, timezone
+{% endcomment %}
+
+{% block title %}Book Exam · Candidate Center · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<div x-data="bookingPage({
+       exams: {{ exams_json }},
+       timezones: {{ timezone_options_json }},
+       defaultTimezone: '{{ default_timezone }}',
+       preselected: '',
+       minDaysAhead: {{ min_days_ahead }},
+       maxMonthsAhead: {{ max_months_ahead }}
+     })">
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-bold tracking-tight">Book Exam</h1>
+    <p class="mt-1.5 text-[14.5px] text-muted">
+      Book an exam on a candidate's behalf. The time is set in the candidate's timezone.
+    </p>
+  </header>
+
+  <form method="post" action="" onsubmit="return false">
+    {% csrf_token %}
+    <input type="hidden" name="exam" :value="examSlug">
+    <input type="hidden" name="date" :value="dateValue">
+    <input type="hidden" name="hour" :value="time.h">
+    <input type="hidden" name="minute" :value="time.m">
+    <input type="hidden" name="timezone" :value="timezone">
+
+    <div class="grid gap-4">
+
+      {# ---------------- 1. Candidate ---------------- #}
+      <section class="rounded-2xl border border-line bg-white p-6">
+        <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">1 · Candidate</h2>
+        <label for="candidate" class="mt-3 block text-[14px] font-semibold text-ink">
+          Candidate's email or login id <span class="text-danger" aria-hidden="true">*</span>
+        </label>
+        <input type="text" id="candidate" name="candidate" required
+               value="{{ candidate_prefill }}"
+               placeholder="e.g. priya@example.com"
+               autocomplete="off" spellcheck="false"
+               class="mt-1.5 h-11 w-full rounded-lg border border-line bg-white px-3.5 text-[14.5px] text-ink placeholder:text-faint focus:border-brand focus:outline-none sm:w-[26rem]">
+        <p class="mt-2 text-[13px] text-muted">
+          Not sure? Find them in
+          <a href="{% url 'home:candidate_info' %}" class="font-semibold text-brand hover:underline">Candidate Info</a>
+          first.
+        </p>
+      </section>
+
+      {# ---------------- 2. Exam ---------------- #}
+      <section class="rounded-2xl border border-line bg-white p-6">
+        <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">2 · Exam</h2>
+        <p class="mt-1.5 text-[13px] text-muted">Only published exams are listed.</p>
+        <div class="relative mt-3 w-full sm:w-[26rem]">
+          <select x-model="examSlug" @change="reset()"
+                  aria-label="Certification exam"
+                  class="h-11 w-full appearance-none rounded-lg border border-line bg-white px-3.5 pr-9 text-[14.5px] text-ink outline-none focus:border-brand">
+            <option value="">Choose an exam</option>
+            <template x-for="e in exams" :key="e.slug">
+              <option :value="e.slug" x-text="e.name + ' · ' + e.level"></option>
+            </template>
+          </select>
+          <svg class="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-zinc-400"
+               viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/>
+          </svg>
+        </div>
+      </section>
+
+      {# ---------------- 3. Date and time ---------------- #}
+      <section class="rounded-2xl border border-line bg-white p-6">
+        <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">3 · Date and time</h2>
+
+        <template x-if="!exam">
+          <p class="mt-3 rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-muted">
+            Choose an exam above to see the calendar.
+          </p>
+        </template>
+
+        <template x-if="exam">
+          <div class="mt-4 flex flex-col gap-6 md:flex-row md:items-start">
+
+            {# Calendar — the same as /book #}
+            <div class="rounded-2xl border border-line bg-white p-3">
+              <div class="mb-2 flex items-center justify-between px-1">
+                <button type="button" @click="prevMonth()" :disabled="!canGoBack"
+                        class="rounded-md p-1.5 text-body hover:bg-[#F3F5F8] disabled:opacity-30" aria-label="Previous month">
+                  <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 0 1-.02 1.06L8.832 10l3.938 3.71a.75.75 0 1 1-1.04 1.08l-4.5-4.25a.75.75 0 0 1 0-1.08l4.5-4.25a.75.75 0 0 1 1.06.02Z" clip-rule="evenodd"/></svg>
+                </button>
+                <div class="text-sm font-semibold" x-text="monthLabel"></div>
+                <button type="button" @click="nextMonth()" :disabled="!canGoForward"
+                        class="rounded-md p-1.5 text-body hover:bg-[#F3F5F8] disabled:opacity-30" aria-label="Next month">
+                  <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clip-rule="evenodd"/></svg>
+                </button>
+              </div>
+              <div class="grid grid-cols-7 gap-0.5 px-1 pb-1 text-center text-xs text-muted">
+                <template x-for="d in ['Su','Mo','Tu','We','Th','Fr','Sa']" :key="d"><div x-text="d"></div></template>
+              </div>
+              <div class="grid grid-cols-7 gap-0.5">
+                <template x-for="cell in monthGrid" :key="cell.key">
+                  <button type="button"
+                          @click="cell.selectable && selectDay(cell.iso)"
+                          :disabled="!cell.selectable"
+                          :aria-current="cell.iso === dateValue ? 'date' : null"
+                          :class="[
+                            'size-10 rounded-lg text-sm',
+                            !cell.inMonth && 'text-zinc-300',
+                            cell.selectable ? 'hover:bg-[#F3F5F8] cursor-pointer' : 'text-zinc-300 cursor-not-allowed',
+                            cell.iso === dateValue && 'bg-[#111] text-white hover:bg-[#111]'
+                          ]"
+                          x-text="cell.day"></button>
+                </template>
+              </div>
+            </div>
+
+            {# Time and timezone — the same as /book #}
+            <div class="min-w-0 flex-1">
+              <h3 class="mb-3 text-base font-semibold tracking-tight" x-text="dateValue ? longDate : 'Pick a date'"></h3>
+              <div class="rounded-xl border border-line bg-white p-4" :class="!dateValue && 'pointer-events-none opacity-50'">
+                <p class="mb-3 text-sm font-medium">Time, in the candidate's timezone</p>
+                <div class="flex items-start gap-2">
+                  <div class="relative" @click.outside="timeOpen = false">
+                    <input type="text" x-model="timeText"
+                           @focus="timeOpen = true" @input="timeOpen = true"
+                           @change="commitTime()"
+                           @keydown.enter.prevent="commitTime(); timeOpen = false"
+                           @keydown.escape="timeOpen = false"
+                           aria-label="Time"
+                           class="h-9 w-24 rounded-md border border-line px-2 text-sm outline-none focus:border-brand">
+                    <div x-show="timeOpen" x-cloak
+                         class="absolute z-50 mt-1 max-h-56 w-28 overflow-y-auto rounded-lg border border-line bg-white py-1 shadow-md">
+                      <template x-for="s in timeSuggestions" :key="s">
+                        <button type="button" @click="timeText = s; commitTime(); timeOpen = false"
+                                :class="['block w-full px-3 py-1.5 text-left text-sm hover:bg-[#F3F5F8]', s === timeText && 'bg-[#F3F5F8]']"
+                                x-text="s"></button>
+                      </template>
+                    </div>
+                  </div>
+                  <div class="min-w-0">
+                    <div class="relative inline-flex">
+                      <select x-model="timezone" @change="emit()" aria-label="Candidate's timezone"
+                              class="peer absolute inset-0 w-full cursor-pointer opacity-0">
+                        <template x-for="t in timezones" :key="t.value">
+                          <option :value="t.value" x-text="t.label + ' · ' + t.place"></option>
+                        </template>
+                      </select>
+                      <span aria-hidden="true"
+                            class="pointer-events-none inline-flex h-9 items-center gap-1 rounded-md border border-line px-2 text-sm whitespace-nowrap peer-focus-visible:border-brand">
+                        <span x-text="gmtLabel"></span>
+                        <svg class="size-3.5 text-zinc-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/></svg>
+                      </span>
+                    </div>
+                    <p class="mt-1 truncate pl-0.5 text-xs text-muted" x-text="placeLabel"></p>
+                  </div>
+                </div>
+                {% comment %}
+                  The timezone is the CANDIDATE's: reminders, the dashboard and
+                  the calendar invite all show the time in the zone it was booked
+                  in. Book in the admin's own zone and the candidate reads a
+                  different hour.
+                {% endcomment %}
+                <p class="mt-3 text-[12.5px] text-muted">Choose the candidate's timezone, not your own. Their exam time, reminders and calendar invite are all shown in this timezone.</p>
+              </div>
+            </div>
+          </div>
+        </template>
+      </section>
+    </div>
+
+    {# ---------------- Confirm ---------------- #}
+    <template x-if="exam && dateValue">
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand/40 bg-white p-5">
+        <div>
+          <p class="font-semibold text-ink" x-text="exam.name"></p>
+          <p class="text-sm text-muted"><span x-text="summary"></span> <span x-text="gmtLabel"></span></p>
+        </div>
+        <button type="submit" disabled title="Saving is not built yet"
+                class="inline-flex h-11 cursor-not-allowed items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white opacity-40">
+          Confirm booking
+        </button>
+      </div>
+    </template>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/booking.js' %}"></script>
+{% endblock %}

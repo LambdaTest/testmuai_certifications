@@ -1443,4 +1443,33 @@ def grading_history(request):
     my_grading_records = ExamBooking.objects.filter(graded_by=request.user).order_by("-graded_at")
     layout = "base_examiner.html" if request.user.role == User.Role.EXAMINER else "base_staff.html"
     return render(request, "exam/grading_history.html", {"my_grading_records": my_grading_records, "layout": layout})
+
+
+@login_required
+@role_required(User.Role.ADMIN)
+@require_GET
+def book_exam_admin_page(request):
+    """
+    This view returns a page through which an admin can book an exam for a candidate.
+
+    The picker is the candidate /book page's own — published exams, calendar,
+    time, timezone, driven by static/js/booking.js — so it gets the same data
+    book() passes. ?candidate=<email or login id> pre-fills who the booking is
+    for, e.g. from a candidate's detail page.
+    """
+    return render(
+        request,
+        "exam/book_exam_admin.html",
+        {
+            "layout": "base_staff.html",
+            "exams_json": json.dumps(_exam_payload()),
+            "timezone_options_json": json.dumps(timezones.timezone_options(timezones.DEFAULT_TIMEZONE)),
+            "default_timezone": timezones.DEFAULT_TIMEZONE,
+            "min_days_ahead": settings.BOOKING_MIN_DAYS_AHEAD,
+            "max_months_ahead": settings.BOOKING_MAX_MONTHS_AHEAD,
+            "candidate_prefill": request.GET.get("candidate", "").strip(),
+        },
+    )
+
+
     
