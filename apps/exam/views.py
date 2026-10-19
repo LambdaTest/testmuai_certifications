@@ -43,7 +43,7 @@ from apps.home.decorators import role_required
 from datetime import timedelta
 
 from django.utils import timezone
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Case, When, IntegerField
 from django.db.models import Q
 
@@ -1467,13 +1467,23 @@ def book_exam_admin(request):
             return redirect("exam:book_exam_admin")
     form = BookingForm(request.POST or None, candidate=candidate)
     if candidate is not None and form.is_valid():
-        booking = form.save(candidate=candidate, booked_by=request.user)
-        messages.success(
-            request,
-            f"Booked {booking.exam.exam_name} for {booking.candidate.display_name} "
-            f"on {booking.local_scheduled_at.strftime('%Y-%m-%d %H:%M')} ({booking.booked_timezone}).",
-        )
-        return redirect("exam:book_exam_admin")
+        try:
+            # Its own atomic block, so a refused insert rolls back just this
+            # and the page can still be rendered.
+            with transaction.atomic():
+                booking = form.save(candidate=candidate, booked_by=request.user)
+        except IntegrityError:
+            # The form already checks one-open-booking-per-exam; this catches
+            # the race it cannot — a double-click sending two requests that
+            # both pass the check before either has saved.
+            form.add_error(None, "There is already an open booking for this exam. Cancel or finish it before booking again.")
+        else:
+            messages.success(
+                request,
+                f"Booked {booking.exam.exam_name} for {booking.candidate.display_name} "
+                f"on {booking.local_scheduled_at.strftime('%Y-%m-%d %H:%M')} ({booking.booked_timezone}).",
+            )
+            return redirect("exam:book_exam_admin")
     # What goes back in the candidate box: what was just submitted, so a booking
     # refused for a clash or a date comes back still filled in; otherwise the
     # ?candidate= a link arrived with (e.g. from a candidate's detail page).

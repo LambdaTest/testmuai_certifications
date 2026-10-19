@@ -164,6 +164,49 @@ class BookingForm(ScheduleForm):
     def new_exam(self):
         return self.cleaned_data["exam"]
 
+    def clean(self):
+        """
+        Adds the one-open-booking-per-exam rule to the parent's date and clash
+        checks.
+
+        The database already enforces it (the one_open_booking_per_exam
+        constraint), but only at save time, where a violation is a crash rather
+        than a message. Checking it here puts it in form.errors, so the page
+        comes back with the reason and everything still filled in. The
+        conditions mirror the constraint's: same candidate, exam and round,
+        status booked, attended or under review. A graded booking does not
+        count, so a candidate can sit an exam again once the last attempt is
+        graded.
+        """
+        cleaned = super().clean()
+        exam = cleaned.get("exam")
+        if exam is None or self.candidate is None or self.candidate.pk is None:
+            # Exam already rejected, or no one to check against.
+            return cleaned
+
+        # Same round rule as save() below.
+        round_type = (
+            Exam.Type.SUBJECTIVE
+            if exam.exam_type == Exam.Type.SUBJECTIVE
+            else Exam.Type.OBJECTIVE
+        )
+        already_open = ExamBooking.objects.filter(
+            candidate=self.candidate,
+            exam=exam,
+            round_type=round_type,
+            status__in=[
+                ExamBooking.Status.BOOKED,
+                ExamBooking.Status.ATTENDED,
+                ExamBooking.Status.UNDER_REVIEW,
+            ],
+        ).exists()
+        if already_open:
+            raise forms.ValidationError(
+                f"There is already an open booking for {exam.exam_name}. "
+                f"Cancel or finish it before booking again."
+            )
+        return cleaned
+
     def save(self, candidate=None, booked_by=None) -> ExamBooking:
         """
         Creates the booking for `candidate`, recording who made it.
