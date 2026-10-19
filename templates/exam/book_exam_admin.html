@@ -10,20 +10,23 @@
   list, all driven by static/js/booking.js (bookingPage). Reusing it keeps one
   booking UI and one set of rules rather than two that drift.
 
-  Context from apps.exam.views.book_exam_admin_page:
+  Context from apps.exam.views.book_exam_admin (one view: GET shows, POST saves):
     exams_json, timezone_options_json, default_timezone,
     min_days_ahead, max_months_ahead  – the same as exam:book
-    candidate_prefill                 – ?candidate=, or ""
+    candidate_prefill                 – what goes in the candidate box: the
+                                        value just posted, else ?candidate=
+    form                              – the BookingForm, bound after a POST
+    candidate_error                   – why the candidate was not found, or None
 
   WHO IT IS FOR: the admin types the candidate's email or login id rather than
   picking from a list — a dropdown of every candidate stops working at a few
-  thousand. The saving view resolves it to a candidate and refuses anything
-  that is not one.
+  thousand. The view resolves it to a candidate and refuses anything that is
+  not one.
 
-  NOT SAVED YET. There is no view to post to, so Confirm booking is shown
-  disabled. When the save view exists it receives the fields below — the same
-  names BookingForm reads, plus `candidate`:
-    candidate, exam (slug), date, hour, minute, timezone
+  Posts to exam:book_exam_admin with the fields BookingForm reads, plus
+  `candidate`: candidate, exam (slug), date, hour, minute, timezone. On
+  success the view redirects back here and the confirmation shows as a
+  message at the top of the page.
 {% endcomment %}
 
 {% block title %}Book Exam · Candidate Center · TestMu AI Certifications{% endblock %}
@@ -45,7 +48,27 @@
     </p>
   </header>
 
-  <form method="post" action="" onsubmit="return false">
+  {% comment %}
+    Why a booking was refused — the candidate not found, or a booking rule
+    (date window, clash, one open booking per exam). Shown only after a POST:
+    a form built from an empty GET would otherwise greet the admin with
+    "This field is required".
+  {% endcomment %}
+  {% if request.method == "POST" %}
+    {% if candidate_error or form.errors %}
+      <div class="mb-4 rounded-xl border border-danger bg-danger-tint px-5 py-4 text-[14px] text-danger" role="alert">
+        <p class="font-semibold">That booking couldn't be made</p>
+        <ul class="mt-1 list-disc pl-5">
+          {% if candidate_error %}<li>{{ candidate_error }}</li>{% endif %}
+          {% for field, errors in form.errors.items %}
+            {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  <form method="post" action="{% url 'exam:book_exam_admin' %}">
     {% csrf_token %}
     <input type="hidden" name="exam" :value="examSlug">
     <input type="hidden" name="date" :value="dateValue">
@@ -200,8 +223,8 @@
           <p class="font-semibold text-ink" x-text="exam.name"></p>
           <p class="text-sm text-muted"><span x-text="summary"></span> <span x-text="gmtLabel"></span></p>
         </div>
-        <button type="submit" disabled title="Saving is not built yet"
-                class="inline-flex h-11 cursor-not-allowed items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white opacity-40">
+        <button type="submit"
+                class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31]">
           Confirm booking
         </button>
       </div>

@@ -34,5 +34,5 @@ urlpatterns = [
     path("grade_an_exam/<uuid:booking_id>/", views.grade_an_exam, name="grade_an_exam"),
     path("grading_page/<uuid:booking_id>/", views.grading_page, name="grading_page"),
     path("grading_history/", views.grading_history, name="grading_history"),
-    path("book_exam_admin_page/", views.book_exam_admin_page, name="book_exam_admin_page"),
+    path("book_exam_admin/", views.book_exam_admin, name="book_exam_admin"),
 ]

@@ -29,7 +29,7 @@
 <div class="mx-auto max-w-[1200px] px-4 sm:px-6"
      x-data="{
        nav: false,
-       section: {% if url_name == 'explore_subjects' or url_name == 'create_subject' %}'subject'{% elif url_name == 'candidate_info' or url_name == 'candidate_detail' or url_name == 'book_exam_admin_page' %}'candidate'{% else %}null{% endif %},
+       section: {% if url_name == 'explore_subjects' or url_name == 'create_subject' %}'subject'{% elif url_name == 'candidate_info' or url_name == 'candidate_detail' or url_name == 'book_exam_admin' %}'candidate'{% else %}null{% endif %},
        toggle(name) { this.section = this.section === name ? null : name },
      }">
 
@@ -136,9 +136,9 @@
               <a href="{% url 'home:candidate_info' %}"
                  {% if url_name == "candidate_info" or url_name == "candidate_detail" %}aria-current="page"{% endif %}
                  class="rounded-lg px-3 py-2 text-[13.5px] {% if url_name == "candidate_info" or url_name == "candidate_detail" %}bg-brand-tint font-semibold text-brand-dark{% else %}text-muted hover:bg-[#F3F5F8] hover:text-ink{% endif %}">Candidate Info</a>
-              <a href="{% url 'exam:book_exam_admin_page' %}"
-                 {% if url_name == "book_exam_admin_page" %}aria-current="page"{% endif %}
-                 class="rounded-lg px-3 py-2 text-[13.5px] {% if url_name == "book_exam_admin_page" %}bg-brand-tint font-semibold text-brand-dark{% else %}text-muted hover:bg-[#F3F5F8] hover:text-ink{% endif %}">Book Exam</a>
+              <a href="{% url 'exam:book_exam_admin' %}"
+                 {% if url_name == "book_exam_admin" %}aria-current="page"{% endif %}
+                 class="rounded-lg px-3 py-2 text-[13.5px] {% if url_name == "book_exam_admin" %}bg-brand-tint font-semibold text-brand-dark{% else %}text-muted hover:bg-[#F3F5F8] hover:text-ink{% endif %}">Book Exam</a>
               <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Cancel Exam</a>
               <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Export Candidates</a>
             </div>

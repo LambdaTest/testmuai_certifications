@@ -45,6 +45,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Case, When, IntegerField
+from django.db.models import Q
 
 
 def _exam_payload():
@@ -1444,11 +1445,8 @@ def grading_history(request):
     layout = "base_examiner.html" if request.user.role == User.Role.EXAMINER else "base_staff.html"
     return render(request, "exam/grading_history.html", {"my_grading_records": my_grading_records, "layout": layout})
 
-
-@login_required
 @role_required(User.Role.ADMIN)
-@require_GET
-def book_exam_admin_page(request):
+def book_exam_admin(request):
     """
     This view returns a page through which an admin can book an exam for a candidate.
 
@@ -1457,6 +1455,29 @@ def book_exam_admin_page(request):
     book() passes. ?candidate=<email or login id> pre-fills who the booking is
     for, e.g. from a candidate's detail page.
     """
+    candidate = None
+    candidate_error = None
+    if request.method == "POST":
+        email_or_id = request.POST.get("candidate", "").strip()
+        candidate = User.objects.filter(Q(email__iexact=email_or_id) | Q(external_id=email_or_id), 
+                                                                                           role=User.Role.CANDIDATE).first()
+        if not candidate:
+            messages.error(request, "No candidate found with that email or login ID.")
+            candidate_error = "No candidate found with that email or login ID."
+            return redirect("exam:book_exam_admin")
+    form = BookingForm(request.POST or None, candidate=candidate)
+    if candidate is not None and form.is_valid():
+        booking = form.save(candidate=candidate, booked_by=request.user)
+        messages.success(
+            request,
+            f"Booked {booking.exam.exam_name} for {booking.candidate.display_name} "
+            f"on {booking.local_scheduled_at.strftime('%Y-%m-%d %H:%M')} ({booking.booked_timezone}).",
+        )
+        return redirect("exam:book_exam_admin")
+    # What goes back in the candidate box: what was just submitted, so a booking
+    # refused for a clash or a date comes back still filled in; otherwise the
+    # ?candidate= a link arrived with (e.g. from a candidate's detail page).
+    candidate_prefill = (request.POST.get("candidate") or request.GET.get("candidate", "")).strip()
     return render(
         request,
         "exam/book_exam_admin.html",
@@ -1467,9 +1488,9 @@ def book_exam_admin_page(request):
             "default_timezone": timezones.DEFAULT_TIMEZONE,
             "min_days_ahead": settings.BOOKING_MIN_DAYS_AHEAD,
             "max_months_ahead": settings.BOOKING_MAX_MONTHS_AHEAD,
-            "candidate_prefill": request.GET.get("candidate", "").strip(),
+            "form": form,
+            "candidate_error": candidate_error,
+            "candidate_prefill": candidate_prefill,
         },
     )
-
-
     

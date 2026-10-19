@@ -164,10 +164,19 @@ class BookingForm(ScheduleForm):
     def new_exam(self):
         return self.cleaned_data["exam"]
 
-    def save(self, candidate=None) -> ExamBooking:
+    def save(self, candidate=None, booked_by=None) -> ExamBooking:
+        """
+        Creates the booking for `candidate`, recording who made it.
+
+        booked_by defaults to the candidate — a candidate booking on /book
+        booked it themselves, so book() passes nothing extra. An admin booking
+        on someone's behalf passes booked_by=request.user, which is what tells
+        the two apart later (booked_by != candidate).
+        """
         exam = self.cleaned_data["exam"]
         return ExamBooking.objects.create(
             candidate=candidate,
+            booked_by=booked_by or candidate,
             exam=exam,
             # Which round a candidate is booking. Round one is objective for
             # every format except a subjective-only exam, which has no objective
