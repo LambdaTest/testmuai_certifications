@@ -638,6 +638,22 @@ class ExamBooking(models.Model):
     )
     assigned_at = models.DateTimeField(blank=True, null=True)
 
+    #: Who cancelled the booking: the candidate themselves (cancel_booking) or
+    #: an admin (Candidate Center → Cancel Exam). Null while it is not
+    #: cancelled — and on bookings cancelled before this field existed. Same
+    #: shape as booked_by: comparing it with candidate says self or admin, and
+    #: the user says which admin.
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="bookings_cancelled", blank=True, null=True,
+    )
+    #: When it was cancelled. Not updated_at, which any later save moves.
+    cancelled_at = models.DateTimeField(blank=True, null=True)
+    #: Why an admin cancelled it, as they typed it. For admins only — never
+    #: shown to the candidate, who asks through a support ticket. Empty on a
+    #: candidate's own cancellation, which asks for no reason.
+    cancellation_reason = models.CharField(max_length=200, blank=True)
+
     #: ExamBooking.objects keeps everything a default manager does and adds
     #: upcoming(), no_show() and attended(). Not stored, so no migration.
     objects = ExamBookingQuerySet.as_manager()
@@ -738,6 +754,38 @@ class ExamBooking(models.Model):
         button and a refused URL always agree.
         """
         return self.status == self.Status.BOOKED and dj_timezone.now() < self.changes_close_at
+
+    @property
+    def admin_cancel_closes_at(self):
+        """
+        When an admin can no longer cancel: settings.ADMIN_CANCEL_CUTOFF_MINUTES
+        before the start. Later than changes_close_at on purpose — an admin
+        cancels for a candidate with an emergency, often at the last minute.
+        """
+        return self.scheduled_at - timedelta(minutes=settings.ADMIN_CANCEL_CUTOFF_MINUTES)
+
+    @property
+    def admin_can_cancel(self):
+        """
+        Whether an admin can still cancel this booking: an open booking, of
+        either round, until admin_cancel_closes_at. The admin counterpart of
+        can_change, used the same way — by the Cancel links (search page,
+        candidate detail) and by the view that cancels, so they always agree.
+        """
+        return self.status == self.Status.BOOKED and dj_timezone.now() < self.admin_cancel_closes_at
+
+    @property
+    def cancelled_by_admin(self):
+        """
+        True when an admin, not the candidate, cancelled this booking — what
+        My Assessments shows as "Cancelled by TestMu AI Admin". Read through
+        cancelled_by, so select_related("cancelled_by") on lists.
+        """
+        return (
+            self.status == self.Status.CANCELLED
+            and self.cancelled_by is not None
+            and self.cancelled_by.role == self.cancelled_by.Role.ADMIN
+        )
 
     @property
     def duration_display(self):

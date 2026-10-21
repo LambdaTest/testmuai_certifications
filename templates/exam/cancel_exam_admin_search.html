@@ -1,0 +1,99 @@
+{% extends layout|default:"base_staff.html" %}
+{% load tz %}
+
+{% comment %}
+  Cancel Exam, step 1 of 2 — find the booking. Candidate Center → Cancel Exam.
+  Step 2 is cancel_exam_admin_confirm.html.
+
+  Context from apps.exam.views.cancel_exam_admin_search:
+    q                         – the search as typed (trimmed), or ""
+    bookings                  – cancellable bookings matching it, soonest
+                                first, with exam and candidate selected
+    empty_message             – why nothing is listed after a search, or None
+    admin_cutoff_minutes,
+    candidate_cutoff_minutes  – the byline's numbers, from settings
+
+  EXACT MATCHES ONLY. Cancelling cannot be undone, so the box finds a
+  candidate by their full email or login id, or a booking by its reference —
+  never part of one. Nothing is listed before a search.
+
+  Only bookings an admin can still cancel are listed. The Cancel link opens
+  step 2, which checks again: the list can go stale while it sits on screen.
+
+  Success and "too late" messages from step 2 arrive through the messages
+  framework, rendered by base.html above this page.
+{% endcomment %}
+
+{% block title %}Cancel Exam · Candidate Center · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<header class="mb-6">
+  <h1 class="text-2xl font-bold tracking-tight">Cancel Exam</h1>
+  <p class="mt-1.5 text-[14.5px] text-muted">
+    Admins can cancel a booking up to {{ admin_cutoff_minutes }} minutes before it starts.
+    Candidates can cancel themselves up to {{ candidate_cutoff_minutes }} minutes before.
+  </p>
+</header>
+
+<form method="get" action="{% url 'exam:cancel_exam_admin_search' %}" class="relative mb-6" role="search">
+  <input type="search" name="q" value="{{ q }}" autofocus
+         placeholder="Candidate's email or login id, or a booking reference — press Enter"
+         aria-label="Find bookings to cancel"
+         autocomplete="off" spellcheck="false"
+         class="h-11 w-full rounded-lg border border-zinc-300 bg-white pr-3 pl-10 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+  <svg class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-zinc-400"
+       viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"
+       stroke-linecap="round" aria-hidden="true">
+    <circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/>
+  </svg>
+</form>
+
+{% if q %}
+  {% if bookings %}
+    <p class="mb-3 text-[13px] text-faint">
+      {{ bookings|length }} booking{{ bookings|pluralize }} that can be cancelled, soonest first.
+    </p>
+    <div class="grid gap-3">
+      {% for b in bookings %}
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
+
+          {# ---- Whose booking ---- #}
+          <div class="min-w-0 sm:w-56">
+            <p class="truncate font-semibold text-ink">{{ b.candidate.display_name|default:"(no name)" }}</p>
+            <p class="truncate text-[13px] text-muted">{{ b.candidate.email }}</p>
+          </div>
+
+          {# ---- Which exam, which round, when ---- #}
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2.5">
+              <span class="truncate font-semibold text-ink">{{ b.exam.exam_name }}</span>
+              <span class="rounded-full px-2.5 py-0.5 text-[11.5px] font-bold
+                           {% if b.round_type == 'subjective' %}bg-warn-tint text-warn{% else %}bg-brand-tint text-brand-dark{% endif %}">
+                {{ b.get_round_type_display }}
+              </span>
+            </div>
+            {% comment %}
+              In the zone the booking was made in, labelled — the candidate's
+              time, which is what they will quote if they call.
+            {% endcomment %}
+            <p class="mt-1 text-[13px] text-muted">
+              {% timezone b.booked_timezone %}{{ b.scheduled_at|date:"D, j M Y, g:i A" }}{% endtimezone %}
+              <span class="text-faint">({{ b.booked_timezone }})</span>
+              · Ref <span class="font-mono text-ink" title="{{ b.booking_id }}">{{ b.booking_id|stringformat:"s"|slice:":8" }}</span>
+            </p>
+          </div>
+
+          <a href="{% url 'exam:cancel_exam_admin_confirm' b.booking_id %}"
+             class="inline-flex h-9 items-center rounded-lg border border-danger px-4 text-[13.5px] font-bold text-danger hover:bg-danger-tint">
+            Cancel…
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
+      {{ empty_message }}
+    </p>
+  {% endif %}
+{% endif %}
+{% endblock %}

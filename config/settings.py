@@ -127,3 +127,7 @@ BOOKING_GAP_MINUTES = 60
 #: paper can only be begun from the start time, closing before it also means a
 #: started paper can never be rescheduled or cancelled out from under itself.
 BOOKING_CHANGE_CUTOFF_MINUTES = 10
+#: Admins can cancel a booking until this long before the start — later than
+#: candidates, for the emergency a candidate reports at the last minute.
+#: Still before the start, so a paper can never be cancelled once begun.
+ADMIN_CANCEL_CUTOFF_MINUTES = 5

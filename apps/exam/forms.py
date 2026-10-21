@@ -1203,3 +1203,31 @@ class GradeForm(forms.Form):
         if marks > self.max_marks:
             raise forms.ValidationError(f"Marks cannot be more than {self.max_marks}.")
         return marks
+
+
+class CancelBookingForm(forms.Form):
+    """
+    The reason an admin gives for cancelling a booking, from Candidate
+    Center → Cancel Exam.
+
+    Only the reason is typed. The booking comes from the URL and is checked by
+    the view (cancel_exam_admin_confirm), which also sets the status and who
+    and when — so a plain Form, not a ModelForm: there is one field to
+    validate, and nothing here would save itself.
+
+    min_length and max_length are counted after strip, so twenty spaces do
+    not pass as a reason. The textarea's maxlength attribute (added by Django
+    from max_length) stops typing at 200; this is the check that holds.
+    """
+
+    reason = forms.CharField(
+        min_length=20,
+        max_length=ExamBooking._meta.get_field("cancellation_reason").max_length,
+        strip=True,
+        widget=forms.Textarea(attrs={"rows": 3}),
+        error_messages={
+            "required": "Enter a reason for cancelling.",
+            "min_length": "The reason must be at least %(limit_value)d characters (it has %(show_value)d).",
+            "max_length": "The reason can be at most %(limit_value)d characters (it has %(show_value)d).",
+        },
+    )

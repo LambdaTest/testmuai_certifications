@@ -172,5 +172,5 @@ def candidate_detail(request, candidate_id):
     Shows the candidate's details to the admin: personal info and all bookings.
     """
     candidate =  get_object_or_404(User, id=candidate_id, role=User.Role.CANDIDATE)
-    bookings = ExamBooking.objects.filter(candidate=candidate).select_related("exam__subject").order_by("-scheduled_at")
+    bookings = ExamBooking.objects.filter(candidate=candidate).select_related("exam__subject", "cancelled_by").order_by("-scheduled_at")
     return render(request, "home/candidate_detail.html", {"candidate": candidate, "bookings": bookings})

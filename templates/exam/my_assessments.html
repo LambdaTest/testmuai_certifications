@@ -76,6 +76,14 @@
               {{ booking.scheduled_at|date:"l, F j, Y" }} · {{ booking.scheduled_at|date:"g:i A" }}
             </span>
           {% endtimezone %}
+          {% comment %}
+            Only who cancelled, never why: the reason is an admin's note, and a
+            candidate who wants it asks through a support ticket. Shown on this
+            list only, not on the booking's own page.
+          {% endcomment %}
+          {% if booking.cancelled_by_admin %}
+            <span class="mt-1 block text-[13px] font-semibold text-danger">Cancelled by TestMu AI Admin</span>
+          {% endif %}
         </span>
         <span class="text-[17px] text-[#B9BFC9] group-hover:text-brand" aria-hidden="true">→</span>
       </a>

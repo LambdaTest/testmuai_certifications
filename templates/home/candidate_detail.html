@@ -7,8 +7,8 @@
 
   Context from apps.home.views.candidate_detail:
     candidate – the User (role candidate)
-    bookings  – their ExamBookings, newest scheduled first, with exam and
-                subject selected
+    bookings  – their ExamBookings, newest scheduled first, with exam,
+                subject and cancelled_by selected
 
   The booking reference is on every row and is the identifier to quote: the
   same 8 characters an examiner sees on a grading page and the Candidate Info
@@ -98,12 +98,36 @@
             {% timezone b.booked_timezone %}{{ b.scheduled_at|date:"j M Y, g:i A" }}{% endtimezone %}
             <span class="text-faint">({{ b.booked_timezone }})</span>
           </p>
+          {% comment %}
+            Who cancelled, when, and why — the only place an admin's reason is
+            shown; the candidate never sees it. Bookings cancelled before
+            these fields existed have none of it, so the line is skipped.
+          {% endcomment %}
+          {% if b.status == 'cancelled' and b.cancelled_by %}
+            <p class="mt-1 text-[13px] text-muted">
+              Cancelled by
+              <span class="text-ink">{% if b.cancelled_by_id == b.candidate_id %}the candidate{% else %}{{ b.cancelled_by.display_name|default:b.cancelled_by.email }} (admin){% endif %}</span>
+              {% if b.cancelled_at %}on {{ b.cancelled_at|date:"j M Y, g:i A" }}{% endif %}
+              {% if b.cancellation_reason %}
+                <span class="mt-0.5 block text-ink">“{{ b.cancellation_reason }}”</span>
+              {% endif %}
+            </p>
+          {% endif %}
         </div>
 
         {# ---- Marks, once there are any ---- #}
         {% if b.marks_obtained is not None %}
           <span class="inline-flex min-w-14 justify-center rounded-lg border border-line bg-surface px-2.5 py-1 font-mono text-[13.5px] font-semibold tabular-nums text-ink"
                 title="Marks">{{ b.marks_obtained }}{% if b.maximum_marks %}/{{ b.maximum_marks }}{% endif %}</span>
+        {% endif %}
+
+        {% comment %}
+          Cancel, only while an admin still can (admin_can_cancel) — straight
+          to the confirm step, skipping the search.
+        {% endcomment %}
+        {% if b.admin_can_cancel %}
+          <a href="{% url 'exam:cancel_exam_admin_confirm' b.booking_id %}"
+             class="text-[13px] font-semibold text-danger hover:underline">Cancel</a>
         {% endif %}
 
         {% comment %}

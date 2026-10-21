@@ -8,6 +8,7 @@ picks their own date and time.
 
 import json
 import secrets
+import uuid
 from dataclasses import asdict
 
 from django.conf import settings
@@ -27,6 +28,7 @@ from .forms import (
     AnswerOptionFormSet,
     AssignGradingForm,
     BookingForm,
+    CancelBookingForm,
     ExamForm,
     GradeForm,
     QuestionForm,
@@ -247,7 +249,7 @@ def my_assessments(request, status):
     else:
         # Cancelled is a decision, not a time — the stored status is the truth.
         bookings = mine.filter(status=status).order_by("-scheduled_at")
-    bookings = bookings.select_related("exam__subject")
+    bookings = bookings.select_related("exam__subject", "cancelled_by")  # cancelled_by: the "Cancelled by TestMu AI Admin" label
 
     return render(
         request,
@@ -321,6 +323,10 @@ def cancel_booking(request, booking_id):
 
     if request.method == "POST":
         booking.status = ExamBooking.Status.CANCELLED
+        # Recorded for every cancellation, not only an admin's — so "the
+        # candidate cancelled" is never confused with "nobody knows who".
+        booking.cancelled_by = request.user
+        booking.cancelled_at = timezone.now()
         booking.save()
         return redirect("home:dashboard")
 
@@ -1504,3 +1510,175 @@ def book_exam_admin(request):
         },
     )
     
+
+
+def _admin_cancel_refusal(booking):
+    """
+    Why an admin cannot cancel this booking, finishing the sentence
+    "Booking 198f572b can't be cancelled: …". Only called when
+    booking.admin_can_cancel is False.
+    """
+    S = ExamBooking.Status
+    if booking.status == S.CANCELLED:
+        return "it is already cancelled."
+    if booking.status in (S.ATTENDED, S.UNDER_REVIEW, S.GRADED):
+        return "it has already been attended."
+    if booking.status == S.NO_SHOW:
+        return "it was missed."
+    # Still BOOKED, so it is the clock that refuses.
+    if timezone.now() < booking.scheduled_at:
+        return f"it starts in under {settings.ADMIN_CANCEL_CUTOFF_MINUTES} minutes."
+    return "its start time has passed."
+
+
+def _cancel_cutoff_context():
+    """The byline's numbers, read from settings so the wording never goes stale."""
+    return {
+        "admin_cutoff_minutes": settings.ADMIN_CANCEL_CUTOFF_MINUTES,
+        "candidate_cutoff_minutes": settings.BOOKING_CHANGE_CUTOFF_MINUTES,
+    }
+
+
+@role_required(User.Role.ADMIN)
+@require_GET
+def cancel_exam_admin_search(request):
+    """
+    Candidate Center → Cancel Exam, step 1: find the booking to cancel.
+
+    One box, exact matches only — on purpose, since cancelling cannot be
+    undone and a loose match could put someone else's exam on screen. Spaces
+    at either end are trimmed and capitals ignored. It matches:
+
+      - a candidate's email or login id → their cancellable bookings
+      - a booking reference, the 8-character short ref the site shows or the
+        full ID → that booking
+
+    Nothing is listed until something is searched. Results are only bookings
+    an admin can still cancel (ExamBooking.admin_can_cancel), soonest first.
+    When there are none, `empty_message` says why — most useful for a
+    reference, where the admin knows the booking exists.
+    """
+    q = request.GET.get("q", "").strip()
+    bookings = []
+    empty_message = None
+
+    if q:
+        cancellable = (
+            ExamBooking.objects.filter(
+                status=ExamBooking.Status.BOOKED,
+                scheduled_at__gt=timezone.now() + timedelta(minutes=settings.ADMIN_CANCEL_CUTOFF_MINUTES),
+            )
+            .select_related("exam", "candidate")
+            .order_by("scheduled_at")
+        )
+
+        # A booking reference: the full ID, or exactly its first 8 characters.
+        # Both are hex, so capitals are lowered to match how a UUID is stored.
+        ref = q.lower()
+        by_ref = None
+        if len(ref) == 8 and all(c in "0123456789abcdef" for c in ref):
+            by_ref = ExamBooking.objects.filter(booking_id__startswith=ref)
+        else:
+            try:
+                by_ref = ExamBooking.objects.filter(booking_id=uuid.UUID(ref))
+            except ValueError:
+                pass  # not a full ID either — try it as an email or login id
+
+        matched = list(by_ref.filter(candidate__role=User.Role.CANDIDATE)) if by_ref is not None else []
+        if matched:
+            bookings = list(cancellable.filter(pk__in=[b.pk for b in matched]))
+            if not bookings:
+                b = matched[0]
+                empty_message = (
+                    f"Booking {str(b.booking_id)[:8]} can't be cancelled: {_admin_cancel_refusal(b)}"
+                )
+        else:
+            candidate = User.objects.filter(
+                Q(email__iexact=q) | Q(external_id__iexact=q),
+                role=User.Role.CANDIDATE,
+            ).first()
+            if candidate is None:
+                empty_message = "No match found."
+            else:
+                bookings = list(cancellable.filter(candidate=candidate))
+                if not bookings:
+                    empty_message = (
+                        f"{candidate.display_name or candidate.email} ({candidate.email}) "
+                        f"has no bookings that can be cancelled."
+                    )
+
+    return render(
+        request,
+        "exam/cancel_exam_admin_search.html",
+        {
+            "layout": "base_staff.html",
+            "q": q,
+            "bookings": bookings,
+            "empty_message": empty_message,
+            **_cancel_cutoff_context(),
+        },
+    )
+
+
+@role_required(User.Role.ADMIN)
+def cancel_exam_admin_confirm(request, booking_id):
+    """
+    Candidate Center → Cancel Exam, step 2: confirm, with a reason.
+
+    One view for both halves, like book_exam_admin. GET shows the booking and
+    an empty reason box; POST validates CancelBookingForm and cancels. An
+    invalid reason re-shows the page with the error and the text kept.
+
+    admin_can_cancel is checked on both. On GET, so a stale link or the
+    candidate detail page cannot open a booking that is no longer
+    cancellable; and again on POST under a row lock, because the page may
+    have been opened at 6 minutes to go and submitted at 4. Either way the
+    admin goes back to the search page with the reason.
+    """
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam", "candidate"),
+        booking_id=booking_id,
+        candidate__role=User.Role.CANDIDATE,
+    )
+    ref = str(booking.booking_id)[:8]
+
+    def refuse(b):
+        messages.error(request, f"Booking {ref} can't be cancelled: {_admin_cancel_refusal(b)}")
+        return redirect("exam:cancel_exam_admin_search")
+
+    if not booking.admin_can_cancel:
+        return refuse(booking)
+
+    form = CancelBookingForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        with transaction.atomic():
+            # Locked and re-read, so the check and the write see the same row:
+            # nothing can change it in between.
+            locked = ExamBooking.objects.select_for_update().get(pk=booking.pk)
+            if not locked.admin_can_cancel:
+                return refuse(locked)
+            locked.status = ExamBooking.Status.CANCELLED
+            locked.cancelled_by = request.user
+            locked.cancelled_at = timezone.now()
+            locked.cancellation_reason = form.cleaned_data["reason"]
+            locked.save(update_fields=[
+                "status", "cancelled_by", "cancelled_at", "cancellation_reason", "updated_at",
+            ])
+        messages.success(
+            request,
+            f"Cancelled {booking.exam.exam_name} for "
+            f"{booking.candidate.display_name or booking.candidate.email} "
+            f"on {booking.local_scheduled_at:%Y-%m-%d %H:%M} ({booking.booked_timezone}).",
+        )
+        return redirect("exam:cancel_exam_admin_search")
+
+    return render(
+        request,
+        "exam/cancel_exam_admin_confirm.html",
+        {
+            "layout": "base_staff.html",
+            "booking": booking,
+            "form": form,
+            **_cancel_cutoff_context(),
+        },
+    )

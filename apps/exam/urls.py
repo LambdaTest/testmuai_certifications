@@ -35,4 +35,6 @@ urlpatterns = [
     path("grading_page/<uuid:booking_id>/", views.grading_page, name="grading_page"),
     path("grading_history/", views.grading_history, name="grading_history"),
     path("book_exam_admin/", views.book_exam_admin, name="book_exam_admin"),
+    path("cancel_exam_admin/", views.cancel_exam_admin_search, name="cancel_exam_admin_search"),
+    path("cancel_exam_admin/<uuid:booking_id>/", views.cancel_exam_admin_confirm, name="cancel_exam_admin_confirm"),
 ]
