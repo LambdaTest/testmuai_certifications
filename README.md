@@ -3,7 +3,7 @@
 In-house platform for delivering TestMu AI professional certifications — booking, exam delivery,
 grading, and credential issuance. Replaces our current external vendor.
 
-> **Status:** five journeys work end to end.
+> **Status:** seven journeys work end to end.
 >
 > - **Candidate** — book, reschedule and cancel (until 10 minutes before), calendar invites,
 >   dashboard, and My Assessments lists that follow the clock, not only the stored status.
@@ -17,10 +17,16 @@ grading, and credential issuance. Replaces our current external vendor.
 > - **Subjective exam** — join inside the 36-hour window, submit a GitHub repository, a pull
 >   request in it and Test Manager test IDs; on a two-round exam it follows the objective round
 >   automatically.
+> - **Grading** — an admin assigns each submitted subjective paper to an examiner or admin; the
+>   assignee grades it blind from My Tasks, and Grading History lists what they have graded.
+>   Examiners have their own simpler layout and dashboard.
+> - **Candidate Center** (admins) — Candidate Info (search, a page per candidate with every
+>   booking), Book Exam on a candidate's behalf, Cancel Exam with a reason, and Export Candidates
+>   to CSV.
 >
-> The examiner side is next: the examiner dashboard is a shell, so subjective grading, combined
-> two-round results and credentials are not started. Reminder emails and the scheduled job behind
-> them are planned. See [`docs/master-spec.md`](docs/master-spec.md).
+> Not started: combined two-round results against the pass percentage, result release, and
+> credentials. Emails (SMTP), the reminders and the scheduled job behind them are planned. See
+> [`docs/master-spec.md`](docs/master-spec.md).
 
 ## Stack
 
@@ -93,13 +99,17 @@ user-facing may depend on it for correctness — see [rule 2](#three-rules-to-kn
 ```
 config/         settings, root URLconf, wsgi/asgi
 apps/
-  home/         accounts and cross-cutting — User model, roles, dashboards, decorators
+  home/         accounts and cross-cutting — User model, roles, dashboards, decorators, and
+                the admin Candidate Center pages that are about people (Candidate Info,
+                Export Candidates)
+    exports.py  Export Candidates: the fixed column lists and the CSV writer
   exam/         the assessment domain — subjects, exams, questions, bookings, exam sheets,
-                and to come: grading and credentials
+                grading, and to come: credentials
     imports.py  CSV parsing for the question importer — plain functions, no request, no forms
     calendar.py .ics generation
     timezones.py the one place a wall-clock time becomes a UTC instant
-templates/      base.html (public) + base_staff.html (admin shell) + per-app templates
+templates/      base.html (public) + base_staff.html (admin shell) + base_examiner.html
+                (examiner shell) + per-app templates
 static/         css/input.css, js/booking.js, imports/questions-template.csv
 media/          runtime uploads — question images, audio, video. Gitignored.
 docs/           specs — see below
@@ -132,7 +142,10 @@ returning 403 — an admin URL shouldn't confirm it exists to someone who may no
 
 `/dashboard/` branches on role and renders one of `dashboard_candidate.html`,
 `dashboard_examiner.html`, or `dashboard_admin.html`. Admin pages extend `base_staff.html`,
-which carries the accordion sidebar; candidate pages extend `base.html`.
+which carries the accordion sidebar; examiner pages extend `base_examiner.html`, a shorter
+sidebar (Dashboard, My Tasks, Grading History); candidate pages extend `base.html`. A page both
+roles use (My Tasks, the grading page, Grading History) takes the layout from its view —
+`{% extends layout|default:"base_staff.html" %}` — so each role keeps its own sidebar.
 
 **Grading is blind.** The examiner sees a booking reference and the submitted answers — never
 the candidate's name or email. Identity is resolvable only by an admin. Keep it that way when
@@ -435,6 +448,57 @@ depends on where it sits — "All of the above" being the obvious one. Every can
 authored order. Autosave sends an option's **id**, not its position in the list, so the saved
 answer cannot change even if the order did.
 
+## Grading
+
+Subjective papers are graded by people; objective rounds grade themselves at submit
+(`grade_exam`). A submitted subjective round is `under_review` until graded.
+
+1. **Assign** (admin) — the Assign Grading page lists papers under review. Each is assigned to an
+   examiner or an admin (`AssignGradingForm`), or unassigned. `assigned_to`, `assigned_by` and
+   `assigned_at` record it.
+2. **My Tasks** (examiner or admin) — the papers assigned to the viewer and still under review,
+   oldest submission first. The examiner dashboard previews the first five with a count of the
+   rest.
+3. **Grade** — the grading page shows the task, the repository, pull request and test IDs, and the
+   marks available. `grade_an_exam` validates the mark (`GradeForm`: 0 up to the question's
+   marks) and saves it on the paper's question row and on the booking, with `maximum_marks`
+   snapshotted, the feedback, `graded_by` and `graded_at`; the booking becomes `graded`.
+   `_paper_for_grading` is the one rule for both viewing and saving: assigned to the viewer and
+   still under review, otherwise a 404. The save locks the row, so a double submit grades once.
+4. **Grading History** — what the viewer has graded, newest first, marks shown as "12/15".
+   Read-only: there is no regrade yet.
+
+## Candidate Center
+
+Admin-only, never examiners: it is the one place a booking reference turns back into a person.
+
+- **Candidate Info** (`home`) — search by name, email, login id, phone or booking reference,
+  25 per page; a page per candidate with their profile links and every booking.
+- **Book Exam** (`book_exam_admin`) — the candidate booking picker plus a candidate box (email or
+  login id). The candidate's booking rules apply in full. `booked_by` records the admin; a
+  candidate's own booking has `booked_by` = the candidate, and the system-created subjective round
+  has none.
+- **Cancel Exam** — two steps, `cancel_exam_admin_search` then `cancel_exam_admin_confirm`. The
+  search is exact only (email or login id ignoring case, or a booking reference — the 8-character
+  short ref or the full ID), since a cancel cannot be undone, and lists only bookings an admin can
+  still cancel. The confirm page requires a reason of 20–200 characters (`CancelBookingForm`).
+  Admins may cancel until `ADMIN_CANCEL_CUTOFF_MINUTES` (5) before the start, later than
+  candidates (10); `ExamBooking.admin_can_cancel` is the rule, checked again under a row lock on
+  submit. Every cancellation, the candidate's own included, records `cancelled_by` and
+  `cancelled_at`; an admin's also stores `cancellation_reason`, shown to admins on the candidate
+  page and never to the candidate, whose My Assessments list says only "Cancelled by TestMu AI
+  Admin". A candidate's detail page links straight to the confirm step for each booking that can
+  still be cancelled.
+- **Export Candidates** (`home`) — a CSV, one row per candidate or one per booking. Filters: one
+  exam or all, and an exam date (From alone is that day; From–To includes both), read in
+  Asia/Kolkata. For candidates the filters apply to the same booking, and with none every
+  candidate is listed, including those who never booked. Columns are chosen as checkboxes from the
+  fixed lists in `apps/home/exports.py` (email always; email and exam for bookings). Every time is
+  IST, a missing value is "-", values that could run as a spreadsheet formula are escaped, and the
+  file is streamed. No rows means a message, not an empty file.
+
+Emailing the candidate about an admin's booking or cancellation waits for SMTP.
+
 ## Three rules to know before writing anything
 
 **1. Timezone conversion happens in one place.** `apps/exam/timezones.py` owns every
@@ -471,10 +535,14 @@ pre-defined slots and no capacity, so there is no seat contention. Rules live in
   `ExamBooking.can_change` is the one rule: it disables the buttons and the reschedule and cancel
   views refuse on it. A paper can only be begun from the start time, so a started paper can never
   be moved or cancelled out from under itself.
+- `ADMIN_CANCEL_CUTOFF_MINUTES = 5` — the admin's cancel cutoff; see Candidate Center.
 
 A candidate may hold only one open booking per exam **and round**, enforced by a partial unique
-index (`one_open_booking_per_exam`, over candidate, exam and `round_type`) rather than a view check.
-It counts `booked`, `under_review` and `attended` rows.
+index (`one_open_booking_per_exam`, over candidate, exam and `round_type`). It counts `booked`,
+`under_review` and `attended` rows; a graded attempt frees the exam for a retake. `BookingForm.clean()`
+checks the same rule first, so a second booking is an error on the page rather than a crash; the
+admin booking view also catches the `IntegrityError` for the race the form cannot see (a
+double-click).
 
 **Status means attendance; the sheet means completion.** "I'm ready to begin" marks the booking
 `attended` (in `_start_or_resume`, in the same transaction that draws the paper) — the candidate
@@ -577,11 +645,11 @@ Specs live in [`docs/`](docs/), all rewritten for Django:
 
 ## Not yet built
 
-Examiner grading of subjective answers · combined two-round results against the pass percentage ·
+Combined two-round results against the pass percentage ·
 saving the completion page's profile links and feedback · result release and Show Results ·
 credentials and public verification · email (SMTP) and the per-minute job that sends reminders and
 closes missed bookings and abandoned papers · recording lockdown events · `delete_question` (routed
-but stubbed) · Candidate Center · authentication (the OIDC integration with the TestMu AI login is
+but stubbed) · regrading · authentication (the OIDC integration with the TestMu AI login is
 deferred, which is why `ExamBooking.candidate` is nullable) · automated tests · the Tailwind
 production build.
 
