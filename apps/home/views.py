@@ -6,15 +6,17 @@ credentials belongs in ``apps.exam``.
 """
 
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.http import Http404, StreamingHttpResponse
 from django.utils import timezone
 
 from apps.exam.calendar import google_calendar_url
 from apps.exam.models import ExamBooking
 
+from . import exports
+from .forms import ExportCandidatesForm
 from .models import User
 from .decorators import role_required
 from django.shortcuts import get_object_or_404
@@ -174,3 +176,93 @@ def candidate_detail(request, candidate_id):
     candidate =  get_object_or_404(User, id=candidate_id, role=User.Role.CANDIDATE)
     bookings = ExamBooking.objects.filter(candidate=candidate).select_related("exam__subject", "cancelled_by").order_by("-scheduled_at")
     return render(request, "home/candidate_detail.html", {"candidate": candidate, "bookings": bookings})
+
+
+@role_required(User.Role.ADMIN)
+def export_candidates(request):
+    """
+    Candidate Center → Export Candidates: a CSV of candidates or of bookings.
+
+    One view, both halves, on GET — exporting changes nothing, and the URL
+    keeps the filters:
+
+      - no `download` in the query → the page, with an empty form
+      - `download` present        → validate, then send the file; or show the
+                                    page again with the errors, or with
+                                    "Nothing matches" rather than an empty file
+
+    Filters (exam, From/To in IST) mean the same in both exports. For
+    candidates they apply to one booking at a time: "Selenium in October"
+    is a candidate with a Selenium booking in October, not one with any
+    Selenium booking and any October booking. With no filter at all, every
+    candidate is listed — including those who never booked.
+
+    Admin-only, like Candidate Info: this is the file that takes names,
+    emails and phones out of the system. What goes in it is the admin's
+    choice, from the fixed lists in apps.home.exports.
+    """
+    downloading = "download" in request.GET
+    form = ExportCandidatesForm(request.GET if downloading else None)
+    nothing_matches = False
+
+    if downloading and form.is_valid():
+        kind = form.cleaned_data["kind"]
+        exam = form.cleaned_data["exam"]
+        date_from = form.cleaned_data["date_from"]
+
+        # The booking filters, as Q objects relative to a booking. `prefix`
+        # reaches them from a User ("bookings__") for the candidate export.
+        def booking_filter(prefix=""):
+            q = Q()
+            if exam is not None:
+                q &= Q(**{f"{prefix}exam": exam})
+            if date_from is not None:
+                start, end = exports.ist_day_bounds(date_from, form.cleaned_data["date_to"])
+                q &= Q(**{f"{prefix}scheduled_at__gte": start, f"{prefix}scheduled_at__lt": end})
+            return q
+
+        filtered = exam is not None or date_from is not None
+
+        if kind == "candidates":
+            # Count with a filter keeps both conditions on the same booking
+            # row, which is what makes "Selenium in October" mean one booking.
+            rows = (
+                User.objects.filter(role=User.Role.CANDIDATE)
+                .exclude(email__isnull=True).exclude(email="")
+                .annotate(export_bookings=Count("bookings", filter=booking_filter("bookings__"), distinct=True))
+                .order_by("email")
+            )
+            if filtered:
+                rows = rows.filter(export_bookings__gt=0)
+        else:
+            rows = (
+                ExamBooking.objects.filter(candidate__role=User.Role.CANDIDATE)
+                .exclude(candidate__email__isnull=True).exclude(candidate__email="")
+                .filter(booking_filter())
+                .select_related("candidate", "exam", "booked_by", "cancelled_by", "graded_by")
+                .order_by("scheduled_at", "candidate__email")
+            )
+
+        if rows.exists():
+            filename = f"{kind}-{exports.today_ist():%Y-%m-%d}.csv"
+            response = StreamingHttpResponse(
+                # iterator(): rows are read from the database in chunks as the
+                # file is written, never all at once.
+                exports.csv_rows(kind, form.chosen_columns(), rows.iterator(chunk_size=2000)),
+                content_type="text/csv; charset=utf-8",
+            )
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
+        nothing_matches = True
+
+    return render(
+        request,
+        "home/export_candidates.html",
+        {
+            "form": form,
+            "nothing_matches": nothing_matches,
+            "candidate_locked": [h for h, _ in exports.CANDIDATE_LOCKED.values()],
+            "booking_locked": [h for h, _ in exports.BOOKING_LOCKED.values()],
+            "export_timezone": exports.EXPORT_TIMEZONE,
+        },
+    )

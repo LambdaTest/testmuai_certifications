@@ -1,0 +1,57 @@
+{% comment %}
+  One export's column chips, for export_candidates.html. Included once per
+  export with:
+    name     – the form field: candidate_columns or booking_columns
+    choices  – that field's (key, header) choices, in file order
+    locked   – headers always written: shown ticked, with a lock, not inputs
+    values   – the keys ticked last time (a list), or None on a fresh page
+
+  Expects to sit inside an Alpine scope with `n`, the ticked count, kept up
+  to date by the parent's @change.
+
+  Each chip is a real checkbox (sr-only) in a <label>: clicking the chip
+  toggles it, Space toggles it from the keyboard, and the browser submits it
+  like any checkbox. peer-checked: draws the ticked state from the input.
+{% endcomment %}
+<div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+  <p class="text-[13px] text-muted">
+    <span class="font-semibold text-ink" x-text="n">0</span> of {{ choices|length }} optional columns ticked
+  </p>
+  <div class="flex items-center gap-3 text-[13px] font-semibold">
+    <button type="button" class="text-brand hover:underline"
+            @click="$el.closest('[x-data]').querySelectorAll('input[type=checkbox]').forEach(i => i.checked = true); n = {{ choices|length }}">
+      Select all
+    </button>
+    <span class="text-line" aria-hidden="true">|</span>
+    <button type="button" class="text-muted hover:text-ink hover:underline"
+            @click="$el.closest('[x-data]').querySelectorAll('input[type=checkbox]').forEach(i => i.checked = false); n = 0">
+      Clear
+    </button>
+  </div>
+</div>
+
+<div class="mt-3 flex flex-wrap gap-2">
+  {% for header in locked %}
+    <span class="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-full border border-brand bg-brand px-3.5 text-[13.5px] font-semibold text-white opacity-90"
+          title="Always included" aria-label="{{ header }} — always included">
+      <svg class="size-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>
+      {{ header }}
+    </span>
+  {% endfor %}
+
+  {% for key, header in choices %}
+    <label class="cursor-pointer">
+      <input type="checkbox" name="{{ name }}" value="{{ key }}" class="peer sr-only"
+             {% if key in values %}checked{% endif %}>
+      <span class="inline-flex h-9 items-center gap-2 rounded-full border border-line bg-white px-3.5 text-[13.5px] font-medium text-ink transition select-none
+                   hover:border-[#C9D3E3] hover:bg-[#F7F9FC]
+                   peer-checked:border-brand peer-checked:bg-brand-tint peer-checked:text-brand-dark peer-checked:font-semibold
+                   peer-focus-visible:ring-3 peer-focus-visible:ring-brand/30
+                   [&>.tick]:hidden peer-checked:[&>.tick]:block peer-checked:[&>.plus]:hidden">
+        <svg class="plus size-3.5 text-faint" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg>
+        <svg class="tick size-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3.5 8.3 2.8 2.8 6.2-6.4"/></svg>
+        {{ header }}
+      </span>
+    </label>
+  {% endfor %}
+</div>

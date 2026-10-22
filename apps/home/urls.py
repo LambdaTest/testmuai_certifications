@@ -11,4 +11,5 @@ urlpatterns = [
     path("dashboard/", views.dashboard, name="dashboard"),
     path("candidates/", views.candidate_info, name="candidate_info"),
     path("candidate_detail/<int:candidate_id>/", views.candidate_detail, name="candidate_detail"),
+    path("export_candidates/", views.export_candidates, name="export_candidates"),
 ]

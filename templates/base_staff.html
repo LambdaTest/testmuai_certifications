@@ -29,7 +29,7 @@
 <div class="mx-auto max-w-[1200px] px-4 sm:px-6"
      x-data="{
        nav: false,
-       section: {% if url_name == 'explore_subjects' or url_name == 'create_subject' %}'subject'{% elif url_name == 'candidate_info' or url_name == 'candidate_detail' or url_name == 'book_exam_admin' or url_name == 'cancel_exam_admin_search' or url_name == 'cancel_exam_admin_confirm' %}'candidate'{% else %}null{% endif %},
+       section: {% if url_name == 'explore_subjects' or url_name == 'create_subject' %}'subject'{% elif url_name == 'candidate_info' or url_name == 'candidate_detail' or url_name == 'book_exam_admin' or url_name == 'cancel_exam_admin_search' or url_name == 'cancel_exam_admin_confirm' or url_name == 'export_candidates' %}'candidate'{% else %}null{% endif %},
        toggle(name) { this.section = this.section === name ? null : name },
      }">
 
@@ -142,7 +142,9 @@
               <a href="{% url 'exam:cancel_exam_admin_search' %}"
                  {% if url_name == "cancel_exam_admin_search" or url_name == "cancel_exam_admin_confirm" %}aria-current="page"{% endif %}
                  class="rounded-lg px-3 py-2 text-[13.5px] {% if url_name == "cancel_exam_admin_search" or url_name == "cancel_exam_admin_confirm" %}bg-brand-tint font-semibold text-brand-dark{% else %}text-muted hover:bg-[#F3F5F8] hover:text-ink{% endif %}">Cancel Exam</a>
-              <a href="#" class="rounded-lg px-3 py-2 text-[13.5px] text-muted hover:bg-[#F3F5F8] hover:text-ink">Export Candidates</a>
+              <a href="{% url 'home:export_candidates' %}"
+                 {% if url_name == "export_candidates" %}aria-current="page"{% endif %}
+                 class="rounded-lg px-3 py-2 text-[13.5px] {% if url_name == "export_candidates" %}bg-brand-tint font-semibold text-brand-dark{% else %}text-muted hover:bg-[#F3F5F8] hover:text-ink{% endif %}">Export Candidates</a>
             </div>
           </div>
         </div>
