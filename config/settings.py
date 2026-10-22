@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -16,8 +17,22 @@ def env_bool(name: str, default: bool = False) -> bool:
     return os.environ.get(name, str(default)).lower() in {"1", "true", "yes"}
 
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-change-me")
-DEBUG = env_bool("DJANGO_DEBUG", True)
+# Off unless asked for. Development turns it on in .env (DJANGO_DEBUG=True);
+# a server started without its environment must not show error pages full of
+# code and settings to the public.
+DEBUG = env_bool("DJANGO_DEBUG", False)
+
+# The dev key only while DEBUG is on. With DEBUG off a missing key stops the
+# server from starting, rather than running with a key that is public — in
+# this repo — and lets anyone forge a login session.
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be set when DEBUG is off. For local "
+            "development, copy .env.example to .env (it sets DJANGO_DEBUG=True)."
+        )
+    SECRET_KEY = "dev-only-change-me"
 ALLOWED_HOSTS = [
     h.strip()
     for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
