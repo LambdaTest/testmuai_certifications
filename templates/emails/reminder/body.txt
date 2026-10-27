@@ -8,8 +8,8 @@ Submit by: {{ closes }} ({{ timezone }}){% else %}Starts: {{ when }} ({{ timezon
 Duration: {{ duration }}{% endif %}
 Booking reference: {{ ref }}
 
-Join here when it's time: {{ join_url }}
-You can join from the start time until {{ duration }} after it. Use a laptop or desktop with a stable connection — the exam runs in full screen.
+Joining opens at {{ start_time }} and stays open for {{ duration }}. Use the Join button on your booking page — it switches on at the start time: {{ booking_url }}
+Use a laptop or desktop with a stable connection — the exam runs in full screen.
 
 Questions? Just reply to this email.
 

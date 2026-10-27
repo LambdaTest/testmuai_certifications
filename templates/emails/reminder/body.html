@@ -3,6 +3,12 @@
 <p style="margin:0 0 6px;">Hi {{ first_name }},</p>
 <p style="margin:0;">Your exam starts in <strong>{{ minutes_until }} minutes</strong>.</p>
 {% include "emails/_details.html" %}
-{% include "emails/_button.html" with url=join_url label="Join exam" %}
-<p style="margin:14px 0 0;font-size:13.5px;color:#666666;">You can join from the start time until {{ duration }} after it. Use a laptop or desktop with a stable connection — the exam runs in full screen.</p>
+{% comment %}
+  No Join button: an email cannot change after it is sent, and joining only
+  opens at the start time — a button here would be live when nobody can use
+  it. The booking page's own Join button turns on at the right moment.
+{% endcomment %}
+<p style="margin:0 0 14px;">Joining opens at <strong>{{ start_time }}</strong> and stays open for {{ duration }}. Use the Join button on your booking page — it switches on at the start time.</p>
+{% include "emails/_button.html" with url=booking_url label="View your booking" %}
+<p style="margin:14px 0 0;font-size:13.5px;color:#666666;">Use a laptop or desktop with a stable connection — the exam runs in full screen.</p>
 {% endblock %}

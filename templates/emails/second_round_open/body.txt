@@ -8,7 +8,7 @@ Submit by: {{ closes }} ({{ timezone }}){% else %}Starts: {{ when }} ({{ timezon
 Duration: {{ duration }}{% endif %}
 Booking reference: {{ ref }}
 
-You have 36 hours to submit it. Start here: {{ join_url }}
+It opens at {{ start_time }}, and you then have 36 hours to submit it. Start it from your booking page — its button switches on when the round opens: {{ booking_url }}
 
 Both rounds count together: the exam is complete only once your subjective round is submitted.
 

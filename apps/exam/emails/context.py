@@ -38,6 +38,8 @@ def build_context(row, booking, now):
         "is_second_round": booking.parent_booking_id is not None,
         "when": _when(booking.scheduled_at, booking.booked_timezone),
         "closes": _when(booking.join_closes_at, booking.booked_timezone),
+        # Just the clock time, "5:00 PM" — for "joining opens at …".
+        "start_time": _when(booking.scheduled_at, booking.booked_timezone).split(" at ")[1],
         "timezone": booking.booked_timezone,
         "duration": booking.duration_display,
         "minutes_until": minutes_until,
