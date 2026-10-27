@@ -1,0 +1,13 @@
+{% extends "emails/_base.html" %}
+{% block content %}
+<p style="margin:0 0 6px;">Hi {{ first_name }},</p>
+<p style="margin:0;">You've started <strong>{{ exam_name }}</strong> as an instant exam — it's booked for now.</p>
+{% include "emails/_details.html" %}
+{% comment %}
+  A live button is right here, unlike the reminders: the booking starts now,
+  so joining is open from the moment this email is sent until the window closes.
+{% endcomment %}
+<p style="margin:0 0 14px;">If you leave before beginning, you can come back and start it until <strong>{{ closes }}</strong> ({{ timezone }}).</p>
+{% include "emails/_button.html" with url=join_url label="Open the exam" %}
+<p style="margin:14px 0 0;font-size:13.5px;color:#666666;">An instant exam can't be rescheduled or cancelled.</p>
+{% endblock %}

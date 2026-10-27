@@ -1,0 +1,15 @@
+{% autoescape off %}Hi {{ first_name }},
+
+You've started {{ exam_name }} as an instant exam — it's booked for now.
+
+Exam: {{ exam_name }} ({{ round_label }} round)
+Booked for: {{ when }} ({{ timezone }})
+{% if is_subjective %}Submit by: {{ closes }} ({{ timezone }}){% else %}Duration: {{ duration }}{% endif %}
+Booking reference: {{ ref }}
+
+If you leave before beginning, you can come back and start it until {{ closes }} ({{ timezone }}): {{ join_url }}
+An instant exam can't be rescheduled or cancelled.
+
+Questions? Just reply to this email.
+
+TestMu AI Certifications{% endautoescape %}

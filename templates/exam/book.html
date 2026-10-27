@@ -76,18 +76,18 @@
         </div>
 
         {% comment %}
-          Start Instant Exam — book the chosen exam for right now and start it,
-          skipping the calendar. Enabled as soon as an exam is chosen; no date
-          or time is needed.
+          Start Instant Exam — books the chosen exam for right now and goes
+          straight to its T&C page, skipping the calendar. Enabled as soon as
+          an exam is chosen; no date or time is needed.
 
-          FRONT END ONLY FOR NOW. type="button", so it never submits the
-          booking form below; it does nothing until the instant-booking view
-          exists. That view must re-check everything (the exam, the
-          one-open-booking and clash rules) — :disabled is only a convenience.
-          White with a border, so it reads as the secondary choice beside the
-          black Confirm booking.
+          A submit button with formaction: it sends this same form — the hidden
+          exam and timezone inputs below — to start_instant_exam instead of
+          book. The date/hour/minute it also carries are ignored there. The
+          view re-checks everything (InstantBookingForm); :disabled is only a
+          convenience. White with a border, so it reads as the second choice
+          beside the black Confirm booking.
         {% endcomment %}
-        <button type="button" :disabled="!examSlug"
+        <button type="submit" formaction="{% url 'exam:start_instant_exam' %}" :disabled="!examSlug"
                 :title="examSlug ? 'Book this exam for now and start it straight away' : 'Choose an exam first'"
                 class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-5 text-sm font-semibold text-zinc-900 hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-zinc-300 disabled:hover:bg-white">
           <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.34-5.89a1.5 1.5 0 0 0 0-2.54L6.3 2.84Z"/></svg>

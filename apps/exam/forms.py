@@ -54,6 +54,100 @@ def occupied_minutes(exam):
     return 0
 
 
+# ---- Booking rules shared by every way of booking ------------------------
+#
+# One copy of each rule, called by BookingForm (/book, Book Exam),
+# RescheduleForm and InstantBookingForm (Start Instant Exam). Two copies of a
+# rule drift, and a drifted rule means one route accepts what another refuses.
+
+def first_round_type(exam):
+    """
+    The round a new booking is for. Objective for every format except a
+    subjective-only exam, which has no objective round to sit. The subjective
+    round of a `both` exam is never booked directly — submit_exam creates it.
+    """
+    return Exam.Type.SUBJECTIVE if exam.exam_type == Exam.Type.SUBJECTIVE else Exam.Type.OBJECTIVE
+
+
+def open_booking_error(candidate, exam):
+    """
+    The one-open-booking-per-exam rule, as a message — or None if it allows
+    this booking.
+
+    The database already enforces it (the one_open_booking_per_exam
+    constraint), but only at save time, where a violation is a crash rather
+    than a message. Checking it in the form puts it in form.errors. The
+    conditions mirror the constraint's: same candidate, exam and round, status
+    booked, attended or under review. A graded booking does not count, so a
+    candidate can sit an exam again once the last attempt is graded.
+    """
+    already_open = ExamBooking.objects.filter(
+        candidate=candidate,
+        exam=exam,
+        round_type=first_round_type(exam),
+        status__in=[
+            ExamBooking.Status.BOOKED,
+            ExamBooking.Status.ATTENDED,
+            ExamBooking.Status.UNDER_REVIEW,
+        ],
+    ).exists()
+    if already_open:
+        return (
+            f"There is already an open booking for {exam.exam_name}. "
+            f"Cancel or finish it before booking again."
+        )
+    return None
+
+
+def check_clash(candidate, exam, scheduled_at, exclude_booking=None):
+    """
+    Rejects a slot that leaves less than BOOKING_GAP_MINUTES clear either
+    side of an exam this candidate has already booked.
+
+    Two exams clash when neither finishes far enough ahead of the other
+    starting:
+
+        new_start   <  existing_end + gap   AND
+        other_start <  new_end      + gap
+
+    Done in Python rather than SQL because each booking's end depends on its
+    own exam's duration, and a candidate has only a handful of open bookings —
+    so the query stays trivial. Skipped with no candidate: "this candidate's
+    other bookings" has no meaning for an anonymous booking.
+    """
+    if candidate is None or candidate.pk is None:
+        return
+
+    gap = timedelta(minutes=settings.BOOKING_GAP_MINUTES)
+    new_end = scheduled_at + timedelta(minutes=occupied_minutes(exam))
+
+    others = ExamBooking.objects.filter(
+        candidate=candidate, status=ExamBooking.Status.BOOKED
+    ).select_related("exam")
+    if exclude_booking is not None:
+        # Rescheduling: a booking must not clash with itself.
+        others = others.exclude(pk=exclude_booking.pk)
+
+    for other in others:
+        other_end = other.scheduled_at + timedelta(minutes=occupied_minutes(other.exam))
+        if scheduled_at < other_end + gap and other.scheduled_at < new_end + gap:
+            local = timezones.to_local(other.scheduled_at, other.booked_timezone)
+            raise forms.ValidationError(
+                f"This clashes with {other.exam.exam_name} on "
+                f"{local:%a, %d %b %Y at %H:%M} ({other.booked_timezone}). "
+                f"Leave at least {settings.BOOKING_GAP_MINUTES} minutes "
+                f"between exams."
+            )
+
+
+def clean_timezone_name(value):
+    """A timezone from the browser, canonicalised — or a form error if it is not a real one."""
+    name = timezones.canonical(value)
+    if not timezones.is_valid(name):
+        raise forms.ValidationError("Unknown timezone.")
+    return name
+
+
 class ScheduleForm(forms.Form):
     """Picks a moment in time and validates it against the booking window."""
 
@@ -76,51 +170,11 @@ class ScheduleForm(forms.Form):
         raise NotImplementedError
 
     def _check_clash(self, scheduled_at):
-        """
-        Rejects a slot that leaves less than BOOKING_GAP_MINUTES clear either
-        side of an exam this candidate has already booked.
-
-        Two exams clash when neither finishes far enough ahead of the other
-        starting:
-
-            new_start   <  existing_end + gap   AND
-            other_start <  new_end      + gap
-
-        Done in Python rather than SQL because each booking's end depends on
-        its own exam's duration, and a candidate has only a handful of open
-        bookings — so the query stays trivial.
-        """
-        if self.candidate is None or self.candidate.pk is None:
-            return
-
-        gap = timedelta(minutes=settings.BOOKING_GAP_MINUTES)
-        new_end = scheduled_at + timedelta(minutes=occupied_minutes(self.new_exam()))
-
-        others = ExamBooking.objects.filter(
-            candidate=self.candidate, status=ExamBooking.Status.BOOKED
-        ).select_related("exam")
-        if self.exclude_booking is not None:
-            # Rescheduling: a booking must not clash with itself.
-            others = others.exclude(pk=self.exclude_booking.pk)
-
-        for other in others:
-            other_end = other.scheduled_at + timedelta(
-                minutes=occupied_minutes(other.exam)
-            )
-            if scheduled_at < other_end + gap and other.scheduled_at < new_end + gap:
-                local = timezones.to_local(other.scheduled_at, other.booked_timezone)
-                raise forms.ValidationError(
-                    f"This clashes with {other.exam.exam_name} on "
-                    f"{local:%a, %d %b %Y at %H:%M} ({other.booked_timezone}). "
-                    f"Leave at least {settings.BOOKING_GAP_MINUTES} minutes "
-                    f"between exams."
-                )
+        """The clash rule — see check_clash — for this form's exam and candidate."""
+        check_clash(self.candidate, self.new_exam(), scheduled_at, self.exclude_booking)
 
     def clean_timezone(self):
-        name = timezones.canonical(self.cleaned_data["timezone"])
-        if not timezones.is_valid(name):
-            raise forms.ValidationError("Unknown timezone.")
-        return name
+        return clean_timezone_name(self.cleaned_data["timezone"])
 
     def clean(self):
         cleaned = super().clean()
@@ -166,45 +220,18 @@ class BookingForm(ScheduleForm):
 
     def clean(self):
         """
-        Adds the one-open-booking-per-exam rule to the parent's date and clash
-        checks.
-
-        The database already enforces it (the one_open_booking_per_exam
-        constraint), but only at save time, where a violation is a crash rather
-        than a message. Checking it here puts it in form.errors, so the page
-        comes back with the reason and everything still filled in. The
-        conditions mirror the constraint's: same candidate, exam and round,
-        status booked, attended or under review. A graded booking does not
-        count, so a candidate can sit an exam again once the last attempt is
-        graded.
+        Adds the one-open-booking-per-exam rule (open_booking_error) to the
+        parent's date and clash checks, so the page comes back with the reason
+        and everything still filled in.
         """
         cleaned = super().clean()
         exam = cleaned.get("exam")
         if exam is None or self.candidate is None or self.candidate.pk is None:
             # Exam already rejected, or no one to check against.
             return cleaned
-
-        # Same round rule as save() below.
-        round_type = (
-            Exam.Type.SUBJECTIVE
-            if exam.exam_type == Exam.Type.SUBJECTIVE
-            else Exam.Type.OBJECTIVE
-        )
-        already_open = ExamBooking.objects.filter(
-            candidate=self.candidate,
-            exam=exam,
-            round_type=round_type,
-            status__in=[
-                ExamBooking.Status.BOOKED,
-                ExamBooking.Status.ATTENDED,
-                ExamBooking.Status.UNDER_REVIEW,
-            ],
-        ).exists()
-        if already_open:
-            raise forms.ValidationError(
-                f"There is already an open booking for {exam.exam_name}. "
-                f"Cancel or finish it before booking again."
-            )
+        error = open_booking_error(self.candidate, exam)
+        if error:
+            raise forms.ValidationError(error)
         return cleaned
 
     def save(self, candidate=None, booked_by=None) -> ExamBooking:
@@ -221,15 +248,70 @@ class BookingForm(ScheduleForm):
             candidate=candidate,
             booked_by=booked_by or candidate,
             exam=exam,
-            # Which round a candidate is booking. Round one is objective for
-            # every format except a subjective-only exam, which has no objective
-            # round to sit. The subjective round of a `both` exam is not booked
-            # here — it does not exist until the objective one is submitted.
-            round_type=(
-                Exam.Type.SUBJECTIVE
-                if exam.exam_type == Exam.Type.SUBJECTIVE
-                else Exam.Type.OBJECTIVE
-            ),
+            round_type=first_round_type(exam),
+            scheduled_at=self.cleaned_data["scheduled_at"],
+            booked_timezone=self.cleaned_data["timezone"],
+        )
+
+class InstantBookingForm(forms.Form):
+    """
+    Start Instant Exam, from the booking page: books the chosen exam for
+    *now*, so the candidate can go straight to the T&C page and begin.
+
+    The same rules as any booking — a published exam, one open booking per
+    exam, no clash with the candidate's other bookings — except the date
+    window: the "at least BOOKING_MIN_DAYS_AHEAD ahead" rule is exactly what an
+    instant start skips. A plain Form, not a ModelForm: the browser sends only
+    the exam and the timezone, and save() builds the booking itself.
+
+    Posted by the booking page's own form (the button's formaction), so it
+    also carries date, hour and minute; they are not fields here and are
+    ignored.
+    """
+
+    exam = forms.ModelChoiceField(
+        queryset=Exam.objects.filter(status=Exam.Status.PUBLISHED),
+        to_field_name="slug",
+        error_messages={
+            "required": "Choose an exam first.",
+            "invalid_choice": "That exam is not available.",
+        },
+    )
+    #: The candidate's zone, from the page's timezone picker — what their
+    #: confirmation email and booking page show the time in.
+    timezone = forms.CharField(max_length=64)
+
+    def __init__(self, *args, candidate=None, **kwargs):
+        self.candidate = candidate
+        super().__init__(*args, **kwargs)
+
+    def clean_timezone(self):
+        return clean_timezone_name(self.cleaned_data["timezone"])
+
+    def clean(self):
+        cleaned = super().clean()
+        exam = cleaned.get("exam")
+        if exam is None:
+            return cleaned  # already an error on the field
+        # The moment the booking will hold — read once, so the clash check
+        # and save() agree on it.
+        cleaned["scheduled_at"] = dj_timezone.now()
+        if self.candidate is None or self.candidate.pk is None:
+            return cleaned
+        error = open_booking_error(self.candidate, exam)
+        if error:
+            raise forms.ValidationError(error)
+        check_clash(self.candidate, exam, cleaned["scheduled_at"])
+        return cleaned
+
+    def save(self, candidate) -> ExamBooking:
+        """Creates the booking, starting now. The candidate booked it themselves."""
+        exam = self.cleaned_data["exam"]
+        return ExamBooking.objects.create(
+            candidate=candidate,
+            booked_by=candidate,
+            exam=exam,
+            round_type=first_round_type(exam),
             scheduled_at=self.cleaned_data["scheduled_at"],
             booked_timezone=self.cleaned_data["timezone"],
         )

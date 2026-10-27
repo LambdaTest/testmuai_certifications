@@ -38,6 +38,8 @@ from .forms import (
     SubjectForm,
     ImportQuestionsForm,
     ExamSheetFormSubjective,
+    InstantBookingForm,
+    open_booking_error,
 )
 from .models import (Exam, ExamBooking, ExamSheet, ExamSheetQuestion,
                      Subject, SubjectiveSubmission, Question, Audio, Video)
@@ -133,6 +135,39 @@ def book(request):
         "booked": booked,
     }
     return render(request, "exam/book.html", context)
+
+@login_required
+@require_POST
+def start_instant_exam(request):
+    """
+    Start Instant Exam: books the chosen exam for now and sends the candidate
+    straight to its T&C page, where "I'm ready to begin" starts the paper.
+
+    POST only — it creates a booking, so a link, a prefetch or the back button
+    must not be able to. The form re-checks everything the button's
+    enabled-state suggests: the exam, one open booking per exam, and clashes
+    with the candidate's other bookings. A refused start goes back to the
+    booking page with the reason.
+    """
+    form = InstantBookingForm(request.POST, candidate=request.user)
+    if not form.is_valid():
+        for errors in form.errors.values():
+            for error in errors:
+                messages.error(request, error)
+        return redirect("exam:book")
+
+    try:
+        with transaction.atomic():
+            booking = form.save(candidate=request.user)
+            queue_email("instant_booking", booking, actor=request.user)
+    except IntegrityError:
+        # A double-click: both requests passed the form's open-booking check
+        # before either saved, and the database refused the second.
+        messages.error(request, open_booking_error(request.user, form.cleaned_data["exam"])
+                       or "There is already an open booking for this exam.")
+        return redirect("exam:book")
+
+    return redirect("exam:start_exam_termsandconditions", booking_id=booking.booking_id)
 
 
 @login_required

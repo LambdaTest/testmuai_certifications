@@ -53,6 +53,16 @@ def _still_booked_at_that_time(row, b, now):
     return None
 
 
+def _instant_still_joinable(row, b, now):
+    # Begun already is fine — the email is still the record of the booking.
+    # Only once joining has closed would "you can rejoin until…" be untrue.
+    if b.status not in (S.BOOKED, S.ATTENDED):
+        return f"booking is now {b.get_status_display().lower()}"
+    if now >= b.join_closes_at:
+        return "the join window has closed"
+    return None
+
+
 def _still_cancelled(row, b, now):
     return None if b.status == S.CANCELLED else f"booking is now {b.get_status_display().lower()}"
 
@@ -89,6 +99,14 @@ EVENTS = {
         mailer="exam", template="booking_confirmed",
         key=lambda b: f"booking_confirmed:{b.booking_id}",
         skip_reason=_still_booked, calendar="event",
+    ),
+    # Start Instant Exam: booked for now, and the candidate is on the T&C
+    # page already. No calendar invite — it is happening now — and no
+    # reschedule or cancel, which closed before it was booked.
+    "instant_booking": EmailEvent(
+        mailer="exam", template="instant_booking",
+        key=lambda b: f"instant_booking:{b.booking_id}",
+        skip_reason=_instant_still_joinable,
     ),
     # An admin booked on the candidate's behalf (Candidate Center → Book Exam).
     "booked_by_admin": EmailEvent(
