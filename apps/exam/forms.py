@@ -249,7 +249,10 @@ class RescheduleForm(ScheduleForm):
     def apply(self, booking: ExamBooking) -> ExamBooking:
         booking.scheduled_at = self.cleaned_data["scheduled_at"]
         booking.booked_timezone = self.cleaned_data["timezone"]
-        booking.save(update_fields=["scheduled_at", "booked_timezone", "updated_at"])
+        # Up, so the updated invite moves the event already in the
+        # candidate's calendar instead of adding a second one.
+        booking.calendar_sequence += 1
+        booking.save(update_fields=["scheduled_at", "booked_timezone", "calendar_sequence", "updated_at"])
         return booking
 
 

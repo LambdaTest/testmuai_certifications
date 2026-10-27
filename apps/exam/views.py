@@ -23,6 +23,7 @@ from django.views.decorators.http import require_GET, require_POST
 from . import imports
 from . import timezones
 from .calendar import build_ics
+from .emails import queue_email
 from . import forms as exam_forms
 from .forms import (
     AnswerOptionFormSet,
@@ -100,6 +101,7 @@ def book(request):
         # Both come alive now, which is the point — but it means a booking that
         # would have been accepted yesterday can be rejected today.
         booking = form.save(candidate=candidate)
+        queue_email("booking_confirmed", booking, actor=candidate)
         # Redirect after POST. Reloading then re-issues a harmless GET instead
         # of re-submitting the form and creating a second booking.
         return redirect(f"{reverse('exam:book')}?booked={booking.booking_id}")
@@ -147,7 +149,14 @@ def booking_ics(request, booking_id):
         booking_id=booking_id,
         candidate=request.user,
     )
-    body = build_ics(booking, url=request.build_absolute_uri(reverse("home:dashboard")))
+    # The booking's current sequence, the same the emails attach — so a file
+    # downloaded after a reschedule moves the event rather than duplicating it.
+    body = build_ics(
+        booking,
+        sequence=booking.calendar_sequence,
+        cancelled=booking.status == ExamBooking.Status.CANCELLED,
+        url=request.build_absolute_uri(reverse("home:dashboard")),
+    )
 
     response = HttpResponse(body, content_type="text/calendar; charset=utf-8")
     # Without this the browser renders the text instead of saving a file.
@@ -188,6 +197,7 @@ def reschedule(request, booking_id):
     )
     if request.method == "POST" and form.is_valid():
         form.apply(booking)
+        queue_email("booking_rescheduled", booking, actor=request.user)
         return redirect("home:dashboard")
 
     exam = booking.exam
@@ -327,7 +337,10 @@ def cancel_booking(request, booking_id):
         # candidate cancelled" is never confused with "nobody knows who".
         booking.cancelled_by = request.user
         booking.cancelled_at = timezone.now()
+        # Up, so the cancelling invite in the email removes the calendar event.
+        booking.calendar_sequence += 1
         booking.save()
+        queue_email("booking_cancelled", booking, actor=request.user)
         return redirect("home:dashboard")
 
     return redirect("home:dashboard")
@@ -1246,13 +1259,22 @@ def submit_exam(request, booking_id):
             booking.status = ExamBooking.Status.UNDER_REVIEW
             booking.save(update_fields=["status", "updated_at"])
         marks_obtained = grade_exam(booking, sheet)
+        # An objective-only exam is complete the moment it is submitted and
+        # marked, so it is graded now — which also releases it, letting the
+        # candidate book the exam again. On a two-round exam round one stays
+        # attended and keeps holding the exam until round two ends: graded
+        # (grade_an_exam grades both) or missed (sweeps.mark_missed_bookings
+        # cancels this one).
+        if booking.round_type == Exam.Type.OBJECTIVE and booking.exam.exam_type != Exam.Type.BOTH:
+            booking.status = ExamBooking.Status.GRADED
+            booking.save(update_fields=["status", "updated_at"])
         # create a new booking if the exam is a two-round exam and the current round is objective
         is_first_of_two = (
             booking.exam.exam_type == Exam.Type.BOTH
             and booking.round_type == Exam.Type.OBJECTIVE
         )
         if is_first_of_two:
-            ExamBooking.objects.create(
+            second_round = ExamBooking.objects.create(
                 candidate=booking.candidate,
                 exam=booking.exam,
                 round_type=Exam.Type.SUBJECTIVE,
@@ -1261,6 +1283,7 @@ def submit_exam(request, booking_id):
                 booked_timezone=booking.booked_timezone,
                 scheduled_at=sheet.submitted_at + timedelta(minutes=Exam.ROUND_GAP_MINUTES),
             )
+            queue_email("second_round_open", second_round, actor=request.user)
 
     # Messages after the transaction, so a rollback never leaves a success banner
     # for a submission that did not happen.
@@ -1421,6 +1444,13 @@ def grade_an_exam(request, booking_id):
         booking.save(update_fields=[
             "marks_obtained", "maximum_marks", "feedback", "graded_by", "graded_at", "status", "updated_at",
         ])
+        # The second round of a two-round exam: grading it completes the
+        # exam, so round one — attended, holding the exam until now — is
+        # graded with it, and the candidate may book the exam again.
+        if booking.parent_booking_id:
+            ExamBooking.objects.filter(
+                pk=booking.parent_booking_id, status=ExamBooking.Status.ATTENDED,
+            ).update(status=ExamBooking.Status.GRADED, updated_at=timezone.now())
 
     messages.success(
         request,
@@ -1478,6 +1508,7 @@ def book_exam_admin(request):
             # and the page can still be rendered.
             with transaction.atomic():
                 booking = form.save(candidate=candidate, booked_by=request.user)
+                queue_email("booked_by_admin", booking, actor=request.user)
         except IntegrityError:
             # The form already checks one-open-booking-per-exam; this catches
             # the race it cannot — a double-click sending two requests that
@@ -1661,9 +1692,14 @@ def cancel_exam_admin_confirm(request, booking_id):
             locked.cancelled_by = request.user
             locked.cancelled_at = timezone.now()
             locked.cancellation_reason = form.cleaned_data["reason"]
+            locked.calendar_sequence += 1
             locked.save(update_fields=[
-                "status", "cancelled_by", "cancelled_at", "cancellation_reason", "updated_at",
+                "status", "cancelled_by", "cancelled_at", "cancellation_reason",
+                "calendar_sequence", "updated_at",
             ])
+            # Inside the transaction: the email is recorded with the
+            # cancellation and sent once it commits. It carries no reason.
+            queue_email("booking_cancelled_by_admin", locked, actor=request.user)
         messages.success(
             request,
             f"Cancelled {booking.exam.exam_name} for "

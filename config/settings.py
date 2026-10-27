@@ -146,3 +146,63 @@ BOOKING_CHANGE_CUTOFF_MINUTES = 10
 #: candidates, for the emergency a candidate reports at the last minute.
 #: Still before the start, so a paper can never be cancelled once begun.
 ADMIN_CANCEL_CUTOFF_MINUTES = 5
+
+
+# --- Email ------------------------------------------------------------------
+#
+# Sent over SMTP, through apps.exam.emails — never from a view directly. Where
+# it goes is only these settings: locally Mailpit (docker compose, inbox at
+# http://localhost:8025), in production Gmail. The code is the same for both.
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "1025"))
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", False)
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+#: Seconds to wait on the mail server. Without it a hung server hangs the
+#: request that sent the email; with it the send fails and is retried.
+EMAIL_TIMEOUT = 10
+
+#: The one sending address. Every mailer sends from it; they differ only in
+#: display name and subject prefix.
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "certifications@testmuai.com")
+#: Where replies go — the same company address, so a candidate can reply with
+#: a question. Never a no-reply address.
+EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO", DEFAULT_FROM_EMAIL)
+
+#: The site's own address, for links in emails. Emails need absolute links
+#: (https://…/assessment/…); a page's relative links mean nothing in an inbox.
+SITE_URL = os.environ.get("SITE_URL", "http://127.0.0.1:8000").rstrip("/")
+
+#: Mailers: one per kind of email, all from DEFAULT_FROM_EMAIL. The display
+#: name is what the inbox shows as the sender; the prefix starts every
+#: subject ("Exam Update: Your booking is confirmed").
+MAILERS = {
+    "exam": {"display_name": "TestMu AI Certifications", "subject_prefix": "Exam Update"},
+    "reminders": {"display_name": "TestMu AI Certifications", "subject_prefix": "Reminder"},
+    "results": {"display_name": "TestMu AI Certifications", "subject_prefix": "Results"},
+    "staff": {"display_name": "TestMu AI Certifications", "subject_prefix": "Staff"},
+}
+
+#: The demo (PythonAnywhere) only: send each email to the person whose action
+#: caused it — the candidate who booked, the admin who cancelled — instead of
+#: to the candidate. Reviewers then receive what their own clicks trigger, and
+#: nobody else is emailed. Emails from the scheduled job (reminders, expiry)
+#: go to whoever made the booking. Off everywhere else; production never sets it.
+EMAIL_SEND_TO_ACTOR = env_bool("EMAIL_SEND_TO_ACTOR", False)
+
+#: Retries after a failed send: minutes to wait before attempts 2, 3, 4 and 5.
+#: After EMAIL_MAX_ATTEMPTS the email is left as failed, with its last error.
+EMAIL_RETRY_DELAYS_MINUTES = [1, 5, 15, 30]
+EMAIL_MAX_ATTEMPTS = 5
+#: Sent and skipped emails are deleted after this many days. Failed ones are
+#: kept, for whoever looks into "I never got my email".
+EMAIL_RETENTION_DAYS = 90
+#: Reminders, in minutes before the start. Each is sent once, between its own
+#: mark and the next one's — never after the exam has started.
+EMAIL_REMINDER_MINUTES = [60, 30]
+#: "Booking expired" goes this long after the join window closes: start + 45
+#: minutes + 3 hours for an objective round, start + 36 hours + 3 hours for a
+#: subjective one.
+EMAIL_EXPIRED_DELAY_HOURS = 3

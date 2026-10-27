@@ -1,0 +1,1 @@
+{% autoescape off %}{% if is_second_round %}Your {{ exam_name }} exam has been cancelled{% else %}Your {{ exam_name }} booking has expired{% endif %}{% endautoescape %}

@@ -1,0 +1,17 @@
+{% comment %}The booking at a glance: exam, round, time in the candidate's zone, length, reference.{% endcomment %}
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+       style="margin:18px 0;background:#F8F9FB;border:1px solid #E8E8E8;border-radius:10px;font-size:14px;">
+  <tr><td style="padding:14px 18px;">
+    <div style="color:#98A0AB;font-size:12px;">Exam</div>
+    <div style="color:#101010;font-weight:bold;">{{ exam_name }} · {{ round_label }} round</div>
+    <div style="color:#98A0AB;font-size:12px;margin-top:10px;">{% if is_subjective %}Opens{% else %}Starts{% endif %}</div>
+    <div style="color:#101010;">{{ when }} <span style="color:#666666;">({{ timezone }})</span></div>
+    {% if is_subjective %}
+      <div style="color:#98A0AB;font-size:12px;margin-top:10px;">Submit by</div>
+      <div style="color:#101010;">{{ closes }} <span style="color:#666666;">({{ timezone }})</span></div>
+    {% else %}
+      <div style="color:#98A0AB;font-size:12px;margin-top:10px;">Duration</div>
+      <div style="color:#101010;">{{ duration }}</div>
+    {% endif %}
+  </td></tr>
+</table>

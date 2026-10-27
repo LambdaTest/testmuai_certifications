@@ -1,0 +1,8 @@
+{% extends "emails/_base.html" %}
+{% block content %}
+<p style="margin:0 0 6px;">Hi {{ first_name }},</p>
+<p style="margin:0;">Your exam has been moved to a new time.</p>
+{% include "emails/_details.html" %}
+<p style="margin:0 0 14px;">An updated calendar invite is attached — opening it moves the event already in your calendar.</p>
+{% include "emails/_button.html" with url=booking_url label="View your booking" %}
+{% endblock %}

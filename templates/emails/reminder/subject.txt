@@ -1,0 +1,1 @@
+{% autoescape off %}{{ exam_name }} starts in {{ minutes_until }} minutes{% endautoescape %}

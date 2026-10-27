@@ -1,0 +1,18 @@
+{% autoescape off %}Hi {{ first_name }},
+
+Your exam is booked.
+
+Exam: {{ exam_name }} ({{ round_label }} round)
+{% if is_subjective %}Opens: {{ when }} ({{ timezone }})
+Submit by: {{ closes }} ({{ timezone }}){% else %}Starts: {{ when }} ({{ timezone }})
+Duration: {{ duration }}{% endif %}
+Booking reference: {{ ref }}
+
+A calendar invite is attached — add it so the time is in your calendar.
+You can join from {% if is_subjective %}the moment the window opens{% else %}the start time until {{ duration }} after it{% endif %}: {{ booking_url }}
+
+Need to change it? You can reschedule or cancel from your booking until {{ change_cutoff_minutes }} minutes before the start.
+
+Questions? Just reply to this email.
+
+TestMu AI Certifications{% endautoescape %}

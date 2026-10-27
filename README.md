@@ -3,7 +3,7 @@
 In-house platform for delivering TestMu AI professional certifications — booking, exam delivery,
 grading, and credential issuance. Replaces our current external vendor.
 
-> **Status:** seven journeys work end to end.
+> **Status:** eight journeys work end to end.
 >
 > - **Candidate** — book, reschedule and cancel (until 10 minutes before), calendar invites,
 >   dashboard, and My Assessments lists that follow the clock, not only the stored status.
@@ -24,9 +24,12 @@ grading, and credential issuance. Replaces our current external vendor.
 >   booking), Book Exam on a candidate's behalf, Cancel Exam with a reason, and Export Candidates
 >   to CSV.
 >
+> - **Email** — booking, reschedule, cancellation, reminder, second-round and expiry emails with
+>   calendar invites, through an outbox with retries; a scheduled job sends reminders and closes
+>   missed bookings. Tested against Mailpit; production sending waits on IT's Gmail App Password.
+>
 > Not started: combined two-round results against the pass percentage, result release, and
-> credentials. Emails (SMTP), the reminders and the scheduled job behind them are planned. See
-> [`docs/master-spec.md`](docs/master-spec.md).
+> credentials. See [`docs/master-spec.md`](docs/master-spec.md).
 
 ## Stack
 
@@ -35,8 +38,8 @@ grading, and credential issuance. Replaces our current external vendor.
 | Backend | Django 5.2 |
 | Database | PostgreSQL 17 — everywhere, including local development |
 | Frontend | Django templates + Tailwind + Alpine.js *(both from CDN, no build step yet)* |
-| Background jobs | One management command run by cron every minute: reminder emails 60 and 30 minutes before each exam, plus the sweep of missed bookings and abandoned papers *(planned)*; Celery + Redis later, for regrades and heavier work *(not wired up — commented out in `requirements.txt`)* |
-| Email | SMTP *(credentials available; not wired up yet)* |
+| Background jobs | `manage.py run_scheduled_jobs`, every minute (cron; an always-on `--loop` task on PythonAnywhere): reminders, missed bookings, sending and retrying email, cleanup. Closing abandoned papers is next. Celery + Redis only if heavier work appears *(not wired up — commented out in `requirements.txt`)* |
+| Email | SMTP through `apps/exam/emails` — Mailpit locally, Gmail in production *(waiting on IT for the App Password)* |
 | Hosting | AWS — EC2/Elastic Beanstalk + RDS *(not set up yet)* |
 
 ## Running it
@@ -45,7 +48,8 @@ grading, and credential issuance. Replaces our current external vendor.
 version RDS runs:
 
 ```bash
-docker compose up -d          # start (also brings up Redis, unused for now)
+docker compose up -d          # start Postgres, Mailpit (email inbox at http://localhost:8025)
+                              # and Redis (unused for now)
 docker compose down           # stop, data survives
 docker compose down -v        # stop and wipe the database
 ```
@@ -105,6 +109,8 @@ apps/
     exports.py  Export Candidates: the fixed column lists and the CSV writer
   exam/         the assessment domain — subjects, exams, questions, bookings, exam sheets,
                 grading, and to come: credentials
+    emails/     outbound email: queue_email(), the event registry, the sender, the job steps
+    sweeps.py   booking housekeeping for the scheduled job (missed bookings)
     imports.py  CSV parsing for the question importer — plain functions, no request, no forms
     calendar.py .ics generation
     timezones.py the one place a wall-clock time becomes a UTC instant
@@ -499,6 +505,56 @@ Admin-only, never examiners: it is the one place a booking reference turns back 
 
 Emailing the candidate about an admin's booking or cancellation waits for SMTP.
 
+## Email
+
+Views never send mail. They call one function, after the change it reports:
+
+```python
+from .emails import queue_email
+queue_email("booking_confirmed", booking, actor=request.user)
+```
+
+which records an `OutboundEmail` row and sends it **right after the transaction commits** — never
+for a change that rolled back. If that send fails, the scheduled job retries it.
+
+```
+apps/exam/emails/
+  __init__.py   queue_email()   — the only thing views import
+  registry.py   EVENTS          — each email: mailer, templates, dedupe key, calendar invite, skip rule
+  context.py    build_context() — what templates receive: times as text in the candidate's zone, absolute links
+  sender.py     send_pending()  — the only code that talks to SMTP; records the outcome
+  jobs.py       the email steps of run_scheduled_jobs
+templates/emails/<event>/       subject.txt · body.txt · body.html (extends emails/_base.html)
+```
+
+**The emails:** booking confirmed and booked by an admin (with the `.ics`), rescheduled (updated
+`.ics`), cancelled by the candidate or an admin (an `.ics` that removes the event; never the
+admin's reason), reminders 60 and 30 minutes before, second round open, booking expired.
+
+**Mailers** (`settings.MAILERS`) — one sending address (`DEFAULT_FROM_EMAIL`), replies to the same
+company address (`EMAIL_REPLY_TO`), never no-reply. Each kind of email has a subject prefix:
+*Exam Update*, *Reminder*, *Results*, *Staff*.
+
+**The outbox** (`OutboundEmail`) is metadata only — no bodies — so a lakh of rows is tens of MB.
+Statuses: `pending` (waiting, or retrying at `next_attempt_at`), `sent`, `failed` (5 attempts at 1,
+5, 15 and 30 minutes, or a refused address; kept for support), `skipped` (no longer true when its
+turn came — a reminder for a cancelled booking, or one that would arrive after the start).
+`detail` holds the last error or the skip reason.
+
+**The dedupe key** — unique per row — is what stops the every-minute job sending a reminder every
+minute: queueing the same email twice returns the existing row. It includes the scheduled time
+where that matters, so a rescheduled booking gets fresh reminders.
+
+**Calendar invites** carry `ExamBooking.calendar_sequence`, raised on every reschedule and cancel,
+so the candidate's calendar moves or removes the event it already has. The `.ics` download uses
+the same number.
+
+**Locally**, everything goes to **Mailpit** (`docker compose`; inbox at http://localhost:8025) —
+nothing is delivered. Production points `EMAIL_HOST` at Gmail in `.env`; no code changes. On the
+PythonAnywhere demo, `EMAIL_SEND_TO_ACTOR=True` sends each email to the person whose action caused
+it (the subject says whose email it really was), so reviewers see what their clicks trigger and
+nobody else is emailed.
+
 ## Three rules to know before writing anything
 
 **1. Timezone conversion happens in one place.** `apps/exam/timezones.py` owns every
@@ -554,6 +610,14 @@ queue, which the admin dashboard's "awaiting grading" count reads — while an o
 Upcoming and the dashboard; a candidate who drops out returns through the reminder email's link to
 the T&C page, which accepts an `attended` booking with an unsubmitted paper and resumes it.
 
+**When an exam ends, its booking is released.** An objective-only exam is `graded` the moment it
+is submitted. A two-round exam is one exam in two parts, so round one stays `attended` — holding
+the exam — until round two ends: when round two is graded, both become `graded`; when round two is
+missed, round two becomes `no_show` and round one is `cancelled` by the system (`cancelled_by`
+empty) with the reason *"Cancellation due to no attempt on 2nd round"* — there is no pass or fail,
+the exam simply didn't happen. Either way the candidate can book the exam again. (Migration 0020
+brought existing rows into line.)
+
 **The one thing the stored status still misses is a miss.** A booking nobody began stays `booked`
 after its window has closed. `ExamBookingQuerySet` (`ExamBooking.objects`) works the candidate's
 buckets out in the database from the clock as well as the status:
@@ -573,12 +637,10 @@ Nothing here writes: each call reads the clock and filters, and a booking falls 
 whenever someone asks. The queries start from one candidate's bookings (`candidate_id` is indexed),
 so they stay cheap however large the table grows.
 
-> **What the lists can't fix.** For a missed booking, anything reading the stored status still sees
-> `booked`: the unique index above (so a candidate cannot rebook an exam they missed) and admin
-> counts. And an abandoned paper is correctly `attended` but never submitted, so it is never
-> graded. The planned per-minute job that sends reminder emails will also write both — marking
-> missed bookings `no_show` (reusing `no_show()`) and submitting abandoned papers as timeouts and
-> grading them. See `TRACKER.md`.
+> **What the job fixes.** `run_scheduled_jobs` now marks missed bookings `no_show` once their window
+> closes, so the stored status catches up within a minute and the candidate can rebook. Still open:
+> an abandoned paper is correctly `attended` but never submitted, so it is never graded — the job's
+> next step (`TRACKER.md`).
 
 **My Assessments** labels each booking with its round — Objective in blue, Subjective in amber —
 read from `round_type` rather than the exam's type, which says "both" for both rounds. An attended
@@ -616,19 +678,31 @@ When it is fixed, the design it had is worth keeping:
 Seed scripts are preferred over hand-entry through the admin — repeatable for fresh local
 databases, staging, and CI, and they show up in a diff.
 
-Recurring work starts as one management command run by cron every minute, not a Celery task. It
-will send the reminder emails and run the sweep that marks missed bookings `no_show` and submits
-abandoned papers — no broker needed, and easy to run by hand. Two rules for it:
+### `run_scheduled_jobs`
 
-- **"Due and not yet sent", never "exactly now".** Each reminder is stamped on the booking when
-  sent, and each run sends whatever is due and unstamped — so a late or skipped run delays an email
-  rather than losing it, and no run sends one twice.
-- **One server only.** On several instances, a cron on each would send every email several times;
-  run it leader-only, with a row lock as the safety net.
+Everything that happens because time passes rather than because someone clicked. Run it every
+minute — cron on a server, `--loop` as an always-on task on PythonAnywhere, or by hand locally:
 
-It reuses `ExamBookingQuerySet`, so "missed" and "abandoned" mean the same thing in the job as on
-the pages. Celery arrives with work that must happen right after a request — certificate
-generation, regrades — and the command's logic can move into a beat task unchanged.
+```bash
+.venv/bin/python manage.py run_scheduled_jobs          # once
+.venv/bin/python manage.py run_scheduled_jobs --loop   # every 60 seconds until stopped
+```
+
+Steps, each isolated — one failing is logged and the rest still run:
+
+1. **Queue reminders** — 60 and 30 minutes before a booking, each only inside its own slot, never
+   after the start, and never for a two-round exam's second round.
+2. **Mark missed bookings** — `booked` and the join window closed (start + 45 min objective,
+   + 36 h subjective) → `no_show`, and "booking expired" queued for 3 hours later. A missed second
+   round also cancels round one (see Booking model).
+3. **Send due emails** — pending emails whose time has come: retries and delayed sends.
+4. **Clean up** — sent and skipped emails older than 90 days.
+
+**"Due and not yet sent", never "exactly now"**: a late or skipped run delays an email rather than
+losing it, and the dedupe key means no run sends one twice. Rows and bookings are claimed under
+row locks, so even two overlapping runs are safe — but run it on one server. Closing abandoned
+papers (started, never submitted) is the next step to add. Celery arrives only with work that must
+happen right after a request at scale — certificate generation, regrades.
 
 ## Documentation
 
@@ -647,8 +721,8 @@ Specs live in [`docs/`](docs/), all rewritten for Django:
 
 Combined two-round results against the pass percentage ·
 saving the completion page's profile links and feedback · result release and Show Results ·
-credentials and public verification · email (SMTP) and the per-minute job that sends reminders and
-closes missed bookings and abandoned papers · recording lockdown events · `delete_question` (routed
+credentials and public verification · closing abandoned papers in the scheduled job · results and
+staff emails · recording lockdown events · `delete_question` (routed
 but stubbed) · regrading · authentication (the OIDC integration with the TestMu AI login is
 deferred, which is why `ExamBooking.candidate` is nullable) · automated tests · the Tailwind
 production build.

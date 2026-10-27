@@ -1,0 +1,10 @@
+{% extends "emails/_base.html" %}
+{% block content %}
+<p style="margin:0 0 6px;">Hi {{ first_name }},</p>
+<p style="margin:0;">Your exam is booked.</p>
+{% include "emails/_details.html" %}
+<p style="margin:0 0 14px;">A calendar invite is attached — add it so the time is in your calendar.
+{% if is_subjective %}You can start any time while the window is open.{% else %}You can join from the start time until {{ duration }} after it.{% endif %}</p>
+{% include "emails/_button.html" with url=booking_url label="View your booking" %}
+<p style="margin:14px 0 0;font-size:13.5px;color:#666666;">Need to change it? You can reschedule or cancel from your booking until {{ change_cutoff_minutes }} minutes before the start.</p>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% autoescape off %}Hi {{ first_name }},
+
+The TestMu AI team has booked an exam for you.
+
+Exam: {{ exam_name }} ({{ round_label }} round)
+{% if is_subjective %}Opens: {{ when }} ({{ timezone }})
+Submit by: {{ closes }} ({{ timezone }}){% else %}Starts: {{ when }} ({{ timezone }})
+Duration: {{ duration }}{% endif %}
+Booking reference: {{ ref }}
+
+A calendar invite is attached. Your booking: {{ booking_url }}
+
+If this time doesn't work for you, you can reschedule or cancel from your booking until {{ change_cutoff_minutes }} minutes before the start, or reply to this email.
+
+Questions? Just reply to this email.
+
+TestMu AI Certifications{% endautoescape %}

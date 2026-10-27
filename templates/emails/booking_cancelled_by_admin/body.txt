@@ -1,0 +1,14 @@
+{% autoescape off %}Hi {{ first_name }},
+
+The TestMu AI team has cancelled your booking.
+
+Exam: {{ exam_name }} ({{ round_label }} round)
+Was scheduled for: {{ when }} ({{ timezone }})
+Booking reference: {{ ref }}
+
+The attached calendar update removes it from your calendar. If you have any questions about this, just reply to this email.
+You can book the exam again here: {{ book_again_url }}
+
+Questions? Just reply to this email.
+
+TestMu AI Certifications{% endautoescape %}

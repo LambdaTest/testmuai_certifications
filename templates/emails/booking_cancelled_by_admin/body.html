@@ -1,0 +1,7 @@
+{% extends "emails/_base.html" %}
+{% block content %}
+<p style="margin:0 0 6px;">Hi {{ first_name }},</p>
+<p style="margin:0 0 14px;">The TestMu AI team has cancelled your booking for <strong>{{ exam_name }}</strong> on {{ when }} ({{ timezone }}).</p>
+<p style="margin:0 0 14px;">The attached calendar update removes it from your calendar. If you have any questions about this, just reply to this email.</p>
+{% include "emails/_button.html" with url=book_again_url label="Book again" %}
+{% endblock %}

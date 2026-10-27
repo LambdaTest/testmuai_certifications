@@ -1,0 +1,11 @@
+{% autoescape off %}Hi {{ first_name }},
+
+{% if is_second_round %}The subjective round of your {{ exam_name }} exam wasn't submitted within its 36-hour window. Both rounds make up one exam, so the exam has been cancelled.{% else %}You didn't join your {{ exam_name }} exam scheduled for {{ when }} ({{ timezone }}), so the booking has expired.{% endif %}
+
+You can book the exam again whenever you're ready: {{ book_again_url }}
+
+Booking reference: {{ ref }}
+
+Questions? Just reply to this email.
+
+TestMu AI Certifications{% endautoescape %}

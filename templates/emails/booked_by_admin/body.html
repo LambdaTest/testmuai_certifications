@@ -1,0 +1,9 @@
+{% extends "emails/_base.html" %}
+{% block content %}
+<p style="margin:0 0 6px;">Hi {{ first_name }},</p>
+<p style="margin:0;">The TestMu AI team has booked an exam for you.</p>
+{% include "emails/_details.html" %}
+<p style="margin:0 0 14px;">A calendar invite is attached — add it so the time is in your calendar.</p>
+{% include "emails/_button.html" with url=booking_url label="View your booking" %}
+<p style="margin:14px 0 0;font-size:13.5px;color:#666666;">If this time doesn't work for you, you can reschedule or cancel from your booking until {{ change_cutoff_minutes }} minutes before the start, or simply reply to this email.</p>
+{% endblock %}

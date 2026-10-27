@@ -1,0 +1,14 @@
+{% autoescape off %}Hi {{ first_name }},
+
+Your booking has been cancelled, as you asked.
+
+Exam: {{ exam_name }} ({{ round_label }} round)
+Was scheduled for: {{ when }} ({{ timezone }})
+Booking reference: {{ ref }}
+
+The attached calendar update removes it from your calendar.
+You can book the exam again whenever you're ready: {{ book_again_url }}
+
+Questions? Just reply to this email.
+
+TestMu AI Certifications{% endautoescape %}

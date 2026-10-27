@@ -26,6 +26,16 @@ services:
       timeout: 5s
       retries: 10
 
+  # A local inbox for development email. The app sends real SMTP to it
+  # (port 1025); it delivers nothing to anyone and shows every email at
+  # http://localhost:8025. Development only — production sends through Gmail.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: testmuai-mailpit
+    ports:
+      - "1025:1025"   # SMTP — EMAIL_HOST=localhost, EMAIL_PORT=1025
+      - "8025:8025"   # the inbox in the browser
+
   # Not used yet. Celery will need it for background jobs — expiring abandoned
   # attempts, releasing results, sending email.
   redis:

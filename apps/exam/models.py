@@ -654,6 +654,12 @@ class ExamBooking(models.Model):
     #: candidate's own cancellation, which asks for no reason.
     cancellation_reason = models.CharField(max_length=200, blank=True)
 
+    #: The calendar invite's SEQUENCE. A calendar moves or removes an event it
+    #: already has only when the same UID arrives with a *higher* sequence, so
+    #: this goes up on every reschedule and cancellation — and the .ics
+    #: download and the emails both read it, so they never disagree.
+    calendar_sequence = models.PositiveIntegerField(default=0)
+
     #: ExamBooking.objects keeps everything a default manager does and adds
     #: upcoming(), no_show() and attended(). Not stored, so no migration.
     objects = ExamBookingQuerySet.as_manager()
@@ -805,6 +811,75 @@ class ExamBooking(models.Model):
         from .timezones import to_local
 
         return to_local(self.scheduled_at, self.booked_timezone)
+
+class OutboundEmail(models.Model):
+    """
+    One email the platform sends, or is about to — the outbox and the log.
+
+    Views never send mail themselves: they call apps.exam.emails.queue_email,
+    which writes this row and sends it right after the transaction commits.
+    If that first attempt fails, run_scheduled_jobs retries it. So an email is
+    never lost to a mail server that was briefly down, and never sent for a
+    booking whose save rolled back.
+
+    Metadata only — the body is rendered from the booking at send time, never
+    stored, so a row stays a few hundred bytes. Sent and skipped rows are
+    deleted after settings.EMAIL_RETENTION_DAYS.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"   # waiting to be sent, or to be retried
+        SENT = "sent", "Sent"
+        FAILED = "failed", "Failed"      # given up: out of attempts, or a refused address
+        SKIPPED = "skipped", "Skipped"   # no longer relevant when its turn came
+
+    #: Which email — a key of apps.exam.emails.registry.EVENTS.
+    event = models.CharField(max_length=40)
+    #: Which mailer sent it — a key of settings.MAILERS.
+    mailer = models.CharField(max_length=20)
+
+    #: What makes this email *this* email, unique so it can never be queued
+    #: twice. The scheduled job looks at the same booking every minute; the key
+    #: is what stops a reminder going out every minute. Built per event in the
+    #: registry, e.g. "reminder_60:<booking>:<scheduled time>" — the time is in
+    #: it so a rescheduled booking gets fresh reminders.
+    dedupe_key = models.CharField(max_length=160, unique=True)
+
+    #: SET_NULL, not PROTECT: the log should never stop a booking being
+    #: removed, and should survive it.
+    booking = models.ForeignKey(
+        ExamBooking, on_delete=models.SET_NULL, related_name="emails", blank=True, null=True,
+    )
+    #: Where it actually goes — usually the candidate; on the demo
+    #: (settings.EMAIL_SEND_TO_ACTOR) the person whose action caused it.
+    recipient = models.EmailField()
+    #: The booking's scheduled time when this was queued. A reminder or a
+    #: "rescheduled" email whose booking has since moved is no longer true, and
+    #: this is how the sender tells.
+    scheduled_for = models.DateTimeField(blank=True, null=True)
+
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    #: Not before this time. Now for most emails; later for a retry, or for
+    #: "booking expired", which is queued to go 3 hours after the window ends.
+    next_attempt_at = models.DateTimeField(default=dj_timezone.now)
+    #: The last error, or why it was skipped. Empty once sent.
+    detail = models.CharField(max_length=500, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = "outbound_emails"
+        ordering = ["-created_at"]
+        indexes = [
+            # The scheduled job's one question: pending, and due?
+            models.Index(fields=["status", "next_attempt_at"], name="outbound_email_due"),
+        ]
+
+    def __str__(self):
+        return f"{self.event} → {self.recipient} ({self.status})"
+
 
 class Certificates(models.Model):
     """

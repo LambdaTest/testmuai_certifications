@@ -186,7 +186,7 @@
       {% endif %}
     </div>
 
-  {% elif booking.status == 'attended' %}
+  {% elif booking.status == 'attended' or booking.status == 'graded' %}
     <div class="mt-6 flex flex-wrap items-center gap-3">
       {% comment %}
         NEEDS A ROUTE. This points at reschedule, which is wrong — there is no

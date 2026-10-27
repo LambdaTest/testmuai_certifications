@@ -1,0 +1,11 @@
+{% extends "emails/_base.html" %}
+{% block content %}
+<p style="margin:0 0 6px;">Hi {{ first_name }},</p>
+{% if is_second_round %}
+<p style="margin:0 0 14px;">The subjective round of your <strong>{{ exam_name }}</strong> exam wasn't submitted within its 36-hour window. Both rounds make up one exam, so the exam has been cancelled.</p>
+{% else %}
+<p style="margin:0 0 14px;">You didn't join your <strong>{{ exam_name }}</strong> exam scheduled for {{ when }} ({{ timezone }}), so the booking has expired.</p>
+{% endif %}
+<p style="margin:0 0 14px;">You can book the exam again whenever you're ready{% if is_second_round %} — a new booking includes both rounds{% endif %}.</p>
+{% include "emails/_button.html" with url=book_again_url label="Book again" %}
+{% endblock %}

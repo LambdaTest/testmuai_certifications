@@ -1,0 +1,9 @@
+{% extends "emails/_base.html" %}
+{% block content %}
+<p style="margin:0 0 6px;">Hi {{ first_name }},</p>
+<p style="margin:0;">You've completed the objective round. Your second, subjective round is now booked.</p>
+{% include "emails/_details.html" %}
+<p style="margin:0 0 14px;">You have <strong>36 hours</strong> to submit it.</p>
+{% include "emails/_button.html" with url=join_url label="Start the subjective round" %}
+<p style="margin:14px 0 0;font-size:13.5px;color:#666666;">Both rounds count together: the exam is complete only once your subjective round is submitted.</p>
+{% endblock %}

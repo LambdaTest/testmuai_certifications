@@ -1,0 +1,17 @@
+{% autoescape off %}Hi {{ first_name }},
+
+You've completed the objective round. Your second, subjective round is now booked.
+
+Exam: {{ exam_name }} ({{ round_label }} round)
+{% if is_subjective %}Opens: {{ when }} ({{ timezone }})
+Submit by: {{ closes }} ({{ timezone }}){% else %}Starts: {{ when }} ({{ timezone }})
+Duration: {{ duration }}{% endif %}
+Booking reference: {{ ref }}
+
+You have 36 hours to submit it. Start here: {{ join_url }}
+
+Both rounds count together: the exam is complete only once your subjective round is submitted.
+
+Questions? Just reply to this email.
+
+TestMu AI Certifications{% endautoescape %}
