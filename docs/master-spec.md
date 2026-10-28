@@ -1,6 +1,6 @@
 # TestMu AI Certifications — Master Specification
 
-**Status:** Living document · **Owner:** Harish Rajora · **Last updated:** 2 September 2026
+**Status:** Living document · **Owner:** Harish Rajora · **Last updated:** 27 October 2026
 
 This is the top-level specification. It states what we are building and why, fixes the technology
 and the architectural rules, and indexes every module. **Detailed specs live with their modules**
@@ -37,12 +37,13 @@ platform, with results and credentials issued by us — and Eklavya switched off
 
 Everything from booking onwards:
 
-- Self-scheduled booking — candidates pick their own date and time
-- Exam delivery — timed, server-authoritative, autosaving
-- Grading, both automatic and manual
+- Self-scheduled booking — candidates pick their own date and time, or start an exam instantly
+- Exam delivery — timed, server-authoritative, autosaving; one or two rounds
+- Grading, both automatic (objective) and manual (subjective, blind)
+- Email — confirmations, changes, reminders and expiry, with calendar invites
 - Result release and notification
 - Credential issuance, public verification, and revocation
-- Admin dashboards for exams, subjects, the question bank, grading and credentials
+- Admin tools for exams, subjects, the question bank, grading, candidates and credentials
 
 ### Out of scope
 
@@ -63,9 +64,9 @@ Everything from booking onwards:
 
 | Role | Description |
 |---|---|
-| Candidate | Books an exam, sits it, receives results and a credential |
-| Admin | Authors exams, subjects and questions; assigns grading; manages credentials |
-| Examiner | Grades subjective submissions blind — they see an exam reference, never the candidate. |
+| Candidate | Books an exam (or starts one instantly), sits it, receives results and a credential |
+| Admin | Authors exams, subjects and questions; assigns and does grading; books, cancels and exports for candidates (Candidate Center); manages credentials |
+| Examiner | Grades the subjective papers assigned to them, blind — they see a booking reference, never the candidate. Own simpler layout. |
 | Public | Anyone verifying a credential. No account. |
 
 Roles are held in **our** database. The main site's login establishes identity only; it cannot
@@ -77,16 +78,26 @@ grant permissions here.
 
 ```
 Main TestMu AI site  →  existing company login  →  /book
-   choose exam + time  →  wait for it  →  instructions  →  exam  →  submit
-   →  "results will be emailed"  →  [grading]  →  admin releases  →  email  →  score report
-                                                                   →  credential issued
+   choose exam  →  pick a date and time  →  confirmation email + calendar invite
+                      →  reminders 60 and 30 min before  →  join from the start time
+             or  →  Start Instant Exam  →  booked for now
+   →  instructions (T&C)  →  "I'm ready to begin"  →  exam  →  submit  →  completion page
+        objective-only:  score shown on submit; exam graded
+        two rounds:      objective round, then the subjective round opens 30 min later for 36 h
+                         →  [examiner grades, blind]  →  exam graded
+   →  [result release and credential — not built]
 ```
 
-Two properties of this flow drive much of the design:
+Properties of this flow that drive much of the design:
 
-- **Results are released, not shown.** A score is computed at submission but withheld until an
-  admin releases it — normally for a whole cohort at once. This allows a broken answer key to be
-  caught before results go out, and prevents candidates learning outcomes ahead of their cohort.
+- **Joining opens at the start time, not before,** and stays open for the round's length (45
+  minutes objective, 36 hours subjective). Whoever begins inside that window gets the full duration
+  from the moment they begin. A booking nobody began becomes `no_show` when the window closes, and
+  the candidate is emailed 3 hours later that they can book again.
+- **A two-round exam is one exam in two parts.** Missing the second round cancels the whole exam —
+  no pass or fail — and the candidate books both rounds again.
+- **Objective scores are shown on submit**, on the completion page (decided 2026). Release of
+  graded and combined results, and how a cohort's results go out, is still open (§8).
 - **The exam player has no navigation.** Nothing links out of an exam in progress.
 
 ---
@@ -98,8 +109,9 @@ Two properties of this flow drive much of the design:
 | Backend | Django 5.x | The lead is the primary developer and fluent in it; batteries included for admin, ORM and migrations |
 | Database | PostgreSQL | Relational integrity and transactions; a wrong grade is a trust problem, not a bug |
 | Frontend | Django templates, Tailwind, Alpine.js | Server-rendered; no build step yet, no SPA to maintain |
-| Background work | Celery + Redis *(not wired up)* | Real processes, unlike the serverless constraints of the original plan |
-| Hosting | AWS — EC2 or Elastic Beanstalk, RDS, ElastiCache *(not provisioned)* | Already an AWS shop; approved infrastructure avoids a procurement conversation |
+| Scheduled work | `manage.py run_scheduled_jobs`, every minute — cron on a server, an always-on `--loop` task on PythonAnywhere | Reminders, missed bookings and email retries need a clock, not a broker. Celery + Redis only if heavy work after requests appears *(not wired up)* |
+| Email | SMTP — Mailpit locally, Gmail (Google Workspace) in production *(waiting on IT for the App Password)* | One company address; an outbox table makes sending reliable without a queue service |
+| Hosting | AWS — EC2 or Elastic Beanstalk, RDS *(not provisioned)*. A PythonAnywhere demo for reviewers is planned. | Already an AWS shop; approved infrastructure avoids a procurement conversation |
 
 > **The project began on Next.js and TypeScript and moved to Django in August 2026**, one merged
 > PR in. The reason was capacity: the lead became the primary developer, and velocity in a
@@ -145,6 +157,20 @@ withdrawn by setting `Question.status` to `retired` rather than removed.
 > This replaces the earlier plan of versioning published exams. Versioning was needed because
 > questions were assumed to be editable; making them immutable removes the problem rather than
 > managing it, and removes the JSON snapshot per served question along with it.
+
+**Views never send email.** They call `apps.exam.emails.queue_email(event, booking)` inside the
+transaction that made the change. It records an `OutboundEmail` row and sends right after commit —
+so no email for a change that rolled back, and none lost to a mail server that was briefly down
+(the scheduled job retries). Bodies are rendered at send time from the booking, never stored.
+
+**Anything that happens because time passed lives in `run_scheduled_jobs`**, not in a request:
+reminders, marking missed bookings, sending due emails, cleanup. Each step is safe to repeat,
+isolated from the others, and claims its rows under locks.
+
+**Every booking route shares one copy of each booking rule.** `/book`, Start Instant Exam,
+reschedule and the admin's Book Exam all call the same functions in `apps/exam/forms.py`
+(`open_booking_error`, `check_clash`, `first_round_type`, `clean_timezone_name`). Two copies
+would let one route accept what another refuses.
 
 **The exam timer is server-authoritative.** `ExamSheet.expires_at` lives in Postgres; the client
 countdown is display only. A deadline the browser can report is a deadline a candidate can extend.
@@ -193,13 +219,13 @@ Unresolved. Each blocks specific work; owner is the project lead unless stated.
 
 | # | Decision | Blocks | Priority |
 |---|---|---|---|
-| 1 | **Late start** — a candidate joining 20 minutes late: full duration, or until a fixed end? | Attempt schema, exam player | High — baked into the schema |
+| 1 | **Combined results and release** — pass is 70% of both rounds together; how and when graded and combined results are released, and what the candidate sees | Results, credentials | High |
 | 2 | **Code-execution question types** — do candidates write and run code? | Question model, grading, sandbox | High |
-| 3 | **Objective result release timing** — instantly on submit, or after a delay that leaves room to catch a mis-keyed answer? | Grading | High |
-| 4 | **Payment** — is there a paid step? Booking is enrolment, so it happens here | Booking flow | Medium |
+| 3 | **Instant exams: scope** — which exams allow Start Instant Exam (all published, today), and is the integrity risk of starting minutes after someone shares the questions acceptable until question pools are large? | Booking | High |
+| 4 | **Payment** — is there a paid step? Booking is enrolment, so it happens here — and it must come before an instant start | Booking flow | Medium |
 | 5 | **Question pool size** — a paper is 20 questions; the pool needs to be several times that. Nobody is assigned to write them | Content, exam player | Medium |
 | 6 | **Proctoring** — identity verification, webcam, lockdown browser | Exam player | Medium |
-| 7 | **Minimum lead time in hours** — the day-based rule allows 11pm for 00:15 | Booking | Low |
+| 7 | **Opening the instructions early** — e.g. the T&C page 5 minutes before the start, with the clock still starting at "begin" | Exam delivery | Low |
 | 8 | **`role` as a single field** — an examiner cannot currently also sit an exam | Auth | Low now |
 
 **Decided since the last revision**, and no longer open:
@@ -214,8 +240,22 @@ Unresolved. Each blocks specific work; owner is the project lead unless stated.
 - **Bulk import is CSV only.** PDF and Word have no structure to rely on; a spreadsheet converts
   to CSV for free.
 - **A reload resumes, it does not cancel.** `ExamSheet.current_position` is the bookmark.
+- **Late start** — joining opens at the start time and closes after the round's length; whoever
+  begins inside it gets the full duration from "begin". No early start.
+- **Statuses mean attendance, not results.** "I'm ready to begin" sets `attended`; a submitted
+  subjective round is `under_review`; grading sets `graded`. An objective-only exam is `graded` on
+  submit; a two-round exam's first round stays `attended` until the second is graded (both then
+  `graded`) or missed (second `no_show`, first `cancelled` by the system with the reason
+  "Cancellation due to no attempt on 2nd round"). A finished exam releases the candidate to book it
+  again.
+- **Changing a booking** — candidates may reschedule or cancel until 10 minutes before the start;
+  admins may cancel until 5 minutes before, with a reason the candidate never sees.
+- **Email** — one company address, replies welcome (never no-reply); subject prefixes
+  *Exam Update*, *Reminder*, *Results*, *Staff*; no reminders for a second round.
+- **Instant start** — a candidate may start an exam now, skipping the calendar; same rules as any
+  booking except the one-day-ahead minimum. Booking for later *today* is not offered.
 
-Retakes are **out of scope**: a second attempt means a new booking. Slots and capacity were
+Retakes are a new booking, allowed once the previous attempt has finished. Slots and capacity were
 removed from the design — booking is self-scheduled.
 
 A fuller list of deferred work lives in `TRACKER.md`, which is local-only.
@@ -230,18 +270,20 @@ keep this row current.
 | Routes | URL inventory and the rules for new ones | [`routes.md`](routes.md) | Current |
 | Authentication | Handoff from the TestMu AI login | [`auth.md`](auth.md) | Current, not built |
 | Conventions | Binding rules for the repo | [`conventions.md`](conventions.md) | Current |
-| Models | Users, subjects, exams, questions, bookings, exam sheets | `apps/home/models.py`, `apps/exam/models.py` | Built |
-| Booking | Selector, calendar, clash rules, reschedule, cancel | `apps/exam/` | Built |
-| Calendar invites | `.ics` generation and Google links | `apps/exam/calendar.py` | Built |
+| Models | Users, subjects, exams, questions, bookings, exam sheets, outbound email | `apps/home/models.py`, `apps/exam/models.py` | Built |
+| Booking | Selector, calendar, clash rules, reschedule, cancel, Start Instant Exam | `apps/exam/views.py`, `forms.py` | Built |
+| Calendar invites | `.ics` generation (with sequence for updates) and Google links | `apps/exam/calendar.py` | Built |
 | Subject Center | Create, edit and browse subjects | `apps/exam/views.py` | Built |
 | Exam Center | Create and edit exams, derived marks and duration, draft/publish | `apps/exam/views.py`, `forms.py` | Built |
 | Question Center | Bank, authoring with answer options and media, CSV import | `apps/exam/views.py`, `forms.py`, `imports.py` | Built — delete is routed but stubbed |
-| Candidate dashboard | Upcoming exam, assessments | `templates/home/dashboard_candidate.html` | Partly — badges and profile still static |
-| Admin dashboard | Sections and quick actions | `templates/home/dashboard_admin.html` | UI only, unlinked |
-| Examiner dashboard | Pending evaluations, grading history | — | Designed, not built |
-| Exam sheets | The frozen paper and the candidate's answers | `apps/exam/models.py` | Models built |
-| Exam player | Timed delivery, autosave, resume | `templates/exam/start_exam_termsandconditions.html` | Instructions page built; player is a stub |
-| Grading | Assignment, evaluation, release | — | Not started |
+| Candidate dashboard | Next exam, My Assessments by bucket | `apps/home/views.py`, `templates/home/` | Built — badges and profile still static |
+| Admin dashboard | Counts and the accordion sidebar | `templates/home/dashboard_admin.html`, `base_staff.html` | Partly — tiles and some sidebar items still unlinked |
+| Exam player | T&C, timed objective player with autosave and resume, subjective round, submit, completion page | `apps/exam/views.py`, `templates/exam/` | Built |
+| Grading | Assign, My Tasks, blind grading page, Grading History | `apps/exam/views.py`, `templates/exam/` | Built — regrade and result release not started |
+| Examiner area | Own layout and dashboard (pending preview), My Tasks, Grading History | `templates/base_examiner.html`, `home/dashboard_examiner.html` | Built |
+| Candidate Center | Candidate Info, Book Exam, Cancel Exam, Export Candidates | `apps/home/` and `apps/exam/views.py` | Built |
+| Email | Outbox, nine email types, reminders, retries, Mailpit locally | `apps/exam/emails/`, `templates/emails/` | Built — production sending waits on IT |
+| Scheduled work | Reminders, missed bookings, sending, cleanup | `apps/exam/management/commands/run_scheduled_jobs.py`, `sweeps.py` | Built — closing abandoned papers is next |
 | Credentials | Issuance, verification, revocation | — | Not started |
 
 ## 10. Glossary
@@ -249,10 +291,15 @@ keep this row current.
 | Term | Meaning |
 |---|---|
 | **Subject** | A field of study — e.g. Selenium, Accessibility Testing |
-| **Exam** | An assessment for a subject: type, duration, pass mark. Objective (45 min) or subjective (36 h). |
-| **Booking** | A candidate's chosen date and time for an exam. Booking is enrolment. |
+| **Exam** | An assessment for a subject: type, duration, pass mark. Objective (45 min), subjective (36 h), or both — two rounds. |
+| **Round** | One sitting of an exam. A two-round exam is two bookings: the objective round, then the subjective round the system books 30 minutes after it is submitted. |
+| **Booking** | A candidate's chosen date and time for one round. Booking is enrolment. |
+| **Instant exam** | A booking made for *now* from Start Instant Exam, going straight to the instructions. |
+| **Join window** | From a booking's start time until the round's length after it — when it can be begun. |
 | **Exam sheet** | The paper one candidate sat — the questions drawn for them, in order, plus their answers. Modelled as `ExamSheet`; "attempt" is the same idea in earlier drafts. |
 | **Served question** | One question as it appeared on one sheet, with that candidate's answer. Modelled as `ExamSheetQuestion`; "response" in earlier drafts. |
 | **Question bank** | Every question for a subject. Questions belong to subjects, not to exams, so any exam on that subject draws from the pool. |
-| **Complete Evaluation** | The examiner action that records the mark, releases the result and emails the candidate. |
+| **Grading** | An admin assigns a submitted subjective paper; the assignee grades it blind from My Tasks. Release to the candidate is not built. |
+| **Outbox** | `OutboundEmail` — every email sent or due, with its status. The record behind "I never got my email". |
+| **Mailer** | A kind of email (exam, reminders, results, staff): its sender name and subject prefix. |
 | **Credential** | The credential earned by passing. Canonically a public web page, not a PDF. |

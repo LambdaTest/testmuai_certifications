@@ -5,7 +5,7 @@ grading, and credential issuance. Replaces our current external vendor.
 
 > **Status:** eight journeys work end to end.
 >
-> - **Candidate** — book, reschedule and cancel (until 10 minutes before), calendar invites,
+> - **Candidate** — book, or start an exam instantly; reschedule and cancel (until 10 minutes before), calendar invites,
 >   dashboard, and My Assessments lists that follow the clock, not only the stored status.
 > - **Admin authoring** — Subject Center and Exam Center: create and edit subjects and exams
 >   (objective, subjective, or both rounds), with derived slugs, derived marks, and draft/publish.
@@ -527,7 +527,8 @@ apps/exam/emails/
 templates/emails/<event>/       subject.txt · body.txt · body.html (extends emails/_base.html)
 ```
 
-**The emails:** booking confirmed and booked by an admin (with the `.ics`), rescheduled (updated
+**The emails:** booking confirmed and booked by an admin (with the `.ics`), instant exam started
+(with a live "Open the exam" link — joining is open the moment it's sent), rescheduled (updated
 `.ics`), cancelled by the candidate or an admin (an `.ics` that removes the event; never the
 admin's reason), reminders 60 and 30 minutes before, second round open, booking expired.
 
@@ -579,8 +580,16 @@ guarantee; `bulk_create` bypasses `save()`.
 
 ## Booking model
 
-**Self-scheduled, not slot-based.** Candidates pick their own date and time. There are no
-pre-defined slots and no capacity, so there is no seat contention. Rules live in `settings.py`:
+**Self-scheduled, not slot-based.** Candidates pick their own date and time — or press **Start
+Instant Exam** beside the exam picker, which books the chosen exam for *now* and goes straight to
+its T&C page (`start_instant_exam`, POST only, `InstantBookingForm`). An instant booking follows
+every rule below except the one-day-ahead minimum, gets its own email (`instant_booking`, no
+calendar invite), and can't be rescheduled or cancelled — the cutoff has passed. There are no
+pre-defined slots and no capacity, so there is no seat contention.
+
+**Every booking route shares one copy of each rule** — `open_booking_error`, `check_clash`,
+`first_round_type` and `clean_timezone_name` at the top of `apps/exam/forms.py`, used by `/book`,
+Start Instant Exam, reschedule and the admin's Book Exam. Rules live in `settings.py`:
 
 - `BOOKING_MIN_DAYS_AHEAD = 1` — no same-day booking
 - `BOOKING_MAX_MONTHS_AHEAD = 3`

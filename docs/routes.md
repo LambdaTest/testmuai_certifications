@@ -21,15 +21,47 @@ build; every one that used `{% url %}` survived the move untouched.
 
 | URL | Name | View |
 |---|---|---|
-| `/` | `home:index` | Redirects to the dashboard |
+| `/` | `home:index` | Redirects to `/book/` |
 | `/dashboard/` | `home:dashboard` | Routes by role — candidate, admin or examiner |
 | `/book/` | `exam:book` | Entry point from the main site. Exam selector, then date and time. |
-| `/myassessments/<status>` | `exam:myassessment` | Bookings filtered by status |
+| `/start_instant_exam/` | `exam:start_instant_exam` | **POST only.** Start Instant Exam: books the chosen exam for now, then redirects to its T&C page. Posted by the booking page's own form (`formaction`). |
+| `/myassessments/<status>` | `exam:myassessment` | Bookings by bucket — upcoming (`booked`), no-show, attended, cancelled |
 | `/assessment/<uuid>` | `exam:explore_assessment` | One booking in detail |
 | `/bookings/<uuid>/reschedule/` | `exam:reschedule` | Move a booking to a new slot |
 | `/bookings/<uuid>/cancelpage/` | `exam:cancel_booking_page` | Cancellation confirmation |
-| `/bookings/<uuid>/cancel/` | `exam:cancel_booking` | **POST** cancels. GET renders the confirmation. |
-| `/bookings/<uuid>/calendar.ics` | `exam:booking_ics` | Calendar invite download |
+| `/bookings/<uuid>/cancel/` | `exam:cancel_booking` | **POST** cancels |
+| `/bookings/<uuid>/calendar.ics` | `exam:booking_ics` | Calendar invite download, at the booking's current sequence |
+
+### Exam player
+
+| URL | Name | View |
+|---|---|---|
+| `/exam/player/<uuid>/termsandconditions/` | `exam:start_exam_termsandconditions` | Instructions. **POST** is "I'm ready to begin": draws the paper, starts the clock, marks the booking attended. Also how a candidate who dropped out resumes. |
+| `/exam/player/<uuid>/` | `exam:exam_player` | The objective player — full screen, timed, review flags |
+| `/exam/player/<uuid>/save/` | `exam:save_answer` | **POST**, from the player's JavaScript: autosaves one answer, flag and position |
+| `/exam/player/subjective/<uuid>/` | `exam:exam_player_subjective` | The subjective round — repository, pull request, test IDs |
+| `/exam/player/<uuid>/submit/` | `exam:submit_exam` | **POST** submits either round |
+| `/exam/player/<uuid>/completed/` | `exam:exam_completed` | Completion page; the score for an objective round |
+
+The instructions page POSTs to begin rather than linking. Beginning draws the paper and starts the
+clock — a GET that did that would be one browser prefetch away from starting somebody's exam.
+
+The player deliberately renders **no navigation**: a nav bar mid-exam is an invitation to leave,
+and it muddies "did the candidate navigate away" telemetry.
+
+### Grading (admins and examiners)
+
+| URL | Name | View |
+|---|---|---|
+| `/assign_grading_page/` | `exam:assign_grading_template` | Admin only. Papers under review, assign or unassign each |
+| `/assign_grading/<uuid>/` | `exam:assign_grading` | Admin only, **POST** |
+| `/my_tasks/` | `exam:my_tasks` | Papers assigned to the viewer, still under review |
+| `/grading_page/<uuid>/` | `exam:grading_page` | One paper, blind — the task and the candidate's answer, never their identity |
+| `/grade_an_exam/<uuid>/` | `exam:grade_an_exam` | **POST** saves the grade |
+| `/grading_history/` | `exam:grading_history` | What the viewer has graded, read-only |
+
+Shared pages take the layout from the view (`base_staff.html` for admins, `base_examiner.html` for
+examiners), so each role keeps its own sidebar.
 
 ### Admin authoring
 
@@ -49,50 +81,46 @@ sidebar. Grouped by "center" to match the sidebar, which is why the paths carry 
 | `/question_center/import_questions/` | `exam:import_questions` | CSV import. Upload previews; a second POST with `action=import` commits. |
 | `/question_center/delete_question/<int>/` | `exam:delete_question` | **Routed, stubbed.** See `TRACKER.md` for the gated-delete design. |
 
-**Integer ids here, not UUIDs**, unlike the booking routes. These are admin-only and behind a role
-check, so enumeration buys nothing — and a subject id is not a secret the way a booking reference
-is. Candidate-facing routes keep UUIDs.
-
 **One URL, two phases, on the importer.** Uploading a file and confirming the import are both
 POSTs to the same path; `action=import` distinguishes them, and the parsed rows wait in the
 session between the two. A separate confirm URL would need the file posted twice.
 
-### Exam player
+### Candidate Center (admins only)
 
-| URL | Name | State |
+The one place a booking reference turns back into a person — never opened to examiners, which is
+what keeps grading blind.
+
+| URL | Name | View |
 |---|---|---|
-| `/exam/player/start_exam/termsandconditions` | `exam:start_exam_termsandconditions` | Template built; the view renders it with no context |
-| `/exam/player/<uuid:booking_id>/` | `exam:exam_player` | Routed, stubbed |
+| `/candidates/` | `home:candidate_info` | Search (name, email, login id, phone, booking reference), 25 per page |
+| `/candidate_detail/<int>/` | `home:candidate_detail` | One candidate: profile and every booking, with Cancel links and cancellation details |
+| `/book_exam_admin/` | `exam:book_exam_admin` | Book on a candidate's behalf. GET shows, POST books; `?candidate=` pre-fills |
+| `/cancel_exam_admin/` | `exam:cancel_exam_admin_search` | Exact-match search (email, login id, booking reference) for cancellable bookings |
+| `/cancel_exam_admin/<uuid>/` | `exam:cancel_exam_admin_confirm` | Confirm with a reason. GET shows, POST cancels |
+| `/export_candidates/` | `home:export_candidates` | CSV export. GET shows; `?download=…` sends the file |
 
-The instructions page must POST to begin, not link. Pressing begin creates the `ExamSheet`, draws
-the paper and starts the clock — a GET that does any of that is one browser prefetch away from
-starting somebody's exam without them.
-
-The player itself deliberately renders **no navigation**: a nav bar mid-exam is an invitation to
-leave, and it muddies "did the candidate navigate away" telemetry. Support must be reachable from
-inside the exam without navigating away — a panel, not a link.
+**Integer ids in admin routes, UUIDs in candidate-facing ones.** Admin routes sit behind a role
+check, so enumeration buys nothing — a subject or user id is not a secret the way a booking
+reference is.
 
 ### Django admin
 
-`/admin/` — the built-in admin, registered for `User`, `Subject`, `Exam`, `ExamBooking`,
-`Question`, `AnswerOptions`, `Image`, `Audio` and `Video`. Also the only way to log in until the
-OIDC integration lands.
+`/admin/` — the built-in admin, registered for `User`, `Subject`, `Question`, `Exam`,
+`ExamBooking`, `Image`, `Audio`, `Video` and `ExamSheetQuestion`. Also the only way to log in until
+the OIDC integration lands.
 
-`ExamSheet` and `ExamSheetQuestion` are deliberately **not** registered. An admin editing a paper
-a candidate has sat is the one thing the whole immutability design exists to prevent, and the
-admin bypasses form validation by design.
+> **`ExamSheetQuestion` is registered** (`apps/exam/admin.py`). An earlier rule kept it — and
+> `ExamSheet` — out of the admin, because editing a paper a candidate has sat is exactly what the
+> immutability design exists to prevent, and the admin bypasses form validation. Decide whether the
+> registration stays (read-only would keep the rule) — see `TRACKER.md`.
 
 ## Not built
 
-**Submission and results** — `/exam/<uuid>/submitted`, and the score report.
+**Results** — release of graded and combined results, and the score report; the "Show Results"
+button on a booking still has no route.
 
-**Custom admin** — the dashboard template exists (`home/dashboard_admin.html`) but its tiles are
-still `#`. The sidebar in `base_staff.html` is wired for Subject, Exam and Question Centers;
-Candidate Center, Certificates, Analytics, Settings and Support Tickets are not.
-
-**Examiner** — a pending-evaluations list plus Grading History, Settings and Support Tickets.
-Separate templates from the admin rather than conditionals: an examiner should be structurally
-unable to render admin controls.
+**Unlinked admin destinations** — the dashboard tiles, Certificates, Analytics, Manage Roles and
+Email Templates are still `href="#"` in `base_staff.html`.
 
 **Public credential verification** — `/verify/<credential-id>`. Anonymous, indexable, and the
 canonical credential rather than a PDF. Must show revoked and expired states unmistakably, and
@@ -112,16 +140,21 @@ booking = get_object_or_404(ExamBooking, booking_id=booking_id, candidate=reques
 Another candidate's UUID then returns **404, not 403** — we don't confirm a booking exists to
 someone with no business knowing. Every booking view does this.
 
-**Gate on ownership, not role.** `role` is checked in exactly one place, the dashboard router.
-Keeping it that way is what makes the eventual multi-role change cheap, and it means an examiner
-can book an exam like anyone else.
+**Gate candidate pages on ownership, staff pages on role.** Candidate routes find the booking by
+id *and* owner, never by checking a role. Staff routes use `@role_required(...)`
+(`apps/home/decorators.py`), which returns 404 rather than 403 to anyone else.
 
 **Anything that mutates is a POST.** Cancellation lives at `cancel_booking` behind a POST with a
 CSRF token; the GET on the same URL only renders the confirmation. A destructive GET can be
 triggered by browser prefetch, link previews and mail scanners.
 
 **Redirect after a successful POST.** `book()` saves and returns a 302 rather than rendering,
-because a reload repeats the last request — and a repeated POST creates a second booking.
+because a reload repeats the last request — and a repeated POST creates a second booking. A
+success message travels with the redirect through `messages`.
+
+**One view for show-and-save where it fits.** `book_exam_admin` and `cancel_exam_admin_confirm`
+are a GET that shows the page and a POST that saves, building the form with
+`request.POST or None` — so the GET form is unbound and shows no errors.
 
 **UUIDs in candidate-facing paths, integers behind a role check.** `<uuid:booking_id>` guarantees
 a real UUID before the view runs, and booking references are not enumerable — which matters

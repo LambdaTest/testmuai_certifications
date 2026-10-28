@@ -31,8 +31,11 @@ Raising there produces a non-form error, rendered through `formset.non_form_erro
 request?* If yes it belongs in the form. If a form rule needs something request-derived, pass it
 in rather than moving the rule to the view — `BookingForm(request.POST, candidate=request.user)`.
 
-`book()` and `reschedule()` share `ScheduleForm`, so the scheduling rules exist once. Two copies
-would eventually let one route accept a slot the other rejects.
+**Every booking rule exists once.** `/book`, Start Instant Exam, reschedule and the admin's Book
+Exam all call the same functions at the top of `apps/exam/forms.py` — `open_booking_error`,
+`check_clash`, `first_round_type`, `clean_timezone_name` — and `book()` and `reschedule()` share
+`ScheduleForm` for the date window. Two copies would eventually let one route accept a slot the
+other rejects. A new way of booking calls these; it never re-implements them.
 
 ## Timezones
 
@@ -63,6 +66,11 @@ Render the raw field inside an explicit block instead:
 Nothing errors — you just get the wrong time, which for this product means someone misses their
 exam.
 
+**Emails format times as text before the template sees them.** `apps/exam/emails/context.py`
+converts to the booking's zone and passes strings ("Saturday, 24 October 2026 at 10:00 AM"), for
+the same reason: an email template has no `{% timezone %}` habit to rely on, and a missed
+conversion arrives in someone's inbox where it cannot be fixed.
+
 ## Answer-key safety
 
 **Answer keys must never reach the candidate.** Not in a context variable, a template, an API
@@ -77,6 +85,28 @@ response, or a rendered payload.
 
 A leaked answer key invalidates every credential issued from that question. It is the most
 serious defect class in this codebase, and it needs a test rather than a review checklist.
+
+## Email
+
+- **Views never send mail.** They call `queue_email(event, booking, actor=…)` from
+  `apps.exam.emails`, inside the transaction that made the change. It records an `OutboundEmail`
+  row and sends after commit; the scheduled job retries failures. Never call `send_mail` or build
+  an `EmailMessage` in a view.
+- **A new email is a registry entry plus three templates** — `EVENTS` in
+  `apps/exam/emails/registry.py` (mailer, dedupe key, skip rule, calendar invite) and
+  `templates/emails/<name>/subject.txt`, `body.txt`, `body.html`.
+- **Every email needs a dedupe key and a skip rule.** The key makes queueing it twice harmless;
+  the skip rule stops a retry sending something no longer true (a reminder for a cancelled booking).
+- **Buttons in an email must work whenever it is opened.** An email cannot change after it is
+  sent, so no button that is only valid later — reminders link to the booking page, whose own Join
+  button turns on at the start.
+- **Plain-text and subject templates turn autoescaping off** (`{% autoescape off %}`), or "O'Brien"
+  arrives as `O&#x27;Brien`. HTML bodies keep it on.
+- **HTML email is written the old way** — tables and inline styles, extending
+  `emails/_base.html`. Many clients strip `<style>` and ignore modern CSS; this is the one place
+  the Tailwind rules do not apply.
+- **Links are absolute**, built from `settings.SITE_URL`.
+- **Locally, everything goes to Mailpit** (http://localhost:8025). Nothing is delivered.
 
 ## File uploads
 
@@ -156,8 +186,9 @@ answered, and how it was scored. Design for that conversation.
 ## Templates
 
 - Extend `base.html`. Never duplicate the header, footer or theme tokens.
-- Design tokens live in one place — the `@theme` block in `base.html`, mirrored in
-  `static/css/input.css` for the production build. No one-off hex values.
+- Design tokens live in one place — `templates/_theme.html`, included by the base templates and
+  mirrored in `static/css/input.css` for the production build. No one-off hex values (email
+  templates excepted — see Email).
 - `{# … #}` comments a **single line only**. Multi-line needs `{% comment %}…{% endcomment %}`,
   or it renders as visible text on the page.
 - **Never write a literal `<script>` inside a `{% comment %}` block.** Django strips the block, so

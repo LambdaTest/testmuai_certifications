@@ -147,6 +147,10 @@ BOOKING_CHANGE_CUTOFF_MINUTES = 10
 #: Still before the start, so a paper can never be cancelled once begun.
 ADMIN_CANCEL_CUTOFF_MINUTES = 5
 
+#: How long a certificate is valid. Copied onto each certificate as
+#: expires_at when it is issued, so changing this affects only certificates
+#: issued afterwards.
+CERTIFICATE_VALIDITY_YEARS = 2
 
 # --- Email ------------------------------------------------------------------
 #

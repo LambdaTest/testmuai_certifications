@@ -881,18 +881,78 @@ class OutboundEmail(models.Model):
         return f"{self.event} → {self.recipient} ({self.status})"
 
 
-class Certificates(models.Model):
+class Certificate(models.Model):
     """
     A certificate is a credential that a candidate earns by passing an exam.
+
+    The row is the proof that a certificate is real — its UUID, when it was
+    issued, and the booking it was earned on. Nothing more is stored:
+
+    NO FILE. The PDF is never saved. Whenever a certificate is needed it is
+    generated from this row and the design template, then emailed. A stored
+    file would need storage that survives deploys (S3) and would keep any
+    later fix to the design out of old certificates. Do not add a file field
+    back without revisiting that.
+
+    WHICH BOOKING. For a two-round exam, the objective (round one) booking —
+    the parent of the subjective round, and the start of the attempt. For a
+    subjective-only exam, its one booking. The model cannot enforce this (a
+    database rule cannot read another row's round_type), so the code that
+    issues certificates must.
+
+    The candidate's name and the exam title are read through the booking,
+    live — not copied here at issuance.
+
+    EXPIRY is stored, not calculated. Because the PDF is regenerated whenever
+    it is needed, an expiry worked out from today's rule would reprint old
+    certificates with whatever validity applies *now* — a later change from
+    two years to three would silently extend every certificate already
+    issued. Stored at issuance (settings.CERTIFICATE_VALIDITY_YEARS), it is
+    the date that certificate was issued with, for good.
     """
+    #: Random, so unguessable — it is what the public verification link carries.
     certificate_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
-    issued_at = models.DateTimeField(auto_now_add=True)
-    certificate_file = models.FileField(upload_to="certificates/")
+    #: A default rather than auto_now_add: auto_now_add is only filled in
+    #: during the save itself, too late for save() below to work out the
+    #: expiry from it. With a default the value exists from the moment the
+    #: object is created, so the two always match exactly.
+    issued_at = models.DateTimeField(default=dj_timezone.now, editable=False)
+    #: issued_at + CERTIFICATE_VALIDITY_YEARS, set once by save().
+    expires_at = models.DateTimeField(editable=False)
+    #: One certificate per attempt, enforced by the database. PROTECT: a
+    #: booking someone holds a certificate for can never be deleted.
     booking = models.OneToOneField(ExamBooking, on_delete=models.PROTECT, related_name="certificate")
 
     class Meta:
         db_table = "certificates"
         ordering = ["-issued_at"]
+
+    def __str__(self):
+        # The short form of the id, as the site shows booking references.
+        return f"Certificate {str(self.certificate_id)[:8]} · {self.booking.exam.exam_name}"
+
+    def save(self, *args, **kwargs):
+        # Only when issued — never recalculated, so a later change to the
+        # validity rule leaves this certificate's date alone.
+        if self.expires_at is None:
+            self.expires_at = _add_years(self.issued_at, settings.CERTIFICATE_VALIDITY_YEARS)
+        super().save(*args, **kwargs)
+
+    @property
+    def has_expired(self):
+        return dj_timezone.now() >= self.expires_at
+
+
+def _add_years(moment, years):
+    """
+    The same date and time `years` later. 29 February becomes 28 February in
+    a year without one — a certificate must not end in March for having been
+    issued on a leap day.
+    """
+    try:
+        return moment.replace(year=moment.year + years)
+    except ValueError:
+        return moment.replace(year=moment.year + years, day=28)
 
 
 class ExamSheet(models.Model):
