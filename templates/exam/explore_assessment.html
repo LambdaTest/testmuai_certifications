@@ -186,6 +186,25 @@
       {% endif %}
     </div>
 
+  {% elif can_resume %}
+    {% comment %}
+      Begun but not submitted, and still inside its own time (see
+      explore_assessment). Join is gone once a paper is begun, so without this
+      a candidate who closed the tab had no way back. Resume goes through the
+      T&C page, whose "I'm ready to begin" returns them to the same paper.
+    {% endcomment %}
+    <div class="mt-6 flex flex-wrap items-center gap-3">
+      <a href="{% url 'exam:start_exam_termsandconditions' booking.booking_id %}"
+         class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31]">
+        Resume exam →
+      </a>
+      <p class="text-sm text-muted">
+        In progress — finish by
+        {% timezone booking.booked_timezone %}{{ resume_until|date:"D, j M, g:i A" }}{% endtimezone %}
+        ({{ booking.booked_timezone }}).
+      </p>
+    </div>
+
   {% elif booking.status == 'attended' or booking.status == 'graded' %}
     <div class="mt-6 flex flex-wrap items-center gap-3">
       {% comment %}

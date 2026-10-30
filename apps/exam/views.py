@@ -310,11 +310,26 @@ def my_assessments(request, status):
 def explore_assessment(request, booking_id):
     """
     Shows the candidate's booking details for one assessment.
+
+    can_resume: the paper was begun but not submitted, and its time has not
+    run out — the candidate closed the tab or lost their connection. The page
+    then offers Resume exam, which goes to the T&C page; "I'm ready to begin"
+    there returns them to the same paper, same deadline. Open until the
+    paper's expires_at (the moment they began + the round's length: 45 minutes
+    objective, 36 hours subjective). The server enforces that deadline on its
+    own — this only decides whether to show the button.
     """
     booking = get_object_or_404(
         ExamBooking.objects.select_related("exam__subject"),
         booking_id=booking_id,
         candidate=request.user,
+    )
+    sheet = ExamSheet.objects.filter(booking=booking).first()
+    can_resume = (
+        booking.status == ExamBooking.Status.ATTENDED
+        and sheet is not None
+        and sheet.submitted_at is None
+        and timezone.now() < sheet.expires_at
     )
 
     return render(
@@ -322,6 +337,9 @@ def explore_assessment(request, booking_id):
         "exam/explore_assessment.html",
         {
             "booking": booking,
+            "can_resume": can_resume,
+            # The paper's deadline, for "finish by …" beside the button.
+            "resume_until": sheet.expires_at if can_resume else None,
         },
     )
 
