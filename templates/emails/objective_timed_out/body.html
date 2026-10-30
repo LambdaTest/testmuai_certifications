@@ -1,0 +1,6 @@
+{% extends "emails/_base.html" %}
+{% block content %}
+<p style="margin:0 0 6px;">Hi {{ first_name }},</p>
+<p style="margin:0 0 14px;">Your time on the <strong>{{ exam_name }}</strong> {{ round_label|lower }} round ran out before you submitted it, so it was <strong>submitted and graded automatically</strong> with the answers you had saved.</p>
+{% include "emails/_button.html" with url=booking_url label="View your booking" %}
+{% endblock %}

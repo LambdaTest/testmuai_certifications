@@ -21,22 +21,23 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from apps.exam.emails.jobs import cleanup, queue_due_reminders, send_due_emails
-from apps.exam.sweeps import mark_missed_bookings
+from apps.exam.sweeps import close_abandoned_papers, mark_missed_bookings
 
 log = logging.getLogger(__name__)
 
-#: In order. Missed bookings first, so the "booking expired" emails they
-#: queue are seen by the send step of the same run once due.
+#: In order. Missed bookings and abandoned papers before sending, so the
+#: emails they queue go out in the same run once due.
 STEPS = [
     ("queue reminders", queue_due_reminders),
     ("mark missed bookings", mark_missed_bookings),
+    ("close abandoned papers", close_abandoned_papers),
     ("send due emails", send_due_emails),
     ("clean up old emails", cleanup),
 ]
 
 
 class Command(BaseCommand):
-    help = "Reminders, missed bookings, sending and retrying email, cleanup. Run every minute."
+    help = "Reminders, missed bookings, abandoned papers, sending and retrying email, cleanup. Run every minute."
 
     def add_arguments(self, parser):
         parser.add_argument("--loop", action="store_true",

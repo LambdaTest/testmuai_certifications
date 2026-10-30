@@ -77,3 +77,92 @@ def mark_missed_bookings(now):
             if send_at >= now - EXPIRED_EMAIL_MAX_AGE:
                 queue_email("booking_expired", booking, send_after=send_at)
     return marked
+
+
+#: Written on a subjective round that ran out of time with nothing submitted.
+SUBJECTIVE_NOT_SUBMITTED_REASON = "Not submitted within the 36-hour window"
+
+
+def close_abandoned_papers(now):
+    """
+    Closes papers begun but never submitted once their time is up
+    (ExamSheet.expires_at: the moment they began + 45 minutes objective,
+    36 hours subjective). The candidate pressed "I'm ready to begin" and left.
+
+    OBJECTIVE ROUND — submitted as a timeout at its deadline and graded on
+    whatever autosave stored, exactly as if time had run out with the page
+    open: finish_submitted_paper, the same code the Submit button runs. An
+    objective-only exam is then graded; the first round of a two-round exam
+    opens the second round as usual (with its own email). The candidate is
+    told their time ran out and the paper was submitted and graded.
+
+    SUBJECTIVE ROUND — there is no answer to grade: it only exists when they
+    submit. The round is cancelled by the system (cancelled_by empty) with
+    SUBJECTIVE_NOT_SUBMITTED_REASON, and on a two-round exam round one is
+    cancelled too, as for a missed second round — which also lets the
+    candidate book the exam again. They are told the exam was cancelled.
+
+    The sheet is stamped submitted_at = expires_at, TIMEDOUT, either way, so
+    it is closed exactly once. Old papers found on a first run are closed but
+    not emailed (EXPIRED_EMAIL_MAX_AGE).
+    """
+    from .models import ExamSheet
+    from .papers import finish_submitted_paper
+
+    pks = list(
+        ExamSheet.objects.filter(
+            submitted_at__isnull=True,
+            expires_at__lte=now,
+            booking__status=ExamBooking.Status.ATTENDED,
+        ).values_list("pk", flat=True)
+    )
+
+    closed = 0
+    for pk in pks:
+        with transaction.atomic():
+            # Locked and re-checked: the candidate's own late Submit may be
+            # arriving at this moment, and only one of them may close it.
+            sheet = (
+                ExamSheet.objects.select_for_update(skip_locked=True)
+                .filter(pk=pk, submitted_at__isnull=True).first()
+            )
+            if sheet is None:
+                continue
+            booking = (
+                ExamBooking.objects.select_for_update().select_related("exam")
+                .get(pk=sheet.booking_id)
+            )
+            if booking.status != ExamBooking.Status.ATTENDED or now < sheet.expires_at:
+                continue
+
+            sheet.submitted_at = sheet.expires_at
+            sheet.submission_status = ExamSheet.SubmissionStatus.TIMEDOUT
+            sheet.save(update_fields=["submitted_at", "submission_status"])
+            recent = sheet.expires_at >= now - EXPIRED_EMAIL_MAX_AGE
+
+            if booking.round_type == Exam.Type.OBJECTIVE:
+                finish_submitted_paper(booking, sheet)
+                if recent:
+                    queue_email("objective_timed_out", booking)
+            else:
+                booking.status = ExamBooking.Status.CANCELLED
+                booking.cancellation_reason = SUBJECTIVE_NOT_SUBMITTED_REASON
+                booking.cancelled_at = now
+                booking.cancelled_by = None  # the system, not an admin
+                booking.save(update_fields=[
+                    "status", "cancellation_reason", "cancelled_at", "cancelled_by", "updated_at",
+                ])
+                if booking.parent_booking_id:
+                    first_round = ExamBooking.objects.select_for_update().get(pk=booking.parent_booking_id)
+                    if first_round.status == ExamBooking.Status.ATTENDED:
+                        first_round.status = ExamBooking.Status.CANCELLED
+                        first_round.cancellation_reason = SECOND_ROUND_MISSED_REASON
+                        first_round.cancelled_at = now
+                        first_round.cancelled_by = None
+                        first_round.save(update_fields=[
+                            "status", "cancellation_reason", "cancelled_at", "cancelled_by", "updated_at",
+                        ])
+                if recent:
+                    queue_email("subjective_timed_out", booking)
+            closed += 1
+    return closed

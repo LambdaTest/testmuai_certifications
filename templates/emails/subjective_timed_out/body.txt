@@ -1,0 +1,11 @@
+{% autoescape off %}Hi {{ first_name }},
+
+Your 36 hours for the {{ exam_name }} subjective round ran out without a submission, so the exam has been cancelled.
+
+You can book the exam again whenever you're ready{% if is_second_round %} — a new booking includes both rounds{% endif %}: {{ book_again_url }}
+
+Booking reference: {{ ref }}
+
+Questions? Just reply to this email.
+
+TestMu AI Certifications{% endautoescape %}

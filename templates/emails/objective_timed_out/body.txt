@@ -1,0 +1,10 @@
+{% autoescape off %}Hi {{ first_name }},
+
+Your time on the {{ exam_name }} {{ round_label|lower }} round ran out before you submitted it, so it was submitted and graded automatically with the answers you had saved.
+
+Booking reference: {{ ref }}
+Your booking: {{ booking_url }}
+
+Questions? Just reply to this email.
+
+TestMu AI Certifications{% endautoescape %}

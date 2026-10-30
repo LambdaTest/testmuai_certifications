@@ -38,7 +38,7 @@ grading, and credential issuance. Replaces our current external vendor.
 | Backend | Django 5.2 |
 | Database | PostgreSQL 17 — everywhere, including local development |
 | Frontend | Django templates + Tailwind + Alpine.js *(both from CDN, no build step yet)* |
-| Background jobs | `manage.py run_scheduled_jobs`, every minute (cron; an always-on `--loop` task on PythonAnywhere): reminders, missed bookings, sending and retrying email, cleanup. Closing abandoned papers is next. Celery + Redis only if heavier work appears *(not wired up — commented out in `requirements.txt`)* |
+| Background jobs | `manage.py run_scheduled_jobs`, every minute (cron; an always-on `--loop` task on PythonAnywhere): reminders, missed bookings, abandoned papers, sending and retrying email, cleanup. Celery + Redis only if heavier work appears *(not wired up — commented out in `requirements.txt`)* |
 | Email | SMTP through `apps/exam/emails` — Mailpit locally, Gmail in production *(waiting on IT for the App Password)* |
 | Hosting | AWS — EC2/Elastic Beanstalk + RDS *(not set up yet)* |
 
@@ -678,9 +678,8 @@ whenever someone asks. The queries start from one candidate's bookings (`candida
 so they stay cheap however large the table grows.
 
 > **What the job fixes.** `run_scheduled_jobs` now marks missed bookings `no_show` once their window
-> closes, so the stored status catches up within a minute and the candidate can rebook. Still open:
-> an abandoned paper is correctly `attended` but never submitted, so it is never graded — the job's
-> next step (`TRACKER.md`).
+> closes, so the stored status catches up within a minute and the candidate can rebook, and closes
+> papers begun but abandoned once their time is up.
 
 **My Assessments** labels each booking with its round — Objective in blue, Subjective in amber —
 read from `round_type` rather than the exam's type, which says "both" for both rounds. An attended
@@ -735,13 +734,20 @@ Steps, each isolated — one failing is logged and the rest still run:
 2. **Mark missed bookings** — `booked` and the join window closed (start + 45 min objective,
    + 36 h subjective) → `no_show`, and "booking expired" queued for 3 hours later. A missed second
    round also cancels round one (see Booking model).
-3. **Send due emails** — pending emails whose time has come: retries and delayed sends.
-4. **Clean up** — sent and skipped emails older than 90 days.
+3. **Close abandoned papers** — begun, never submitted, time up (`ExamSheet.expires_at`). An
+   objective round is submitted as a timeout and graded on what autosave stored — the same
+   `finish_submitted_paper` (`apps/exam/papers.py`) the Submit button runs, so an objective-only
+   exam is graded and a two-round exam opens its second round; the candidate is emailed that time
+   ran out and it was submitted and graded. A subjective round has nothing to grade: it is
+   cancelled by the system ("Not submitted within the 36-hour window"), round one with it on a
+   two-round exam, and the candidate is told they can book again.
+4. **Send due emails** — pending emails whose time has come: retries and delayed sends.
+5. **Clean up** — sent and skipped emails older than 90 days.
 
 **"Due and not yet sent", never "exactly now"**: a late or skipped run delays an email rather than
 losing it, and the dedupe key means no run sends one twice. Rows and bookings are claimed under
-row locks, so even two overlapping runs are safe — but run it on one server. Closing abandoned
-papers (started, never submitted) is the next step to add. Celery arrives only with work that must
+row locks, so even two overlapping runs are safe — but run it on one server. No Celery: Celery
+arrives only with work that must
 happen right after a request at scale — certificate generation, regrades.
 
 ## Documentation
@@ -761,7 +767,7 @@ Specs live in [`docs/`](docs/), all rewritten for Django:
 
 Combined two-round results against the pass percentage ·
 saving the completion page's profile links and feedback · result release and Show Results ·
-credentials and public verification · closing abandoned papers in the scheduled job · results and
+credentials and public verification · results and
 staff emails · the public certificate verification page · recording lockdown events · `delete_question` (routed
 but stubbed) · regrading · authentication (the OIDC integration with the TestMu AI login is
 deferred, which is why `ExamBooking.candidate` is nullable) · automated tests · the Tailwind

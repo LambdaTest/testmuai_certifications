@@ -178,6 +178,21 @@ EVENTS = {
         skip_reason=_certificate_exists,
         attachment=lambda b: _certificate_pdf(b),
     ),
+    # Begun, never submitted, time up: the scheduled job submitted and graded
+    # the objective round (sweeps.close_abandoned_papers). Only that — on a
+    # two-round exam "second round open" follows as its own email.
+    "objective_timed_out": EmailEvent(
+        mailer="exam", template="objective_timed_out",
+        key=lambda b: f"objective_timed_out:{b.booking_id}",
+        skip_reason=lambda row, b, now: None,
+    ),
+    # Begun, nothing submitted in the 36 hours: the round (and the exam) was
+    # cancelled by the system.
+    "subjective_timed_out": EmailEvent(
+        mailer="exam", template="subjective_timed_out",
+        key=lambda b: f"subjective_timed_out:{b.booking_id}",
+        skip_reason=_still_cancelled,
+    ),
     # Never joined: queued by the scheduled job when the window closes, to go
     # settings.EMAIL_EXPIRED_DELAY_HOURS later. For a missed second round the
     # whole exam was cancelled, and the template says so.

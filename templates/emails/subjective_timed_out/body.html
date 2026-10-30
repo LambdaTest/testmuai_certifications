@@ -1,0 +1,7 @@
+{% extends "emails/_base.html" %}
+{% block content %}
+<p style="margin:0 0 6px;">Hi {{ first_name }},</p>
+<p style="margin:0 0 14px;">Your 36 hours for the <strong>{{ exam_name }}</strong> subjective round ran out without a submission, so the exam has been cancelled.</p>
+<p style="margin:0 0 14px;">You can book the exam again whenever you're ready{% if is_second_round %} — a new booking includes both rounds{% endif %}.</p>
+{% include "emails/_button.html" with url=book_again_url label="Book again" %}
+{% endblock %}

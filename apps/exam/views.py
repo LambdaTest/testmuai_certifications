@@ -24,6 +24,7 @@ from . import imports
 from . import timezones
 from .calendar import build_ics
 from .emails import queue_email
+from .papers import finish_submitted_paper
 from . import forms as exam_forms
 from .forms import (
     AnswerOptionFormSet,
@@ -1180,34 +1181,6 @@ def save_answer(request, booking_id):
     return JsonResponse({"ok": True})
 
 
-def grade_exam(booking, sheet):
-    """
-    Grades the exam after submission.
-    """
-    if booking.round_type == Exam.Type.OBJECTIVE:
-        # Grade the exam only if it's an objective exam.
-        marks_obtained = 0
-        maximum_marks = 0
-        questions = ExamSheetQuestion.objects.filter(sheet=sheet).select_related("question", "selected_option")
-        for question in questions:
-            # What this paper was out of — the marks of the questions actually
-            # served, not the exam's settings, which can change afterwards.
-            maximum_marks += question.marks
-            if question and question.selected_option and question.selected_option.is_correct:
-                question.marks_awarded = question.marks
-                marks_obtained += question.marks
-            else:
-                question.marks_awarded = 0
-            question.save()
-        booking.marks_obtained = marks_obtained
-        booking.maximum_marks = maximum_marks
-        booking.save()
-        return marks_obtained
-    elif booking.round_type == Exam.Type.SUBJECTIVE:
-        # Subjective exams are graded manually
-        pass
-
-
 @login_required
 @require_POST
 def submit_exam(request, booking_id):
@@ -1307,43 +1280,10 @@ def submit_exam(request, booking_id):
         else:
             sheet.submission_status = ExamSheet.SubmissionStatus.TIMEDOUT
         sheet.save()
-        # The booking became attended when the paper was begun; finishing is
-        # recorded on the sheet (submitted_at above). An objective round stays
-        # attended — grade_exam marks it right here. A subjective round now
-        # waits for an examiner, and says so: UNDER_REVIEW is the queue the
-        # admin dashboard's "awaiting grading" count already reads. Only a
-        # submitted answer gets here — a late or rejected one returned above.
-        if booking.round_type == Exam.Type.SUBJECTIVE:
-            booking.status = ExamBooking.Status.UNDER_REVIEW
-            booking.save(update_fields=["status", "updated_at"])
-        marks_obtained = grade_exam(booking, sheet)
-        # An objective-only exam is complete the moment it is submitted and
-        # marked, so it is graded now — which also releases it, letting the
-        # candidate book the exam again. On a two-round exam round one stays
-        # attended and keeps holding the exam until round two ends: graded
-        # (grade_an_exam grades both) or missed (sweeps.mark_missed_bookings
-        # cancels this one).
-        if booking.round_type == Exam.Type.OBJECTIVE and booking.exam.exam_type != Exam.Type.BOTH:
-            booking.status = ExamBooking.Status.GRADED
-            booking.save(update_fields=["status", "updated_at"])
-            # The result is final, so the pass mark is frozen now.
-            booking.freeze_passing_marks()
-        # create a new booking if the exam is a two-round exam and the current round is objective
-        is_first_of_two = (
-            booking.exam.exam_type == Exam.Type.BOTH
-            and booking.round_type == Exam.Type.OBJECTIVE
-        )
-        if is_first_of_two:
-            second_round = ExamBooking.objects.create(
-                candidate=booking.candidate,
-                exam=booking.exam,
-                round_type=Exam.Type.SUBJECTIVE,
-                status=ExamBooking.Status.BOOKED,
-                parent_booking=booking,  # Link the new booking to the original one
-                booked_timezone=booking.booked_timezone,
-                scheduled_at=sheet.submitted_at + timedelta(minutes=Exam.ROUND_GAP_MINUTES),
-            )
-            queue_email("second_round_open", second_round, actor=request.user)
+        # Everything after the stamp — under review, graded, round two — is
+        # shared with the scheduled job that closes abandoned papers, so a
+        # paper finishes the same way however it ended.
+        is_first_of_two = finish_submitted_paper(booking, sheet, actor=request.user)
 
     # Messages after the transaction, so a rollback never leaves a success banner
     # for a submission that did not happen.
