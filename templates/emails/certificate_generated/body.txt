@@ -1,0 +1,14 @@
+{% autoescape off %}Hi {{ first_name }},
+
+Congratulations — you've passed {{ exam_name }} and earned your TestMu AI certificate.
+
+Certificate ID: {{ certificate_id }}
+Valid until: {{ certificate_valid_until }}
+
+Your certificate is attached to this email as a PDF.
+
+Keep the certificate ID: it is how anyone can confirm your certificate is genuine.
+
+Questions? Just reply to this email.
+
+TestMu AI Certifications{% endautoescape %}

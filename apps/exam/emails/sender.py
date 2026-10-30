@@ -153,4 +153,8 @@ def _build_message(row, event, booking, now):
             ),
             "text/calendar",
         )
+    if event.attachment:
+        extra = event.attachment(booking)
+        if extra:
+            message.attach(*extra)   # (filename, bytes, mimetype)
     return message

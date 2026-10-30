@@ -1,0 +1,20 @@
+{% extends "emails/_base.html" %}
+{% block content %}
+{% comment %}
+  The certificate PDF is attached by the sender (registry: attachment). A
+  link to the public verification page goes here once that page exists.
+{% endcomment %}
+<p style="margin:0 0 6px;">Hi {{ first_name }},</p>
+<p style="margin:0 0 14px;">Congratulations — you've passed <strong>{{ exam_name }}</strong> and earned your TestMu AI certificate.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+       style="margin:0 0 14px;background:#F8F9FB;border:1px solid #E8E8E8;border-radius:10px;font-size:14px;">
+  <tr><td style="padding:14px 18px;">
+    <div style="color:#98A0AB;font-size:12px;">Certificate ID</div>
+    <div style="color:#101010;font-family:monospace;">{{ certificate_id }}</div>
+    <div style="color:#98A0AB;font-size:12px;margin-top:10px;">Valid until</div>
+    <div style="color:#101010;">{{ certificate_valid_until }}</div>
+  </td></tr>
+</table>
+<p style="margin:0 0 14px;">Your certificate is attached to this email as a PDF.</p>
+<p style="margin:0;font-size:13.5px;color:#666666;">Keep the certificate ID: it is how anyone can confirm your certificate is genuine.</p>
+{% endblock %}

@@ -3,6 +3,11 @@ psycopg[binary]>=3.2
 dj-database-url>=2.3
 python-dotenv>=1.0
 
+# Certificate PDFs — pure Python, no system libraries, the same on every OS.
+# svglib draws the SVG logo and signature as vectors.
+reportlab>=4.2
+svglib>=1.5
+
 # Background jobs — not wired up yet, see docs/
 # celery>=5.4
 # redis>=5.2

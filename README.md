@@ -505,6 +505,37 @@ Admin-only, never examiners: it is the one place a booking reference turns back 
 
 Emailing the candidate about an admin's booking or cancellation waits for SMTP.
 
+## Certificates
+
+**One `Certificate` per passed exam** — `certificate_id` (a random UUID, which is what a public
+verification link will carry), `issued_at`, `expires_at` and a one-to-one link to the exam's
+**first booking** (the objective round of a two-round exam, otherwise its one booking). No PDF is
+stored: it is generated from the row and the template whenever it is needed.
+
+- **Expiry** is `issued_at` + `CERTIFICATE_VALIDITY_YEARS` (2), stored at issuance and never
+  recalculated — changing the setting affects only certificates issued afterwards. 29 February
+  becomes 28 February.
+- **Pass or fail is decided on the whole exam**, never a round alone:
+  `marks obtained across all rounds ≥ passing_marks`. Each round stores what its paper was out of
+  (`maximum_marks` — objective at submit, subjective when graded), and when the exam's result is
+  final `ExamBooking.freeze_passing_marks()` stores
+  `ceil(total × exam.pass_percentage / 100)` on the first booking. Frozen, so a later change to an
+  exam's pass percentage never re-judges old results. A weak objective round can still pass on
+  the combined total, and a perfect one can still fail.
+- **Get Certificate** (on the booking page) posts to `get_certificate`: not graded yet, not
+  passed, or passed — then it issues the certificate once and emails it (`certificate_generated`,
+  Results mailer), or re-sends it if asked again.
+- **The PDF** is drawn by `apps/exam/certificates.py` with **ReportLab** (+ `svglib` for the vector
+  logo and signature) — pure Python, no system libraries, the same on every OS — and attached to
+  the `certificate_generated` email as `TestMu-AI-certificate-<id>.pdf`. Generated every time it
+  is sent, never stored. Rubik is embedded from `static/certificates/fonts/` (Light, Regular and
+  Medium, cut from Google's variable font; OFL licence alongside), so it never needs the internet.
+- **The design** is TestMu AI's Figma certificate, also kept as `templates/certificates/certificate.html`
+  — the same measurements in HTML/CSS, for previewing in a browser. The PDF is not made from it:
+  change one and you must change the other. The logo, seal and signature are the Figma originals
+  in `static/certificates/`. It prints the full UUID and "Valid until".
+  Not yet built: the public verification page.
+
 ## Email
 
 Views never send mail. They call one function, after the change it reports:
@@ -731,7 +762,7 @@ Specs live in [`docs/`](docs/), all rewritten for Django:
 Combined two-round results against the pass percentage ·
 saving the completion page's profile links and feedback · result release and Show Results ·
 credentials and public verification · closing abandoned papers in the scheduled job · results and
-staff emails · recording lockdown events · `delete_question` (routed
+staff emails · the public certificate verification page · recording lockdown events · `delete_question` (routed
 but stubbed) · regrading · authentication (the OIDC integration with the TestMu AI login is
 deferred, which is why `ExamBooking.candidate` is nullable) · automated tests · the Tailwind
 production build.

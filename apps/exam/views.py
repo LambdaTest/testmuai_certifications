@@ -42,7 +42,7 @@ from .forms import (
     open_booking_error,
 )
 from .models import (Exam, ExamBooking, ExamSheet, ExamSheetQuestion,
-                     Subject, SubjectiveSubmission, Question, Audio, Video)
+                     Subject, SubjectiveSubmission, Question, Audio, Video, Certificate)
 from apps.home.models import User
 from apps.home.decorators import role_required
 from datetime import timedelta
@@ -1169,8 +1169,12 @@ def grade_exam(booking, sheet):
     if booking.round_type == Exam.Type.OBJECTIVE:
         # Grade the exam only if it's an objective exam.
         marks_obtained = 0
+        maximum_marks = 0
         questions = ExamSheetQuestion.objects.filter(sheet=sheet).select_related("question", "selected_option")
         for question in questions:
+            # What this paper was out of — the marks of the questions actually
+            # served, not the exam's settings, which can change afterwards.
+            maximum_marks += question.marks
             if question and question.selected_option and question.selected_option.is_correct:
                 question.marks_awarded = question.marks
                 marks_obtained += question.marks
@@ -1178,6 +1182,7 @@ def grade_exam(booking, sheet):
                 question.marks_awarded = 0
             question.save()
         booking.marks_obtained = marks_obtained
+        booking.maximum_marks = maximum_marks
         booking.save()
         return marks_obtained
     elif booking.round_type == Exam.Type.SUBJECTIVE:
@@ -1303,6 +1308,8 @@ def submit_exam(request, booking_id):
         if booking.round_type == Exam.Type.OBJECTIVE and booking.exam.exam_type != Exam.Type.BOTH:
             booking.status = ExamBooking.Status.GRADED
             booking.save(update_fields=["status", "updated_at"])
+            # The result is final, so the pass mark is frozen now.
+            booking.freeze_passing_marks()
         # create a new booking if the exam is a two-round exam and the current round is objective
         is_first_of_two = (
             booking.exam.exam_type == Exam.Type.BOTH
@@ -1483,9 +1490,20 @@ def grade_an_exam(request, booking_id):
         # exam, so round one — attended, holding the exam until now — is
         # graded with it, and the candidate may book the exam again.
         if booking.parent_booking_id:
-            ExamBooking.objects.filter(
-                pk=booking.parent_booking_id, status=ExamBooking.Status.ATTENDED,
-            ).update(status=ExamBooking.Status.GRADED, updated_at=timezone.now())
+            first_round = (
+                ExamBooking.objects.select_for_update().select_related("exam")
+                .get(pk=booking.parent_booking_id)
+            )
+            if first_round.status == ExamBooking.Status.ATTENDED:
+                first_round.status = ExamBooking.Status.GRADED
+                first_round.save(update_fields=["status", "updated_at"])
+            # The whole exam is graded now: freeze its pass mark on round one,
+            # over both rounds' totals.
+            first_round.freeze_passing_marks()
+        else:
+            # A subjective-only exam: this is its one booking, and its result
+            # is final.
+            booking.freeze_passing_marks()
 
     messages.success(
         request,
@@ -1753,3 +1771,89 @@ def cancel_exam_admin_confirm(request, booking_id):
             **_cancel_cutoff_context(),
         },
     )
+
+def generate_certificate(booking):
+    """
+    Issues the certificate for an exam: records it in the database and emails
+    the candidate. `booking` is the exam's first booking — the objective round
+    of a two-round exam, otherwise its one booking — which is where every
+    certificate points (see Certificate).
+
+    The UUID comes from the model's default, and create() saves; no PDF is
+    stored — it is generated when needed.
+    """
+    certificate = Certificate.objects.create(booking=booking)
+    queue_email("certificate_generated", booking, actor=booking.candidate)
+    return certificate.certificate_id
+
+
+def exam_marks_obtained(first_booking):
+    """
+    The whole exam's marks: the first round's, plus the second round's on a
+    two-round exam. None while any round is ungraded.
+
+    Pass or fail is decided on this total against first_booking.passing_marks
+    (frozen over both rounds' totals when the exam was graded) — never on a
+    round alone. A weak objective round can still be a pass if objective plus
+    subjective reaches the bar.
+    """
+    obtained = first_booking.marks_obtained
+    if obtained is None:
+        return None
+    if first_booking.exam.exam_type == Exam.Type.BOTH:
+        second = ExamBooking.objects.filter(parent_booking=first_booking).first()
+        if second is None or second.marks_obtained is None:
+            return None
+        obtained += second.marks_obtained
+    return obtained
+
+
+@login_required
+@require_POST
+def get_certificate(request, booking_id):
+    """
+    Get Certificate, from a booking. If the candidate passed the exam, issues
+    the certificate (once) and emails it; asked again, it re-sends the same
+    one. If not, says why.
+
+    Works from either round of a two-round exam: the result and the
+    certificate both live on the first booking. Passed means the whole exam's
+    marks (exam_marks_obtained) reach the pass mark frozen on that booking.
+    """
+    booking = get_object_or_404(
+        ExamBooking.objects.select_related("exam", "candidate", "parent_booking__exam"),
+        booking_id=booking_id,
+        candidate=request.user,
+    )
+    # The exam's first booking: a second round's parent, otherwise itself.
+    first = booking.parent_booking or booking
+    back = redirect("exam:explore_assessment", booking_id=booking.booking_id)
+
+    # Issued already: send it again rather than issue a second one (the
+    # database would refuse — one certificate per exam).
+    existing = Certificate.objects.filter(booking=first).first()
+    if existing:
+        queue_email("certificate_generated", first, actor=request.user)
+        messages.success(request, f"Your certificate has been sent to your email again. Certificate ID: {existing.certificate_id}")
+        return back
+
+    # Graded means the whole exam: an objective-only exam at submit; a
+    # subjective-only or two-round exam once its subjective round is graded,
+    # which is also when the pass mark is frozen.
+    obtained = exam_marks_obtained(first)
+    if first.status != ExamBooking.Status.GRADED or obtained is None or first.passing_marks is None:
+        messages.error(request, "Your certificate will be available once your exam has been graded.")
+        return back
+
+    if obtained < first.passing_marks:
+        messages.error(request, "A certificate is issued only for a passed exam.")
+        return back
+
+    try:
+        with transaction.atomic():
+            certificate_id = generate_certificate(first)
+    except IntegrityError:
+        # A double-click: the other request issued it a moment ago.
+        certificate_id = Certificate.objects.get(booking=first).certificate_id
+    messages.success(request, f"Congratulations! Your certificate has been issued and sent to your email. Certificate ID: {certificate_id}")
+    return back

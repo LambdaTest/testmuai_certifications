@@ -198,21 +198,23 @@
       </a>
 
       {% comment %}
-        NEEDS A ROUTE, and a rule. There is no certificate view yet (TRACKER.md,
-        "Credentials"), so this is a disabled button rather than an href="#"
-        that goes nowhere. When it is wired:
-          - show it only to a candidate who passed, not to every attended
-            booking. Pass is 70% of both rounds together, so on a two-round
-            exam the objective booking alone cannot answer it.
-          - link to the public verification page, which is the credential,
-            not to a PDF.
+        Get Certificate posts to exam:get_certificate, which decides
+        everything: not graded yet, not passed, or passed — then it issues the
+        certificate (once) and emails it, or re-sends it if asked again. The
+        reason comes back as a message on this page. Shown for any attended or
+        graded booking, either round of a two-round exam: the view works from
+        the exam's first booking, where the result lives. A form, not a link:
+        issuing a certificate is a change, so it is a POST.
         Solid black, like Join exam, because once results are out this is the
         thing the candidate came here for.
       {% endcomment %}
-      <button type="button" disabled
-              class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">
-        Get Certificate
-      </button>
+      <form method="post" action="{% url 'exam:get_certificate' booking.booking_id %}">
+        {% csrf_token %}
+        <button type="submit"
+                class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31]">
+          Get Certificate
+        </button>
+      </form>
     </div>
   {% endif %}
   <p class="mt-6 text-xs text-faint">Exam ID for reference · {{ booking.booking_id }}</p>

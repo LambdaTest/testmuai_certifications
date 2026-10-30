@@ -615,7 +615,13 @@ class ExamBooking(models.Model):
     #: so without the copies "82 out of 100" quietly becomes "82 out of 105",
     #: and a later change to the pass bar would reclassify old results.
     #: Together with marks_obtained these are all pass/fail needs.
+    #: What this round's paper was out of. Objective: set at submit, the sum
+    #: of the paper's question marks. Subjective: set when it is graded.
     maximum_marks = models.PositiveIntegerField(blank=True, null=True)
+    #: The pass mark for the WHOLE exam, in marks — frozen by
+    #: freeze_passing_marks() when the result is final, and only on the
+    #: exam's first booking (a two-round exam's objective round; otherwise its
+    #: one booking). Null on a second round, and until the result is final.
     passing_marks = models.PositiveIntegerField(blank=True, null=True)
     graded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="graded_bookings", blank=True, null=True)
     graded_at = models.DateTimeField(blank=True, null=True)
@@ -811,6 +817,41 @@ class ExamBooking(models.Model):
         from .timezones import to_local
 
         return to_local(self.scheduled_at, self.booked_timezone)
+
+    def freeze_passing_marks(self):
+        """
+        Works out the exam's pass mark and stores it on this booking — call it
+        on the exam's first booking, once its result is final:
+
+            objective only     at submit (graded automatically)
+            subjective only    when it is graded
+            two rounds         when the subjective round is graded
+
+            pass mark = ceil(total × exam.pass_percentage / 100)
+
+        where total is what the papers were out of: this round's
+        maximum_marks, plus the subjective round's on a two-round exam. ceil,
+        so the bar never rounds down.
+
+        Frozen, not calculated when needed: admins can change an exam's pass
+        percentage, and a pass judged at 70% must not turn into a fail if the
+        exam is later raised to 75%. Pass or fail is always marks obtained
+        against this stored number.
+
+        The percentage is the exam's at the time of grading. Changing it
+        between a candidate sitting and being graded applies the new one.
+        """
+        total = self.maximum_marks
+        if total is None:
+            return None
+        if self.exam.exam_type == Exam.Type.BOTH:
+            second = ExamBooking.objects.filter(parent_booking=self).first()
+            if second is None or second.maximum_marks is None:
+                return None  # second round not graded yet
+            total += second.maximum_marks
+        self.passing_marks = math.ceil(total * self.exam.pass_percentage / 100)
+        self.save(update_fields=["passing_marks", "updated_at"])
+        return self.passing_marks
 
 class OutboundEmail(models.Model):
     """

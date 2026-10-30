@@ -1,0 +1,199 @@
+{% load static %}<!doctype html>
+{% comment %}
+  The certificate. A standalone page — not extending base.html: no header, no
+  navigation, one printed page.
+
+  THE PDF IS NOT MADE FROM THIS FILE. It is drawn by apps/exam/certificates.py
+  with ReportLab (pure Python, the same on every OS), from the same
+  measurements. This file is the design in HTML — the visual reference, and a
+  quick browser preview. Change one, change the other, and compare them.
+
+  Rebuilt in HTML/CSS from TestMu AI's certificate design (the Playwright 101
+  sample), with every position and size measured from it. Only the logo, the
+  "Certified Professional" seal and the signature are images, in
+  static/certificates/, all from TestMu AI's Figma file:
+    logo.svg       the logo, a vector
+    signature.svg  the signature, a vector
+    seal.png       cut from Figma's 3× blank-template export (793 px across —
+                   sharp in print). An SVG export would be better still.
+
+  Context — all strings, formatted before they arrive (see the note on dates):
+    holder_name      the candidate's name, printed in capitals
+    exam_name        e.g. "Playwright 101" — the title (in capitals) and the
+                     "for successfully completing …" line
+    issued_on        e.g. "October 27, 2026"
+    valid_until      e.g. "October 27, 2028"
+    certificate_id   the full UUID
+
+  DATES arrive as text. Django's |date filter converts an aware datetime to
+  the server's zone (UTC) first, which can print the day before or after.
+
+  SCALE. The design was measured on a 1760 × 1320 canvas. --u is one of those
+  design pixels on the printed page (11in ÷ 1760), so every measurement below
+  is calc(N * var(--u)) and reads the same as the design. The page is
+  11 × 8.25 in — the design's own 4:3 shape.
+
+  FONT. Rubik, the closest match to the design (unconfirmed). Loaded from
+  Google Fonts for viewing in a browser; the PDF step will need the font
+  files locally, since a PDF generator should not depend on the internet.
+{% endcomment %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Certificate · {{ holder_name }} · {{ exam_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  @page { size: 11in 8.25in; margin: 0; }
+
+  :root {
+    --u: calc(11in / 1760);
+    --frame: #99a3b3;
+    --band: #dfe7ef;
+    --gold: #9f8716;
+    --blue: #1642df;
+    --text: #434343;
+    --ink: #000000;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { background: #ffffff; }
+  body {
+    font-family: "Rubik", "Helvetica Neue", Arial, sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page {
+    position: relative;
+    width: calc(1760 * var(--u));
+    height: calc(1320 * var(--u));
+    overflow: hidden;
+    background: #ffffff;
+  }
+
+  /* Double frame: a thick outer rule, a white gap, a thin inner rule. */
+  .frame-outer {
+    position: absolute;
+    left: calc(28 * var(--u)); top: calc(28 * var(--u));
+    width: calc(1704 * var(--u)); height: calc(1264 * var(--u));
+    border: calc(22 * var(--u)) solid var(--frame);
+  }
+  .frame-inner {
+    position: absolute;
+    left: calc(58 * var(--u)); top: calc(58 * var(--u));
+    width: calc(1644 * var(--u)); height: calc(1204 * var(--u));
+    border: calc(6 * var(--u)) solid var(--frame);
+  }
+
+  /* The vertical band: gold stripe, pale blue, gold stripe — inner frame top to bottom. */
+  .band {
+    position: absolute;
+    left: calc(152 * var(--u)); top: calc(64 * var(--u));
+    width: calc(184 * var(--u)); height: calc(1192 * var(--u));
+    background: var(--band);
+    border-left: calc(12 * var(--u)) solid var(--gold);
+    border-right: calc(12 * var(--u)) solid var(--gold);
+  }
+
+  .seal {
+    position: absolute;
+    left: calc(116 * var(--u)); top: calc(296 * var(--u));
+    width: calc(252 * var(--u)); height: calc(252 * var(--u));
+  }
+
+  /* Everything right of the band starts on this line. */
+  .content { position: absolute; left: calc(480 * var(--u)); top: 0; right: calc(120 * var(--u)); }
+
+  .heading {
+    position: absolute; top: calc(216 * var(--u));
+    display: flex; align-items: flex-start; gap: calc(30 * var(--u));
+  }
+  /* The Figma SVG (190 × 45), at the width the design gives it. */
+  .logo { width: calc(192 * var(--u)); height: auto; display: block; margin-top: calc(6 * var(--u)); }
+  .exam-title {
+    margin-top: calc(4 * var(--u));
+    font-size: calc(38 * var(--u));
+    line-height: 1;
+    font-weight: 500;
+    color: var(--blue);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  /* From "Presented to" down to the signatory, the lines stack in normal
+     flow rather than sitting at fixed heights, so a name that wraps onto a
+     second line pushes the rest down instead of running into it. The margins
+     reproduce the design's spacing for a one-line name (each is the gap from
+     the line above, measured on the design). */
+  .stack { position: absolute; top: calc(311 * var(--u)); }
+  .stack > * { display: block; }
+
+  .presented {
+    font-size: calc(36 * var(--u)); line-height: 1.2; font-weight: 300; color: var(--text);
+  }
+  .holder {
+    margin-top: calc(28 * var(--u)); margin-left: calc(-6 * var(--u));
+    font-size: calc(54 * var(--u)); line-height: 1.1; font-weight: 500;
+    color: var(--ink); text-transform: uppercase;
+    max-width: calc(1150 * var(--u));
+  }
+  .reason {
+    margin-top: calc(37 * var(--u));
+    max-width: calc(760 * var(--u));
+    font-size: calc(36 * var(--u)); line-height: calc(50 * var(--u)); font-weight: 300; color: var(--text);
+  }
+  .dates {
+    margin-top: calc(35 * var(--u));
+    font-size: calc(36 * var(--u)); line-height: 1.2; font-weight: 300; color: var(--text);
+  }
+  .dates .sep { margin: 0 calc(14 * var(--u)); color: var(--frame); }
+
+  .signature {
+    /* The Figma SVG — the signature alone, no padding — at its size in the
+       design (384 design px wide; the height follows its 290 × 66 shape). */
+    margin-top: calc(39 * var(--u));
+    width: calc(384 * var(--u)); height: auto;
+  }
+  .signatory {
+    margin-top: calc(41 * var(--u));
+    font-size: calc(27 * var(--u)); line-height: 1.2; color: var(--ink);
+  }
+
+  .certificate-id {
+    position: absolute; top: calc(1172 * var(--u)); left: calc(13 * var(--u));
+    font-size: calc(27 * var(--u)); line-height: 1.2; color: var(--ink);
+    white-space: nowrap;
+  }
+  .certificate-id strong { font-weight: 500; }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="frame-outer"></div>
+    <div class="frame-inner"></div>
+    <div class="band"></div>
+    <img class="seal" src="{% static 'certificates/seal.png' %}" alt="TestMu AI Certified Professional seal">
+
+    <div class="content">
+      <div class="heading">
+        <img class="logo" src="{% static 'certificates/logo.svg' %}" alt="TestMu AI, formerly LambdaTest">
+        <div class="exam-title">{{ exam_name }}</div>
+      </div>
+
+      <div class="stack">
+        <p class="presented">Presented to</p>
+        <p class="holder">{{ holder_name }}</p>
+        <p class="reason">for successfully completing {{ exam_name }} certification</p>
+        <p class="dates">Issued {{ issued_on }}<span class="sep">·</span>Valid until {{ valid_until }}</p>
+        <img class="signature" src="{% static 'certificates/signature.svg' %}" alt="Signature">
+        <p class="signatory">Co-Founder and CEO</p>
+      </div>
+
+      <p class="certificate-id">Certificate ID: <strong>{{ certificate_id }}</strong></p>
+    </div>
+  </div>
+</body>
+</html>

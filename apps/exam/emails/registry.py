@@ -10,6 +10,8 @@ needs to know about it — views call queue_email("<key>", booking).
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+from django.utils import timezone as dj_timezone
+
 from apps.exam.models import ExamBooking
 
 S = ExamBooking.Status
@@ -34,6 +36,9 @@ class EmailEvent:
     skip_reason: Callable[["OutboundEmail", ExamBooking, object], Optional[str]]
     #: None, "event" (the booking's invite) or "cancel" (removes it).
     calendar: Optional[str] = None
+    #: Any other file to attach: a function of the booking returning
+    #: (filename, bytes, mimetype), or None to attach nothing.
+    attachment: Optional[Callable[[ExamBooking], Optional[tuple]]] = None
 
 
 # ---- skip rules ----------------------------------------------------------
@@ -89,6 +94,17 @@ def _second_round_still_open(row, b, now):
 
 def _still_missed(row, b, now):
     return None if b.status == S.NO_SHOW else f"booking is now {b.get_status_display().lower()}"
+
+
+def _certificate_pdf(booking):
+    # Imported here: ReportLab is only needed when a certificate is sent.
+    from apps.exam.certificates import certificate_pdf_attachment
+    return certificate_pdf_attachment(booking)
+
+
+def _certificate_exists(row, b, now):
+    from apps.exam.models import Certificate
+    return None if Certificate.objects.filter(booking=b).exists() else "no certificate for this booking"
 
 
 # ---- the events ----------------------------------------------------------
@@ -151,6 +167,16 @@ EVENTS = {
         mailer="exam", template="second_round_open",
         key=lambda b: f"second_round_open:{b.booking_id}",
         skip_reason=_second_round_still_open,
+    ),
+    # A certificate, issued or asked for again from Get Certificate. The key
+    # carries the time, so a re-send is a new email rather than a duplicate;
+    # issuing itself happens once (one certificate per exam). The PDF is
+    # generated as the email is built (apps.exam.certificates) and attached.
+    "certificate_generated": EmailEvent(
+        mailer="results", template="certificate_generated",
+        key=lambda b: f"certificate_generated:{b.booking_id}:{dj_timezone.now().isoformat()}",
+        skip_reason=_certificate_exists,
+        attachment=lambda b: _certificate_pdf(b),
     ),
     # Never joined: queued by the scheduled job when the window closes, to go
     # settings.EMAIL_EXPIRED_DELAY_HOURS later. For a missed second round the

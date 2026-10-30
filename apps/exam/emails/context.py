@@ -27,7 +27,10 @@ def _when(moment, tz):
 
 
 def build_context(row, booking, now):
+    from apps.exam.models import Certificate
+
     candidate = booking.candidate
+    certificate = Certificate.objects.filter(booking=booking).first()
     minutes_until = max(0, round((booking.scheduled_at - now).total_seconds() / 60))
     return {
         "first_name": ((candidate.display_name or "").split(" ")[0] if candidate else "") or "there",
@@ -48,6 +51,9 @@ def build_context(row, booking, now):
         "join_url": _link("exam:start_exam_termsandconditions", booking_id=booking.booking_id),
         "book_again_url": settings.SITE_URL + reverse("exam:book") + f"?exam={booking.exam.slug}",
         "change_cutoff_minutes": settings.BOOKING_CHANGE_CUTOFF_MINUTES,
+        # Only for certificate emails; empty otherwise.
+        "certificate_id": str(certificate.certificate_id) if certificate else "",
+        "certificate_valid_until": _when(certificate.expires_at, booking.booked_timezone).split(" at ")[0] if certificate else "",
         "reply_to": settings.EMAIL_REPLY_TO,
         "site_url": settings.SITE_URL,
     }
