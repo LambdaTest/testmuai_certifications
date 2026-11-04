@@ -5,9 +5,10 @@ Anything about certifications, booking, sitting an exam, grading, or
 credentials belongs in ``apps.exam``.
 """
 
+from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, StreamingHttpResponse
 from django.utils import timezone
@@ -16,7 +17,7 @@ from apps.exam.calendar import google_calendar_url
 from apps.exam.models import ExamBooking
 
 from . import exports
-from .forms import ExportCandidatesForm
+from .forms import ExportCandidatesForm, ProfileForm
 from .models import User
 from .decorators import role_required
 from django.shortcuts import get_object_or_404
@@ -266,3 +267,22 @@ def export_candidates(request):
             "export_timezone": exports.EXPORT_TIMEZONE,
         },
     )
+
+@login_required
+def profile(request):
+    """
+    The signed-in user's own details: name, phone, LinkedIn and GitHub, which
+    they can edit, beside email and login id, which come from the TestMu AI
+    login and are only shown.
+
+    One view, both halves: GET shows the form filled from the account; POST
+    validates (ProfileForm) and saves, then redirects back here with a
+    message — so a refresh does not resubmit. An invalid form comes back with
+    the errors and what was typed.
+    """
+    form = ProfileForm(request.POST or None, instance=request.user)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Your profile has been saved.")
+        return redirect("home:profile")
+    return render(request, "home/profile.html", {"form": form})

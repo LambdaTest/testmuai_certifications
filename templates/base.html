@@ -76,6 +76,9 @@
               <a href="{% url 'exam:book' %}" class="block rounded-lg px-3 py-2.5 text-[13.5px] text-body hover:bg-[#F3F5F8] hover:text-ink">Book an exam</a>
               <a href="https://www.testmuai.com/certifications/verify/" target="_blank" rel="noreferrer"
                  class="block rounded-lg px-3 py-2.5 text-[13.5px] text-body hover:bg-[#F3F5F8] hover:text-ink">Verify a certificate</a>
+              <a href="{% url 'home:profile' %}"
+                 {% if request.resolver_match.url_name == "profile" %}aria-current="page"{% endif %}
+                 class="block rounded-lg px-3 py-2.5 text-[13.5px] text-body hover:bg-[#F3F5F8] hover:text-ink">Profile</a>
               <div class="my-1.5 border-t border-[#F0F1F3]"></div>
               {% comment %}
                 Admin logout until OIDC lands, at which point this clears our
