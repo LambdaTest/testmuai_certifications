@@ -116,6 +116,17 @@ def dashboard(request):
         )
     elif user_role == User.Role.CANDIDATE:
         booking = _next_booking(request.user)
+        # "Complete your profile": one row per field the candidate can fill in
+        # on the profile page — ticked if filled, otherwise an Add link to that
+        # field there. `field` is the input's id on profile.html.
+        me = request.user
+        profile_items = [
+            {"label": "Full name", "done": bool(me.display_name), "field": "id_display_name"},
+            {"label": "Phone", "done": bool(me.contact_number), "field": "id_contact_number"},
+            {"label": "LinkedIn profile", "done": bool(me.linkedin_link), "field": "id_linkedin_link"},
+            {"label": "GitHub profile", "done": bool(me.github_link), "field": "id_github_link"},
+        ]
+        profile_done = sum(item["done"] for item in profile_items)
         return render(
             request,
             "home/dashboard_candidate.html",
@@ -130,6 +141,9 @@ def dashboard(request):
                 # Google can only create an event — no UID in the URL — so the
                 # .ics download is the one that can move or cancel it later.
                 "gcal_url": google_calendar_url(booking) if booking else None,
+                "profile_items": profile_items,
+                "profile_pct": round(100 * profile_done / len(profile_items)),
+                "profile_left": len(profile_items) - profile_done,
             },
         )
     else:

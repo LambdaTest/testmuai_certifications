@@ -168,8 +168,7 @@
       </span>
       <span class="min-w-0">
         <span class="block text-[15.5px] font-bold text-ink">Complete Profile</span>
-        {# profile_pct_text #}
-        <span class="mt-0.5 block text-[13px] text-muted">60% complete</span>
+        <span class="mt-0.5 block text-[13px] text-muted">{{ profile_pct }}% complete</span>
       </span>
       <span class="ml-auto text-[17px] text-[#B9BFC9]">→</span>
     </a>
@@ -292,47 +291,46 @@
     </div>
 
     {# ----- Sidebar: profile completeness ----- #}
+    {% comment %}
+      Real data: profile_items, profile_pct and profile_left come from the
+      dashboard view — one row per field on the profile page. A filled field
+      is ticked; an empty one links to that field on the profile page.
+    {% endcomment %}
     <aside class="flex min-w-0 flex-col gap-6">
       <section id="sec-profile" class="rounded-2xl border border-line bg-white p-[22px]">
         <div class="flex items-center gap-4">
-          {# ring fill = profile_pct #}
           <div class="flex size-16 flex-none items-center justify-center rounded-full"
-               style="background: conic-gradient(#2C86EE 60%, #EAECEF 0);">
-            <span class="inline-grid size-[50px] place-items-center rounded-full bg-white text-[13.5px] font-extrabold">60%</span>
+               style="background: conic-gradient({% if profile_pct == 100 %}#0E8A45{% else %}#2C86EE{% endif %} {{ profile_pct }}%, #EAECEF 0);">
+            <span class="inline-grid size-[50px] place-items-center rounded-full bg-white text-[13.5px] font-extrabold">{{ profile_pct }}%</span>
           </div>
           <div class="min-w-0">
-            <h2 class="text-base font-bold">Complete your profile</h2>
+            <h2 class="text-base font-bold">{% if profile_left %}Complete your profile{% else %}Your profile is complete{% endif %}</h2>
             <p class="mt-1 text-[13px] leading-[1.5] text-muted">
-              2 items left. Complete it for faster certificate verification.
+              {% if profile_left %}
+                {{ profile_left }} item{{ profile_left|pluralize }} left. Your name is what your certificates print.
+              {% else %}
+                Thanks — everything's filled in. You can update it any time.
+              {% endif %}
             </p>
           </div>
         </div>
         <div class="mt-3.5">
-          {# profile_done #}
-          <div class="flex items-center gap-2.5 py-1.5">
-            <span class="inline-grid size-[18px] flex-none place-items-center rounded-full bg-ok-tint text-[11px] font-extrabold text-ok">✓</span>
-            <span class="text-[13.5px] text-[#8A9099]">Basic information</span>
-          </div>
-          <div class="flex items-center gap-2.5 py-1.5">
-            <span class="inline-grid size-[18px] flex-none place-items-center rounded-full bg-ok-tint text-[11px] font-extrabold text-ok">✓</span>
-            <span class="text-[13.5px] text-[#8A9099]">Email verified</span>
-          </div>
-          <div class="flex items-center gap-2.5 py-1.5">
-            <span class="inline-grid size-[18px] flex-none place-items-center rounded-full bg-ok-tint text-[11px] font-extrabold text-ok">✓</span>
-            <span class="text-[13.5px] text-[#8A9099]">Organization &amp; role</span>
-          </div>
-          {# profile_missing #}
-          <div class="flex items-center gap-2.5 py-1.5">
-            <span class="size-[18px] flex-none rounded-full border-[1.5px] border-[#C9CED6] bg-white"></span>
-            <span class="flex-1 text-[13.5px] text-body">LinkedIn profile URL</span>
-            <button type="button" class="text-[13px] font-bold text-brand hover:text-brand-dark">+ Add</button>
-          </div>
-          <div class="flex items-center gap-2.5 py-1.5">
-            <span class="size-[18px] flex-none rounded-full border-[1.5px] border-[#C9CED6] bg-white"></span>
-            <span class="flex-1 text-[13.5px] text-body">Profile photo</span>
-            <button type="button" class="text-[13px] font-bold text-brand hover:text-brand-dark">+ Add</button>
-          </div>
+          {% for item in profile_items %}
+            {% if item.done %}
+              <div class="flex items-center gap-2.5 py-1.5">
+                <span class="inline-grid size-[18px] flex-none place-items-center rounded-full bg-ok-tint text-[11px] font-extrabold text-ok">✓</span>
+                <span class="text-[13.5px] text-[#8A9099]">{{ item.label }}</span>
+              </div>
+            {% else %}
+              <div class="flex items-center gap-2.5 py-1.5">
+                <span class="size-[18px] flex-none rounded-full border-[1.5px] border-[#C9CED6] bg-white"></span>
+                <span class="flex-1 text-[13.5px] text-body">{{ item.label }}</span>
+                <a href="{% url 'home:profile' %}#{{ item.field }}" class="text-[13px] font-bold text-brand hover:text-brand-dark">+ Add</a>
+              </div>
+            {% endif %}
+          {% endfor %}
         </div>
+        <a href="{% url 'home:profile' %}" class="mt-3 inline-block text-[13px] font-semibold text-brand hover:underline">Edit profile →</a>
       </section>
     </aside>
   </div>
