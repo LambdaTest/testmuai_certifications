@@ -116,8 +116,8 @@ the OIDC integration lands.
 
 ## Not built
 
-**Results** — release of graded and combined results, and the score report; the "Show Results"
-button on a booking still has no route.
+**Results** — release of graded and combined results. A booking's own marks are shown in a
+modal by its Show Results button — deliberately not a page of its own.
 
 **Unlinked admin destinations** — the dashboard tiles, Certificates, Analytics, Manage Roles and
 Email Templates are still `href="#"` in `base_staff.html`.

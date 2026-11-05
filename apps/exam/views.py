@@ -1807,6 +1807,15 @@ def get_certificate(request, booking_id):
         messages.error(request, "A certificate is issued only for a passed exam.")
         return back
 
+    # Passed — but a certificate is issued only once the profile is complete:
+    # the same four fields as the dashboard's "Complete your profile" card
+    # (home.views.dashboard), so the card shows what is missing. Only new
+    # certificates wait on it; one already issued is re-sent above regardless.
+    me = request.user
+    if not (me.display_name and me.contact_number and me.linkedin_link and me.github_link):
+        messages.error(request, "Please complete your profile to issue certificate.")
+        return back
+
     try:
         with transaction.atomic():
             certificate_id = generate_certificate(first)
