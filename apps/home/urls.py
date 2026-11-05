@@ -12,5 +12,6 @@ urlpatterns = [
     path("candidates/", views.candidate_info, name="candidate_info"),
     path("candidate_detail/<int:candidate_id>/", views.candidate_detail, name="candidate_detail"),
     path("export_candidates/", views.export_candidates, name="export_candidates"),
-    path("profile/", views.profile, name="profile")
+    path("profile/", views.profile, name="profile"),
+    path("profile/links/", views.save_profile_links, name="save_profile_links"),
 ]

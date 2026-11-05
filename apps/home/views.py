@@ -12,12 +12,14 @@ from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, StreamingHttpResponse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_POST
 
 from apps.exam.calendar import google_calendar_url
 from apps.exam.models import ExamBooking
 
 from . import exports
-from .forms import ExportCandidatesForm, ProfileForm
+from .forms import ExportCandidatesForm, ProfileForm, ProfileLinksForm
 from .models import User
 from .decorators import role_required
 from django.shortcuts import get_object_or_404
@@ -300,3 +302,33 @@ def profile(request):
         messages.success(request, "Your profile has been saved.")
         return redirect("home:profile")
     return render(request, "home/profile.html", {"form": form})
+
+
+@login_required
+@require_POST
+def save_profile_links(request):
+    """
+    Saves LinkedIn and GitHub from the exam-completed page (its Close button),
+    then goes to the dashboard.
+
+    In home, not exam: the links are the user's, and their checks are the
+    profile page's (ProfileLinksMixin) — exam may not import from home, so
+    the page posts here instead. ProfileLinksForm only fills in what is
+    missing and never clears a link the account already has.
+
+    An invalid link goes back to the page it came from (`next`, checked to be
+    this site) with the reason as a message.
+    """
+    form = ProfileLinksForm(request.POST, instance=request.user)
+    if form.fields and not form.is_valid():
+        for errors in form.errors.values():
+            for error in errors:
+                messages.error(request, error)
+        back = request.POST.get("next", "")
+        if url_has_allowed_host_and_scheme(back, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+            return redirect(back)
+        return redirect("home:dashboard")
+    if form.fields:
+        form.save()
+        messages.success(request, "Thanks — your profile links have been saved.")
+    return redirect("home:dashboard")

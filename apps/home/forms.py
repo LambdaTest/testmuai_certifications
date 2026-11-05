@@ -82,7 +82,33 @@ GITHUB_PROFILE_RE = re.compile(r"^https://(?:www\.)?github\.com/([A-Za-z0-9](?:[
 PHONE_RE = re.compile(r"^\+?[\d\s\-()]+$")
 
 
-class ProfileForm(forms.ModelForm):
+class ProfileLinksMixin:
+    """
+    The LinkedIn and GitHub checks, shared by ProfileForm (the profile page)
+    and ProfileLinksForm (the exam-completed page), so both accept and refuse
+    exactly the same links.
+    """
+
+    def clean_linkedin_link(self):
+        link = self.cleaned_data["linkedin_link"].strip()
+        if link and not LINKEDIN_RE.match(link):
+            raise forms.ValidationError("Enter your LinkedIn profile link, e.g. https://www.linkedin.com/in/your-name")
+        return link.rstrip("/")
+
+    def clean_github_link(self):
+        link = self.cleaned_data["github_link"].strip()
+        if link and not GITHUB_PROFILE_RE.match(link):
+            raise forms.ValidationError("Enter your GitHub profile link, e.g. https://github.com/your-username")
+        return link.rstrip("/")
+
+    @staticmethod
+    def github_username_from(link):
+        """The username in a GitHub profile link — never typed separately, so the two cannot disagree."""
+        match = GITHUB_PROFILE_RE.match(link or "")
+        return match.group(1) if match else ""
+
+
+class ProfileForm(ProfileLinksMixin, forms.ModelForm):
     """
     A user's own details, from /profile/.
 
@@ -128,22 +154,45 @@ class ProfileForm(forms.ModelForm):
             raise forms.ValidationError("Enter a phone number, e.g. +91 98765 43210.")
         return phone
 
-    def clean_linkedin_link(self):
-        link = self.cleaned_data["linkedin_link"].strip()
-        if link and not LINKEDIN_RE.match(link):
-            raise forms.ValidationError("Enter your LinkedIn profile link, e.g. https://www.linkedin.com/in/your-name")
-        return link.rstrip("/")
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.github_username = self.github_username_from(user.github_link)
+        if commit:
+            user.save()
+        return user
 
-    def clean_github_link(self):
-        link = self.cleaned_data["github_link"].strip()
-        if link and not GITHUB_PROFILE_RE.match(link):
-            raise forms.ValidationError("Enter your GitHub profile link, e.g. https://github.com/your-username")
-        return link.rstrip("/")
+
+class ProfileLinksForm(ProfileLinksMixin, forms.ModelForm):
+    """
+    LinkedIn and GitHub from the page a candidate sees after an exam.
+
+    Only fills in what is missing. A link the account already has is not a
+    field at all — not shown, not posted, so this page can never clear or
+    overwrite it (that is the profile page's job). A link it lacks is
+    required, since both are asked for there.
+    """
+
+    class Meta:
+        model = User
+        fields = ["linkedin_link", "github_link"]
+        labels = {"linkedin_link": "LinkedIn", "github_link": "GitHub"}
+        error_messages = {
+            "linkedin_link": {"required": "Enter your LinkedIn profile link.", "invalid": "Enter a full link, starting with https://"},
+            "github_link": {"required": "Enter your GitHub profile link.", "invalid": "Enter a full link, starting with https://"},
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in list(self.fields):
+            if getattr(self.instance, name):
+                del self.fields[name]          # already has it: leave it alone
+            else:
+                self.fields[name].required = True
 
     def save(self, commit=True):
         user = super().save(commit=False)
-        match = GITHUB_PROFILE_RE.match(user.github_link or "")
-        user.github_username = match.group(1) if match else ""
+        if "github_link" in self.fields:
+            user.github_username = self.github_username_from(user.github_link)
         if commit:
-            user.save()
+            user.save(update_fields=[*self.fields, *(["github_username"] if "github_link" in self.fields else []), "updated_at"])
         return user
