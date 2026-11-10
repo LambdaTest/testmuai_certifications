@@ -9,6 +9,7 @@ picks their own date and time.
 import json
 import secrets
 import uuid
+from zoneinfo import ZoneInfo
 from dataclasses import asdict
 
 from django.conf import settings
@@ -1904,4 +1905,122 @@ def show_certificates(request):
         request,
         "exam/show_certificates.html",
         {"layout": "base_staff.html", "certificates": page, "q": q, "now": timezone.now()},
+    )
+
+
+def _ist_day_label(day, today):
+    """'Today', 'Tomorrow', 'Yesterday', or 'Fri, 13 Nov'."""
+    if day == today:
+        return "Today"
+    if day == today + timedelta(days=1):
+        return "Tomorrow"
+    if day == today - timedelta(days=1):
+        return "Yesterday"
+    return f"{day:%a}, {day.day} {day:%b}"
+
+
+def _clock(moment):
+    """'4:30 PM'."""
+    return f"{moment:%I}".lstrip("0") + f":{moment:%M %p}"
+
+
+def _minutes_text(minutes):
+    """'8 min', '2 h 10 min', '16 h' — how long, in words."""
+    if minutes < 60:
+        return f"{minutes} min"
+    hours, rest = divmod(minutes, 60)
+    return f"{hours} h" if hours >= 10 or rest == 0 else f"{hours} h {rest} min"
+
+
+@role_required(User.Role.ADMIN)
+def bookings_overview(request):
+    """
+    Bookings — where the admin dashboard's "Upcoming exams" and "Exams
+    underway" tiles go. One page, two tabs (?tab=upcoming|underway), each
+    paginated 25 to a page. Times in IST, the admins' zone.
+
+      upcoming  booked, not begun, starting within the next
+                ADMIN_UPCOMING_DAYS (5) days — soonest first, grouped by day.
+                The tile counts every upcoming exam, so the page says how many
+                of those it is showing.
+      underway  papers begun, not submitted, time left — the same rule as
+                the tile's count — ending soonest first, with time left.
+    """
+    ist = ZoneInfo(timezones.DEFAULT_TIMEZONE)
+    now = timezone.now()
+    today = now.astimezone(ist).date()
+    tab = "underway" if request.GET.get("tab") == "underway" else "upcoming"
+
+    upcoming_all = ExamBooking.objects.filter(
+        status=ExamBooking.Status.BOOKED, scheduled_at__gte=now, candidate__isnull=False,
+    )
+    upcoming = (
+        upcoming_all.filter(scheduled_at__lt=now + timedelta(days=settings.ADMIN_UPCOMING_DAYS))
+        .select_related("exam", "candidate", "booked_by")
+        .order_by("scheduled_at")
+    )
+    underway = (
+        ExamSheet.objects.filter(
+            booking__status=ExamBooking.Status.ATTENDED,
+            submitted_at__isnull=True,
+            expires_at__gt=now,
+        )
+        .select_related("booking__exam", "booking__candidate")
+        .order_by("expires_at")
+    )
+
+    page = Paginator(upcoming if tab == "upcoming" else underway, 25).get_page(request.GET.get("page"))
+
+    days, rows = [], []
+    if tab == "upcoming":
+        for b in page:
+            at = b.scheduled_at.astimezone(ist)
+            row = {
+                "booking": b,
+                "time": _clock(at),
+                "in_text": f"in {_minutes_text(max(1, int((b.scheduled_at - now).total_seconds() // 60)))}"
+                           if at.date() == today else "",
+                # The candidate's own time too, when they booked in another zone.
+                "local_text": "" if b.booked_timezone == timezones.DEFAULT_TIMEZONE else
+                              f"{_clock(b.local_scheduled_at)} {b.booked_timezone.split('/')[-1].replace('_', ' ')}",
+                "by_admin": b.booked_by_id is not None and b.booked_by_id != b.candidate_id,
+            }
+            if not days or days[-1]["date"] != at.date():
+                days.append({"date": at.date(), "label": _ist_day_label(at.date(), today), "rows": []})
+            days[-1]["rows"].append(row)
+        for d in days:
+            if d["label"] in ("Today", "Tomorrow"):
+                d["label"] = f"{d['label']} · {d['date']:%a}, {d['date'].day} {d['date']:%b}"
+    else:
+        for sheet in page:
+            b = sheet.booking
+            length = Exam.DURATION_BY_TYPE[b.round_type]
+            began = sheet.expires_at - timedelta(minutes=length)
+            left = max(0, int((sheet.expires_at - now).total_seconds() // 60))
+            began_ist, ends_ist = began.astimezone(ist), sheet.expires_at.astimezone(ist)
+            rows.append({
+                "booking": b,
+                "began": ("" if began_ist.date() == today else _ist_day_label(began_ist.date(), today) + " ") + _clock(began_ist),
+                "left_text": f"{_minutes_text(left)} left",
+                "ends": ("" if ends_ist.date() == today else f"{ends_ist:%a} ") + _clock(ends_ist),
+                "elapsed_pct": min(100, max(0, round(100 * (length - left) / length))),
+                # Amber when the end is close: the last 10 minutes, or the
+                # last tenth of a long subjective window.
+                "ending_soon": left <= max(10, length // 10),
+            })
+
+    return render(
+        request,
+        "exam/bookings_overview.html",
+        {
+            "layout": "base_staff.html",
+            "tab": tab,
+            "page": page,
+            "days": days,
+            "rows": rows,
+            "upcoming_count": upcoming.count(),
+            "upcoming_all_count": upcoming_all.count(),
+            "underway_count": underway.count(),
+            "upcoming_days": settings.ADMIN_UPCOMING_DAYS,
+        },
     )

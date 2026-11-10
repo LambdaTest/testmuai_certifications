@@ -32,7 +32,7 @@
   {# Stats — every one is a link to the work behind it #}
   <div class="mt-4 grid gap-4 sm:grid-cols-3">
     {# exams_underway — attempts in progress right now #}
-    <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
+    <a href="{% url 'exam:bookings_overview' %}?tab=underway" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
       <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Exams underway</div>
       <div class="mt-1.5">
         <span class="text-3xl font-extrabold tracking-tight">{{exams_underway}}</span>
@@ -48,7 +48,7 @@
     </a>
 
     {# upcoming_exams — bookings ahead of now #}
-    <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
+    <a href="{% url 'exam:bookings_overview' %}?tab=upcoming" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
       <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Upcoming exams</div>
       <div class="mt-1.5">
         <span class="text-3xl font-extrabold tracking-tight">{{upcoming_exams}}</span>

@@ -1,258 +1,150 @@
-{% extends "base_staff.html" %}
+{% extends layout|default:"base_staff.html" %}
 
 {% comment %}
   Bookings — where the admin dashboard's "Upcoming exams" and "Exams
-  underway" tiles would go. One page, two tabs.
+  underway" tiles go. One page, two tabs (?tab=upcoming|underway). Admin-only.
 
-  MOCKUP ONLY: every row below is made-up sample data written into the
-  template. There is no view or URL yet. When it is built, the view would pass
-  `upcoming` (booked, not begun, start time ahead — soonest first, grouped by
-  day) and `underway` (begun, not submitted, time left — same rule as the
-  dashboard count), paginated like Candidate Info.
+  Context from apps.exam.views.bookings_overview:
+    tab                 – "upcoming" or "underway"
+    page                – the Paginator page for the open tab (25 a page)
+    days                – upcoming only: [{label, date, rows}], grouped by IST day,
+                          each row {booking, time, in_text, local_text, by_admin}
+    rows                – underway only: [{booking, began, left_text, ends,
+                          elapsed_pct, ending_soon}]
+    upcoming_count      – upcoming within the window
+    upcoming_all_count  – every upcoming exam (what the dashboard tile counts)
+    underway_count
+    upcoming_days       – settings.ADMIN_UPCOMING_DAYS
 
-  The tab comes from ?tab=underway|upcoming, so each dashboard tile can link
-  straight to its own tab.
+  Times are strings already in IST (formatted in the view), so no template
+  filter converts them back to UTC. Cancel shows only while an admin can still
+  cancel (booking.admin_can_cancel); it opens the existing confirm step.
 {% endcomment %}
 
 {% block title %}Bookings · TestMu AI Certifications{% endblock %}
 
 {% block staff_content %}
-<div x-data="{ tab: new URLSearchParams(location.search).get('tab') === 'underway' ? 'underway' : 'upcoming' }">
+<header class="mb-5">
+  <h1 class="text-2xl font-bold tracking-tight">Bookings</h1>
+  <p class="mt-1.5 text-[14.5px] text-muted">Who is sitting an exam right now, and who is booked next. Times are India time (IST).</p>
+</header>
 
-  <header class="mb-5">
-    <h1 class="text-2xl font-bold tracking-tight">Bookings</h1>
-    <p class="mt-1.5 text-[14.5px] text-muted">Who is sitting an exam right now, and who is booked next. Times are India time (IST).</p>
-  </header>
+{# ---------------- Tabs ---------------- #}
+<nav class="mb-5 flex gap-1 border-b border-line" aria-label="Bookings">
+  <a href="?tab=upcoming" {% if tab == 'upcoming' %}aria-current="page"{% endif %}
+     class="-mb-px border-b-2 px-4 pb-2.5 text-[14.5px] font-semibold {% if tab == 'upcoming' %}border-brand text-ink{% else %}border-transparent text-muted hover:text-ink{% endif %}">
+    Upcoming <span class="ml-1 rounded-full bg-[#F3F5F8] px-2 py-0.5 text-[12px] font-bold text-[#555]">{{ upcoming_count }}</span>
+  </a>
+  <a href="?tab=underway" {% if tab == 'underway' %}aria-current="page"{% endif %}
+     class="-mb-px border-b-2 px-4 pb-2.5 text-[14.5px] font-semibold {% if tab == 'underway' %}border-brand text-ink{% else %}border-transparent text-muted hover:text-ink{% endif %}">
+    Underway <span class="ml-1 rounded-full bg-ok-tint px-2 py-0.5 text-[12px] font-bold text-ok">{{ underway_count }}</span>
+  </a>
+</nav>
 
-  {# ---------------- Tabs ---------------- #}
-  <div class="mb-5 flex gap-1 border-b border-line" role="tablist">
-    <button type="button" role="tab" @click="tab = 'upcoming'" :aria-selected="tab === 'upcoming'"
-            :class="tab === 'upcoming' ? 'border-brand text-ink' : 'border-transparent text-muted hover:text-ink'"
-            class="-mb-px border-b-2 px-4 pb-2.5 text-[14.5px] font-semibold">
-      Upcoming <span class="ml-1 rounded-full bg-[#F3F5F8] px-2 py-0.5 text-[12px] font-bold text-[#555]">6</span>
-    </button>
-    <button type="button" role="tab" @click="tab = 'underway'" :aria-selected="tab === 'underway'"
-            :class="tab === 'underway' ? 'border-brand text-ink' : 'border-transparent text-muted hover:text-ink'"
-            class="-mb-px border-b-2 px-4 pb-2.5 text-[14.5px] font-semibold">
-      Underway <span class="ml-1 rounded-full bg-ok-tint px-2 py-0.5 text-[12px] font-bold text-ok">3</span>
-    </button>
-  </div>
-
-  {# ---------------- Search (both tabs) ---------------- #}
-  <form method="get" class="relative mb-5" role="search" onsubmit="return false">
-    <input type="search" placeholder="Candidate name or email, or exam — press Enter"
-           class="h-11 w-full rounded-lg border border-zinc-300 bg-white pr-3 pl-10 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
-    <svg class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-zinc-400" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/></svg>
-  </form>
-
+{% if tab == 'upcoming' %}
   {# ================= UPCOMING ================= #}
-  <section x-show="tab === 'upcoming'" class="grid gap-6">
-
-    {% comment %}One day group. Rows: time (IST, plus the candidate's own zone if different), who, what, actions.{% endcomment %}
-    <div>
-      <h2 class="mb-2.5 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Today · Tue, 10 Nov</h2>
-      <div class="grid gap-2.5">
-        <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
-          <div class="w-28">
-            <p class="text-[17px] font-bold text-ink">4:30 PM</p>
-            <p class="text-[12px] text-brand-dark">in 2 h 10 min</p>
-          </div>
-          <div class="min-w-0 sm:w-56">
-            <p class="truncate font-semibold text-ink">Priya Sharma</p>
-            <p class="truncate text-[13px] text-muted">priya.sharma@example.com</p>
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-semibold text-ink">Selenium 101</span>
-              <span class="rounded-full bg-brand-tint px-2.5 py-0.5 text-[11.5px] font-bold text-brand-dark">Objective</span>
-            </div>
-            <p class="mt-0.5 text-[13px] text-muted">Ref <span class="font-mono text-ink">7c21e0aa</span></p>
-          </div>
-          <div class="flex items-center gap-3 text-[13px] font-semibold">
-            <a href="#" class="text-brand hover:underline">Candidate</a>
-            <a href="#" class="text-danger hover:underline">Cancel</a>
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
-          <div class="w-28">
-            <p class="text-[17px] font-bold text-ink">7:00 PM</p>
-            <p class="text-[12px] text-muted">8:30 AM New York</p>
-          </div>
-          <div class="min-w-0 sm:w-56">
-            <p class="truncate font-semibold text-ink">Daniel Brooks</p>
-            <p class="truncate text-[13px] text-muted">dbrooks@example.com</p>
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-semibold text-ink">Playwright 101</span>
-              <span class="rounded-full bg-brand-tint px-2.5 py-0.5 text-[11.5px] font-bold text-brand-dark">Objective</span>
-            </div>
-            <p class="mt-0.5 text-[13px] text-muted">Ref <span class="font-mono text-ink">a41b9c02</span></p>
-          </div>
-          <div class="flex items-center gap-3 text-[13px] font-semibold">
-            <a href="#" class="text-brand hover:underline">Candidate</a>
-            <a href="#" class="text-danger hover:underline">Cancel</a>
+  <p class="mb-4 text-[13.5px] text-muted">
+    Next {{ upcoming_days }} days · {{ upcoming_count }} of {{ upcoming_all_count }} upcoming exam{{ upcoming_all_count|pluralize }}.
+  </p>
+  {% if days %}
+    <div class="grid gap-6">
+      {% for day in days %}
+        <div>
+          <h2 class="mb-2.5 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">{{ day.label }}</h2>
+          <div class="grid gap-2.5">
+            {% for row in day.rows %}
+              {% with b=row.booking %}
+                <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
+                  <div class="w-28">
+                    <p class="text-[17px] font-bold text-ink">{{ row.time }}</p>
+                    {% if row.in_text %}
+                      <p class="text-[12px] text-brand-dark">{{ row.in_text }}</p>
+                    {% elif row.local_text %}
+                      <p class="text-[12px] text-muted">{{ row.local_text }}</p>
+                    {% endif %}
+                  </div>
+                  <div class="min-w-0 sm:w-56">
+                    <p class="truncate font-semibold text-ink">{{ b.candidate.display_name|default:"(no name)" }}</p>
+                    <p class="truncate text-[13px] text-muted">{{ b.candidate.email|default:"(no email)" }}</p>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="font-semibold text-ink">{{ b.exam.exam_name }}</span>
+                      <span class="rounded-full px-2.5 py-0.5 text-[11.5px] font-bold {% if b.round_type == 'subjective' %}bg-warn-tint text-warn{% else %}bg-brand-tint text-brand-dark{% endif %}">{{ b.get_round_type_display }}</span>
+                    </div>
+                    <p class="mt-0.5 text-[13px] text-muted">
+                      Ref <span class="font-mono text-ink" title="{{ b.booking_id }}">{{ b.booking_id|stringformat:"s"|slice:":8" }}</span>
+                      {% if b.round_type == 'subjective' %} · 36-hour window{% endif %}
+                      {% if row.by_admin %} · booked by admin{% endif %}
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-3 text-[13px] font-semibold">
+                    <a href="{% url 'home:candidate_detail' b.candidate.id %}" class="text-brand hover:underline">Candidate</a>
+                    {% if b.admin_can_cancel %}
+                      <a href="{% url 'exam:cancel_exam_admin_confirm' b.booking_id %}" class="text-danger hover:underline">Cancel</a>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endwith %}
+            {% endfor %}
           </div>
         </div>
-      </div>
+      {% endfor %}
     </div>
+  {% else %}
+    <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
+      No exams in the next {{ upcoming_days }} days.
+    </p>
+  {% endif %}
 
-    <div>
-      <h2 class="mb-2.5 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Tomorrow · Wed, 11 Nov</h2>
-      <div class="grid gap-2.5">
-        <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
-          <div class="w-28"><p class="text-[17px] font-bold text-ink">10:00 AM</p></div>
-          <div class="min-w-0 sm:w-56">
-            <p class="truncate font-semibold text-ink">Ravi Kumar</p>
-            <p class="truncate text-[13px] text-muted">ravi.k@example.com</p>
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-semibold text-ink">TestMu AI Certification Exam</span>
-              <span class="rounded-full bg-brand-tint px-2.5 py-0.5 text-[11.5px] font-bold text-brand-dark">Objective</span>
-            </div>
-            <p class="mt-0.5 text-[13px] text-muted">Ref <span class="font-mono text-ink">0be74d45</span></p>
-          </div>
-          <div class="flex items-center gap-3 text-[13px] font-semibold">
-            <a href="#" class="text-brand hover:underline">Candidate</a>
-            <a href="#" class="text-danger hover:underline">Cancel</a>
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
-          <div class="w-28"><p class="text-[17px] font-bold text-ink">2:15 PM</p></div>
-          <div class="min-w-0 sm:w-56">
-            <p class="truncate font-semibold text-ink">Ananya Iyer</p>
-            <p class="truncate text-[13px] text-muted">ananya.iyer@example.com</p>
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-semibold text-ink">Selenium Advanced</span>
-              <span class="rounded-full bg-warn-tint px-2.5 py-0.5 text-[11.5px] font-bold text-warn">Subjective</span>
-            </div>
-            <p class="mt-0.5 text-[13px] text-muted">Ref <span class="font-mono text-ink">5d9e31f7</span> · 36-hour window</p>
-          </div>
-          <div class="flex items-center gap-3 text-[13px] font-semibold">
-            <a href="#" class="text-brand hover:underline">Candidate</a>
-            <a href="#" class="text-danger hover:underline">Cancel</a>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div>
-      <h2 class="mb-2.5 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Fri, 13 Nov</h2>
-      <div class="grid gap-2.5">
-        <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
-          <div class="w-28"><p class="text-[17px] font-bold text-ink">11:30 AM</p></div>
-          <div class="min-w-0 sm:w-56">
-            <p class="truncate font-semibold text-ink">Meera Nair</p>
-            <p class="truncate text-[13px] text-muted">meera.nair@example.com</p>
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-semibold text-ink">Cypress 101</span>
-              <span class="rounded-full bg-brand-tint px-2.5 py-0.5 text-[11.5px] font-bold text-brand-dark">Objective</span>
-            </div>
-            <p class="mt-0.5 text-[13px] text-muted">Ref <span class="font-mono text-ink">c3f08a19</span> · booked by admin</p>
-          </div>
-          <div class="flex items-center gap-3 text-[13px] font-semibold">
-            <a href="#" class="text-brand hover:underline">Candidate</a>
-            <a href="#" class="text-danger hover:underline">Cancel</a>
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
-          <div class="w-28"><p class="text-[17px] font-bold text-ink">6:00 PM</p></div>
-          <div class="min-w-0 sm:w-56">
-            <p class="truncate font-semibold text-ink">Arjun Mehta</p>
-            <p class="truncate text-[13px] text-muted">arjun.m@example.com</p>
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-semibold text-ink">Playwright 101</span>
-              <span class="rounded-full bg-brand-tint px-2.5 py-0.5 text-[11.5px] font-bold text-brand-dark">Objective</span>
-            </div>
-            <p class="mt-0.5 text-[13px] text-muted">Ref <span class="font-mono text-ink">91e7d2b4</span></p>
-          </div>
-          <div class="flex items-center gap-3 text-[13px] font-semibold">
-            <a href="#" class="text-brand hover:underline">Candidate</a>
-            <a href="#" class="text-danger hover:underline">Cancel</a>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <nav class="flex items-center justify-between text-[14px]" aria-label="Pages">
-      <span></span>
-      <span class="text-muted">Page 1 of 4</span>
-      <a href="#" class="font-semibold text-brand hover:underline">Next →</a>
-    </nav>
-  </section>
-
+{% else %}
   {# ================= UNDERWAY ================= #}
-  <section x-show="tab === 'underway'" x-cloak class="grid gap-2.5">
-    {% comment %}
-      Rows: who, what, when they began, and the time left as a bar — for
-      support while a candidate is mid-exam. Ends soonest first.
-    {% endcomment %}
-    <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
-      <div class="min-w-0 sm:w-56">
-        <p class="truncate font-semibold text-ink">Kavya Reddy</p>
-        <p class="truncate text-[13px] text-muted">kavya.reddy@example.com</p>
-      </div>
-      <div class="min-w-0 flex-1">
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="font-semibold text-ink">Selenium 101</span>
-          <span class="rounded-full bg-brand-tint px-2.5 py-0.5 text-[11.5px] font-bold text-brand-dark">Objective</span>
-        </div>
-        <p class="mt-0.5 text-[13px] text-muted">Began 1:52 PM · Ref <span class="font-mono text-ink">e30c4139</span></p>
-      </div>
-      <div class="w-48">
-        <div class="flex justify-between text-[12.5px]"><span class="font-semibold text-warn">8 min left</span><span class="text-faint">ends 2:37 PM</span></div>
-        <div class="mt-1.5 h-1.5 rounded-full bg-[#EEF0F4]"><div class="h-1.5 rounded-full bg-warn" style="width: 82%"></div></div>
-      </div>
-      <a href="#" class="text-[13px] font-semibold text-brand hover:underline">Candidate</a>
+  {% if rows %}
+    <div class="grid gap-2.5">
+      {% for row in rows %}
+        {% with b=row.booking %}
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
+            <div class="min-w-0 sm:w-56">
+              <p class="truncate font-semibold text-ink">{{ b.candidate.display_name|default:"(no name)" }}</p>
+              <p class="truncate text-[13px] text-muted">{{ b.candidate.email|default:"(no email)" }}</p>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-semibold text-ink">{{ b.exam.exam_name }}</span>
+                <span class="rounded-full px-2.5 py-0.5 text-[11.5px] font-bold {% if b.round_type == 'subjective' %}bg-warn-tint text-warn{% else %}bg-brand-tint text-brand-dark{% endif %}">{{ b.get_round_type_display }}</span>
+              </div>
+              <p class="mt-0.5 text-[13px] text-muted">Began {{ row.began }} · Ref <span class="font-mono text-ink" title="{{ b.booking_id }}">{{ b.booking_id|stringformat:"s"|slice:":8" }}</span></p>
+            </div>
+            <div class="w-48">
+              <div class="flex justify-between gap-2 text-[12.5px]">
+                <span class="font-semibold {% if row.ending_soon %}text-warn{% else %}text-ink{% endif %}">{{ row.left_text }}</span>
+                <span class="text-faint">ends {{ row.ends }}</span>
+              </div>
+              <div class="mt-1.5 h-1.5 rounded-full bg-[#EEF0F4]">
+                <div class="h-1.5 rounded-full {% if row.ending_soon %}bg-warn{% else %}bg-ok{% endif %}" style="width: {{ row.elapsed_pct }}%"></div>
+              </div>
+            </div>
+            <a href="{% url 'home:candidate_detail' b.candidate.id %}" class="text-[13px] font-semibold text-brand hover:underline">Candidate</a>
+          </div>
+        {% endwith %}
+      {% endfor %}
     </div>
+  {% else %}
+    <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
+      Nobody is sitting an exam right now.
+    </p>
+  {% endif %}
+{% endif %}
 
-    <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
-      <div class="min-w-0 sm:w-56">
-        <p class="truncate font-semibold text-ink">Rohan Gupta</p>
-        <p class="truncate text-[13px] text-muted">rohan.gupta@example.com</p>
-      </div>
-      <div class="min-w-0 flex-1">
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="font-semibold text-ink">TestMu AI Certification Exam</span>
-          <span class="rounded-full bg-brand-tint px-2.5 py-0.5 text-[11.5px] font-bold text-brand-dark">Objective</span>
-        </div>
-        <p class="mt-0.5 text-[13px] text-muted">Began 2:10 PM · Ref <span class="font-mono text-ink">b92585e1</span></p>
-      </div>
-      <div class="w-48">
-        <div class="flex justify-between text-[12.5px]"><span class="font-semibold text-ink">26 min left</span><span class="text-faint">ends 2:55 PM</span></div>
-        <div class="mt-1.5 h-1.5 rounded-full bg-[#EEF0F4]"><div class="h-1.5 rounded-full bg-ok" style="width: 42%"></div></div>
-      </div>
-      <a href="#" class="text-[13px] font-semibold text-brand hover:underline">Candidate</a>
-    </div>
-
-    <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
-      <div class="min-w-0 sm:w-56">
-        <p class="truncate font-semibold text-ink">Sara Thomas</p>
-        <p class="truncate text-[13px] text-muted">sara.t@example.com</p>
-      </div>
-      <div class="min-w-0 flex-1">
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="font-semibold text-ink">Selenium Advanced</span>
-          <span class="rounded-full bg-warn-tint px-2.5 py-0.5 text-[11.5px] font-bold text-warn">Subjective</span>
-        </div>
-        <p class="mt-0.5 text-[13px] text-muted">Began yesterday 6:40 PM · Ref <span class="font-mono text-ink">d0a165f7</span></p>
-      </div>
-      <div class="w-48">
-        <div class="flex justify-between text-[12.5px]"><span class="font-semibold text-ink">16 h left</span><span class="text-faint">ends Wed 6:40 AM</span></div>
-        <div class="mt-1.5 h-1.5 rounded-full bg-[#EEF0F4]"><div class="h-1.5 rounded-full bg-ok" style="width: 56%"></div></div>
-      </div>
-      <a href="#" class="text-[13px] font-semibold text-brand hover:underline">Candidate</a>
-    </div>
-  </section>
-</div>
+{% if page.has_other_pages %}
+  <nav class="mt-5 flex items-center justify-between text-[14px]" aria-label="Pages">
+    {% if page.has_previous %}
+      <a href="?tab={{ tab }}&amp;page={{ page.previous_page_number }}" class="font-semibold text-brand hover:underline">← Previous</a>
+    {% else %}<span></span>{% endif %}
+    <span class="text-muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}
+      <a href="?tab={{ tab }}&amp;page={{ page.next_page_number }}" class="font-semibold text-brand hover:underline">Next →</a>
+    {% else %}<span></span>{% endif %}
+  </nav>
+{% endif %}
 {% endblock %}
