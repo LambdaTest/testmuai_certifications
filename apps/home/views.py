@@ -16,7 +16,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from apps.exam.calendar import google_calendar_url
-from apps.exam.models import ExamBooking
+from apps.exam.models import Certificate, Exam, ExamBooking, Subject
 
 from . import exports
 from .forms import ExportCandidatesForm, ProfileForm, ProfileLinksForm
@@ -129,6 +129,23 @@ def dashboard(request):
             {"label": "GitHub profile", "done": bool(me.github_link), "field": "id_github_link"},
         ]
         profile_done = sum(item["done"] for item in profile_items)
+        # "Certificates": every certificate this candidate holds, newest
+        # first. Each card links to its booking, where Get Certificate re-sends
+        # the PDF.
+        certificates = (
+            Certificate.objects.filter(booking__candidate=me)
+            .select_related("booking__exam")
+            .order_by("-issued_at")
+        )
+        # "Explore Subjects": up to 6 subjects with at least one published
+        # exam, each with that count. The full catalogue is TestMu AI's
+        # certifications page, linked below the cards.
+        published = Exam.objects.filter(status=Exam.Status.PUBLISHED)
+        subjects = (
+            Subject.objects.filter(exams__status=Exam.Status.PUBLISHED)
+            .annotate(open_exams=Count("exams", filter=Q(exams__status=Exam.Status.PUBLISHED), distinct=True))
+            .order_by("name")[:6]
+        )
         return render(
             request,
             "home/dashboard_candidate.html",
@@ -146,6 +163,10 @@ def dashboard(request):
                 "profile_items": profile_items,
                 "profile_pct": round(100 * profile_done / len(profile_items)),
                 "profile_left": len(profile_items) - profile_done,
+                "certificates": certificates,
+                "subjects": subjects,
+                "open_exam_count": published.count(),
+                "now": timezone.now(),
             },
         )
     else:
