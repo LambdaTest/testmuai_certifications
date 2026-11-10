@@ -16,7 +16,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from apps.exam.calendar import google_calendar_url
-from apps.exam.models import Certificate, Exam, ExamBooking, Subject
+from apps.exam.models import Certificate, Exam, ExamBooking, ExamSheet, Subject
 
 from . import exports
 from .forms import ExportCandidatesForm, ProfileForm, ProfileLinksForm
@@ -84,7 +84,15 @@ def dashboard(request):
     # is "admin" while the label is "Admin", and comparing to the label gives a
     # branch that silently never matches.
     if user_role == User.Role.ADMIN:
-        exams_underway = ExamBooking.objects.filter(status=ExamBooking.Status.ATTENDED).count()
+        # Papers someone is sitting right now: begun, not submitted, time not
+        # run out — the same rule as the Resume exam button. Not every
+        # attended booking: that also counts finished round-one papers,
+        # submitted-but-ungraded ones and abandoned ones.
+        exams_underway = ExamSheet.objects.filter(
+            booking__status=ExamBooking.Status.ATTENDED,
+            submitted_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        ).count()
         awaiting_grading = ExamBooking.objects.filter(status=ExamBooking.Status.UNDER_REVIEW).count()
         upcoming_exams = ExamBooking.objects.filter(status=ExamBooking.Status.BOOKED, scheduled_at__gte=timezone.now()).count()
         return render(request, 
