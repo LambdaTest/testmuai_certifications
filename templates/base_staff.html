@@ -150,7 +150,9 @@
         </div>
 
         {# ---- Single destinations ---- #}
-        <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Certificates</a>
+        <a href="{% url 'exam:show_certificates' %}"
+           {% if url_name == "show_certificates" %}aria-current="page"{% endif %}
+           class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium {% if url_name == "show_certificates" %}bg-brand-tint font-semibold text-brand-dark{% else %}text-body hover:bg-[#F3F5F8] hover:text-ink{% endif %}">Certificates</a>
         <a href="#" class="rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">Analytics</a>
 
         {# ---- Settings ---- #}

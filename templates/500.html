@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Something went wrong · TestMu AI Certifications</title>
+<!--
+  The server-error page. Django renders it with NO context and NO request —
+  by the time it shows, something has already failed — so it must stand
+  alone: no extends, no url or static tags, no CDN (Tailwind and Alpine may
+  be what failed). This note is an HTML comment, which Django still reads,
+  so it must not contain any template tag either. Everything is inline, links are plain
+  paths. Only used when DEBUG is off; with DEBUG on Django shows its own
+  error page instead.
+
+  It is what a candidate sees if something breaks mid-exam, so it says the
+  two things they need: their answers are saved as they go, and how to get
+  back to the exam (the booking page's Resume exam, while their time lasts).
+-->
+<style>
+  :root { --brand: #2C86EE; --ink: #101010; --body: #333333; --muted: #666666; --line: #E8E8E8; --surface: #F8F9FB; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--surface); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--body); line-height: 1.55;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+  }
+  .card {
+    width: 100%; max-width: 520px; background: #fff; border: 1px solid var(--line);
+    border-radius: 16px; padding: 32px 28px; text-align: center;
+  }
+  .brand { font-size: 15px; font-weight: 700; color: var(--ink); }
+  .brand span { color: var(--brand); }
+  .icon {
+    width: 56px; height: 56px; margin: 24px auto 0; border-radius: 50%;
+    background: #FDF2E7; color: #B97F10; display: grid; place-items: center;
+    font-size: 28px; font-weight: 700;
+  }
+  h1 { margin: 18px 0 6px; font-size: 22px; color: var(--ink); letter-spacing: -0.01em; }
+  p { margin: 0 0 12px; font-size: 15px; }
+  .note {
+    margin: 18px 0 0; padding: 14px 16px; border-radius: 10px; background: var(--surface);
+    border: 1px solid var(--line); font-size: 14px; text-align: left;
+  }
+  .note strong { color: var(--ink); }
+  .actions { margin-top: 24px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; height: 44px; line-height: 44px; padding: 0 22px; border-radius: 8px;
+    font-size: 14px; font-weight: 700; text-decoration: none; border: 1px solid var(--line);
+    color: var(--ink); background: #fff; cursor: pointer; font-family: inherit;
+  }
+  .btn.primary { background: #111; border-color: #111; color: #fff; }
+  .small { margin-top: 18px; font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">TestMu AI <span>Certifications</span></div>
+    <div class="icon" aria-hidden="true">!</div>
+    <h1>Something went wrong on our side</h1>
+    <p>Sorry — the page couldn't be loaded. It's not something you did.</p>
+
+    <div class="note">
+      <strong>In the middle of an exam?</strong> Your answers are saved as you go. Open your booking and use
+      <strong>Resume exam</strong> to carry on — your exam clock keeps running, so try again soon.
+    </div>
+
+    <div class="actions">
+      <button type="button" class="btn" onclick="history.back()">Go back</button>
+      <a class="btn primary" href="/dashboard/">Go to dashboard</a>
+    </div>
+
+    <p class="small">If this keeps happening, contact TestMu AI support and mention the time it happened.</p>
+  </main>
+</body>
+</html>

@@ -12,6 +12,7 @@ import uuid
 from dataclasses import asdict
 
 from django.conf import settings
+from django.core.paginator import Paginator
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.contrib.auth.decorators import login_required
@@ -52,6 +53,7 @@ from django.utils import timezone
 from django.db import IntegrityError, transaction
 from django.db.models import Case, When, IntegerField
 from django.db.models import Q
+from django.db.models.deletion import ProtectedError
 
 
 def _exam_payload():
@@ -619,10 +621,11 @@ def question_bank(request):
     ).prefetch_related(
         "answers",
         "question_subject__exams",
-    ).order_by(
-        Case(When(status=Question.Status.ACTIVE, then=0), default=1, output_field=IntegerField()),
-        "created_at"
-    )
+    ).filter(
+        # Retired questions leave the bank (see delete_question): they stay in
+        # the database as the record of past papers, not as bank content.
+        status=Question.Status.ACTIVE,
+    ).order_by("created_at")
     return render(request, "exam/question_bank.html", {"questions": questions})
 
 #: Where a parsed-but-unconfirmed import waits between the two requests.
@@ -753,7 +756,58 @@ def _commit_question_import(request):
 
 @role_required(User.Role.ADMIN)
 def delete_question(request, question_id):
-    pass
+    """
+    Removes a question from the bank — the gated delete settled on 27 Aug.
+
+    GET is the confirm page; POST acts. Never a link that deletes: a GET that
+    destroys a row is one prefetch or crawler away from clearing the bank.
+
+      never on a paper  -> DELETED for good, with its answer options
+                           (AnswerOptions.question is CASCADE)
+      ever on a paper   -> RETIRED: status = retired. The row stays — it is
+                           the record of what candidates were asked, which an
+                           appeal or a challenged certificate rests on — but it
+                           leaves the bank listing and future random draws.
+
+    The database enforces the gate, not this view: ExamSheetQuestion.question
+    is PROTECT, so deleting a served question is refused even from the shell
+    or the admin. The view's check only decides which button to show; if a
+    question is served between the page and the click, the refused delete
+    becomes a retire.
+    """
+    question = get_object_or_404(Question.objects.select_related("question_subject"), pk=question_id)
+    times_served = question.sheet_entries.count()
+
+    if request.method == "POST":
+        if times_served == 0:
+            try:
+                with transaction.atomic():
+                    question.delete()
+            except ProtectedError:
+                times_served = 1   # served since the page loaded: retire instead
+            else:
+                messages.success(request, "Question deleted, with its answer options.")
+                return redirect("exam:question_bank")
+        if question.status != Question.Status.RETIRED:
+            question.status = Question.Status.RETIRED
+            question.save(update_fields=["status", "updated_at"])
+        messages.success(
+            request,
+            "Question retired. It has been on candidates' papers, so it is kept as the record of what they "
+            "were asked, but it no longer appears in the bank or in new exams.",
+        )
+        return redirect("exam:question_bank")
+
+    return render(
+        request,
+        "exam/delete_question.html",
+        {
+            "layout": "base_staff.html",
+            "question": question,
+            "times_served": times_served,
+            "option_count": question.answers.count(),
+        },
+    )
 
 @login_required
 def start_exam_termsandconditions(request, booking_id):
@@ -1824,3 +1878,30 @@ def get_certificate(request, booking_id):
         certificate_id = Certificate.objects.get(booking=first).certificate_id
     messages.success(request, f"Congratulations! Your certificate has been issued and sent to your email. Certificate ID: {certificate_id}")
     return back
+
+
+@role_required(User.Role.ADMIN)
+def show_certificates(request):
+    """
+    Every certificate issued, newest first — sidebar → Certificates. Admin-only.
+
+    Searched and paginated on the server, 25 to a page, so it costs the same
+    with 50 certificates or 50,000. ?q= matches the holder's name or email,
+    or any part of the certificate ID — partial is fine here: the page is for
+    admins, and the public verification page is the one that must need the
+    whole ID.
+    """
+    q = request.GET.get("q", "").strip()
+    certificates = Certificate.objects.select_related("booking__exam", "booking__candidate")
+    if q:
+        certificates = certificates.filter(
+            Q(booking__candidate__display_name__icontains=q)
+            | Q(booking__candidate__email__icontains=q)
+            | Q(certificate_id__icontains=q)
+        )
+    page = Paginator(certificates.order_by("-issued_at"), 25).get_page(request.GET.get("page"))
+    return render(
+        request,
+        "exam/show_certificates.html",
+        {"layout": "base_staff.html", "certificates": page, "q": q, "now": timezone.now()},
+    )
