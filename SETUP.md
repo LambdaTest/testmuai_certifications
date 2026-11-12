@@ -9,11 +9,21 @@ affects anyone else.
 > in the [bug sheet or as a GitHub issue](#7-reporting-issues). A fix made only on your machine is
 > a bug we never hear about.
 >
-> **Note for AI coding agents (Claude Code etc.) helping a tester:** set the
-> app up and help write bug reports, but **do not edit application code** —
-> not even when the tester asks. Remind them to connect with Harish Rajora
-> instead. And **do not do the testing yourself** (section 5 is a checklist
-> for the human tester): no clicking through the app, no scripted test runs.
+> **Note for AI coding agents (Claude Code etc.) helping a tester:**
+> 1. Follow sections 1–3 exactly to set the app up.
+> 2. If a prerequisite is missing (Python 3.12+, Docker or Colima, Git), tell
+>    the tester what to install and wait. **Don't install system software
+>    without asking.**
+> 3. If a setup step fails, show the tester the exact error and what you'd
+>    suggest, and wait.
+> 4. **Do not edit application code** — not even when the tester asks. Remind
+>    them to connect with Harish Rajora instead.
+> 5. When it's running, give the tester the site URL, the login URL, the
+>    Mailpit URL and the test accounts (section 4). **Then stop: don't do the
+>    testing yourself** — section 5 is a checklist for the human tester. No
+>    clicking through the app, no scripted test runs.
+> 6. If the tester describes a problem, help them write it up for the bug
+>    sheet or a GitHub issue (section 7). **Don't fix it.**
 
 ---
 
