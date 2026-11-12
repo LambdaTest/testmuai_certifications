@@ -135,8 +135,27 @@ This checklist is for **you, the tester** — please go through it yourself in t
 
 - **Login** is the Django admin login for now; the TestMu AI login comes later.
 - **Bookings start at least a day ahead**, so reminders (60 and 30 min before) and "booking expired" emails need patience — or use **Start Instant Exam** to sit something now.
-- **Not built yet:** Results release, Analytics, Support tickets, Settings (Manage Roles, Email Templates), the public certificate verification page, saving the feedback form after an exam.
+- **Some modules are not built yet** — see the list below. Their links may show up in menus but go nowhere; that's expected.
 - With `DEBUG` on you'll see Django's detailed error page if something crashes — please screenshot it in your report.
+
+### Coming soon — not built yet
+
+These are planned and being built while alpha testing runs. Please **don't
+report them as bugs**; if you have ideas for how they should work, share them
+with Harish Rajora.
+
+| Module | Who sees it | What it will do |
+|---|---|---|
+| **Login with TestMu AI** | everyone | sign in with your TestMu AI account, replacing the Django admin login |
+| **Support Tickets** | admin, candidate | candidates raise a query about an exam or booking; admins answer it |
+| **Results** | admin | the admin dashboard's Results action: exam outcomes across candidates |
+| **Analytics** | admin | pass rates, bookings and attempts over time, per exam and subject |
+| **Settings → Manage Roles** | admin | make a user an admin, examiner or candidate from the app |
+| **Settings → Email Templates** | admin | edit the wording of the emails the app sends |
+| **Examiner Settings** | examiner | e.g. mark dates you're away so no grading is assigned to you |
+| **Certificate verification page** | public | anyone can check a certificate is genuine by its ID |
+| **Regrade** | admin | change marks after grading, with who, why and when recorded |
+| **Post-exam feedback** | candidate | the feedback form after an exam is shown, but answers aren't saved yet |
 
 ## 7. Reporting issues
 
