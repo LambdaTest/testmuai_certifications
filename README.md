@@ -682,9 +682,9 @@ so they stay cheap however large the table grows.
 > papers begun but abandoned once their time is up.
 
 **My Assessments** labels each booking with its round — Objective in blue, Subjective in amber —
-read from `round_type` rather than the exam's type, which says "both" for both rounds. An attended
-booking shows Show Results (still pointing at a placeholder route; results are not in scope yet)
-and a disabled Get Certificate.
+read from `round_type` rather than the exam's type, which says "both" for both rounds. An attended or
+graded booking shows Show Results — a small modal with the marks scored (never the answers) — and
+Get Certificate (see Certificates).
 
 ## Management commands
 
@@ -766,7 +766,7 @@ Specs live in [`docs/`](docs/), all rewritten for Django:
 ## Not yet built
 
 Combined two-round results against the pass percentage ·
-saving the completion page's profile links and feedback · result release and Show Results ·
+saving the completion page's feedback · result release ·
 credentials and public verification · results and
 staff emails · the public certificate verification page · recording lockdown events · `delete_question` (routed
 but stubbed) · regrading · authentication (the OIDC integration with the TestMu AI login is

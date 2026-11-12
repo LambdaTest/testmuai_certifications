@@ -5,18 +5,21 @@ Anything about certifications, booking, sitting an exam, grading, or
 credentials belongs in ``apps.exam``.
 """
 
+from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, StreamingHttpResponse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_POST
 
 from apps.exam.calendar import google_calendar_url
-from apps.exam.models import ExamBooking
+from apps.exam.models import Certificate, Exam, ExamBooking, ExamSheet, Subject
 
 from . import exports
-from .forms import ExportCandidatesForm
+from .forms import ExportCandidatesForm, ProfileForm, ProfileLinksForm
 from .models import User
 from .decorators import role_required
 from django.shortcuts import get_object_or_404
@@ -81,7 +84,15 @@ def dashboard(request):
     # is "admin" while the label is "Admin", and comparing to the label gives a
     # branch that silently never matches.
     if user_role == User.Role.ADMIN:
-        exams_underway = ExamBooking.objects.filter(status=ExamBooking.Status.ATTENDED).count()
+        # Papers someone is sitting right now: begun, not submitted, time not
+        # run out — the same rule as the Resume exam button. Not every
+        # attended booking: that also counts finished round-one papers,
+        # submitted-but-ungraded ones and abandoned ones.
+        exams_underway = ExamSheet.objects.filter(
+            booking__status=ExamBooking.Status.ATTENDED,
+            submitted_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        ).count()
         awaiting_grading = ExamBooking.objects.filter(status=ExamBooking.Status.UNDER_REVIEW).count()
         upcoming_exams = ExamBooking.objects.filter(status=ExamBooking.Status.BOOKED, scheduled_at__gte=timezone.now()).count()
         return render(request, 
@@ -115,6 +126,34 @@ def dashboard(request):
         )
     elif user_role == User.Role.CANDIDATE:
         booking = _next_booking(request.user)
+        # "Complete your profile": one row per field the candidate can fill in
+        # on the profile page — ticked if filled, otherwise an Add link to that
+        # field there. `field` is the input's id on profile.html.
+        me = request.user
+        profile_items = [
+            {"label": "Full name", "done": bool(me.display_name), "field": "id_display_name"},
+            {"label": "Phone", "done": bool(me.contact_number), "field": "id_contact_number"},
+            {"label": "LinkedIn profile", "done": bool(me.linkedin_link), "field": "id_linkedin_link"},
+            {"label": "GitHub profile", "done": bool(me.github_link), "field": "id_github_link"},
+        ]
+        profile_done = sum(item["done"] for item in profile_items)
+        # "Certificates": every certificate this candidate holds, newest
+        # first. Each card links to its booking, where Get Certificate re-sends
+        # the PDF.
+        certificates = (
+            Certificate.objects.filter(booking__candidate=me)
+            .select_related("booking__exam")
+            .order_by("-issued_at")
+        )
+        # "Explore Subjects": up to 6 subjects with at least one published
+        # exam, each with that count. The full catalogue is TestMu AI's
+        # certifications page, linked below the cards.
+        published = Exam.objects.filter(status=Exam.Status.PUBLISHED)
+        subjects = (
+            Subject.objects.filter(exams__status=Exam.Status.PUBLISHED)
+            .annotate(open_exams=Count("exams", filter=Q(exams__status=Exam.Status.PUBLISHED), distinct=True))
+            .order_by("name")[:6]
+        )
         return render(
             request,
             "home/dashboard_candidate.html",
@@ -129,6 +168,13 @@ def dashboard(request):
                 # Google can only create an event — no UID in the URL — so the
                 # .ics download is the one that can move or cancel it later.
                 "gcal_url": google_calendar_url(booking) if booking else None,
+                "profile_items": profile_items,
+                "profile_pct": round(100 * profile_done / len(profile_items)),
+                "profile_left": len(profile_items) - profile_done,
+                "certificates": certificates,
+                "subjects": subjects,
+                "open_exam_count": published.count(),
+                "now": timezone.now(),
             },
         )
     else:
@@ -266,3 +312,52 @@ def export_candidates(request):
             "export_timezone": exports.EXPORT_TIMEZONE,
         },
     )
+
+@login_required
+def profile(request):
+    """
+    The signed-in user's own details: name, phone, LinkedIn and GitHub, which
+    they can edit, beside email and login id, which come from the TestMu AI
+    login and are only shown.
+
+    One view, both halves: GET shows the form filled from the account; POST
+    validates (ProfileForm) and saves, then redirects back here with a
+    message — so a refresh does not resubmit. An invalid form comes back with
+    the errors and what was typed.
+    """
+    form = ProfileForm(request.POST or None, instance=request.user)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Your profile has been saved.")
+        return redirect("home:profile")
+    return render(request, "home/profile.html", {"form": form})
+
+
+@login_required
+@require_POST
+def save_profile_links(request):
+    """
+    Saves LinkedIn and GitHub from the exam-completed page (its Close button),
+    then goes to the dashboard.
+
+    In home, not exam: the links are the user's, and their checks are the
+    profile page's (ProfileLinksMixin) — exam may not import from home, so
+    the page posts here instead. ProfileLinksForm only fills in what is
+    missing and never clears a link the account already has.
+
+    An invalid link goes back to the page it came from (`next`, checked to be
+    this site) with the reason as a message.
+    """
+    form = ProfileLinksForm(request.POST, instance=request.user)
+    if form.fields and not form.is_valid():
+        for errors in form.errors.values():
+            for error in errors:
+                messages.error(request, error)
+        back = request.POST.get("next", "")
+        if url_has_allowed_host_and_scheme(back, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+            return redirect(back)
+        return redirect("home:dashboard")
+    if form.fields:
+        form.save()
+        messages.success(request, "Thanks — your profile links have been saved.")
+    return redirect("home:dashboard")
