@@ -129,12 +129,15 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="mx-auto mt-12 flex w-full max-w-[1200px] flex-wrap justify-between gap-3 border-t border-line px-4 pt-6 pb-10 text-[13px] text-muted sm:px-6">
+  <footer class="mx-auto mt-12 flex w-full max-w-[1200px] flex-wrap items-center justify-between gap-3 border-t border-line px-4 pt-6 pb-10 text-[13px] text-muted sm:px-6">
     <div>© 2026 TestMu AI (Formerly LambdaTest). All rights reserved.</div>
-    <div class="flex gap-[18px]">
+    <div class="flex flex-wrap items-center gap-[18px]">
       <a href="https://www.testmuai.com/legal/terms-of-service/" target="_blank" rel="noreferrer" class="text-muted hover:text-ink">Terms</a>
       <a href="https://www.testmuai.com/legal/privacy/" target="_blank" rel="noreferrer" class="text-muted hover:text-ink">Privacy</a>
       <a href="https://www.testmuai.com/trust/" target="_blank" rel="noreferrer" class="text-muted hover:text-ink">Trust</a>
+      {# Opens an email until Support Tickets is built; then point it at that page. #}
+      <a href="mailto:certifications@testmuai.com?subject=Certifications%20support"
+         class="inline-flex h-8 items-center rounded-lg border border-line bg-white px-3 font-semibold text-ink hover:border-brand hover:text-brand">Contact Support</a>
     </div>
   </footer>
 
