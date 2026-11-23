@@ -45,8 +45,7 @@ whatever it needs and run it again.
 
 ```bash
 git clone https://github.com/LambdaTest/testmuai_certifications.git
-cd testmuai_certifications
-git checkout dev
+cd testmuai_certifications       # main, the default branch — always test from main
 
 # Database, email inbox (and Redis, unused) in Docker
 docker compose up -d
