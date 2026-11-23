@@ -175,10 +175,9 @@
 
         <div class="my-1 border-t border-line"></div>
 
-        {# Stub until the ticket model exists — flagged so it isn't mistaken for working #}
-        <a href="#" class="flex items-center justify-between rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">
+        {# The admin's inbox of Contact Support requests. #}
+        <a href="{% url 'home:all_support_tickets' %}" class="flex items-center justify-between rounded-lg px-3 py-2.5 text-[14.5px] font-medium text-body hover:bg-[#F3F5F8] hover:text-ink">
           Support Tickets
-          <span class="rounded-full bg-[#F0F1F4] px-2 py-0.5 text-[10px] font-bold text-faint">SOON</span>
         </a>
       </nav>
     </aside>

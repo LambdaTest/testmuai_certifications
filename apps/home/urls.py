@@ -14,4 +14,6 @@ urlpatterns = [
     path("export_candidates/", views.export_candidates, name="export_candidates"),
     path("profile/", views.profile, name="profile"),
     path("profile/links/", views.save_profile_links, name="save_profile_links"),
+    path("raise_support_ticket/", views.raise_support_ticket, name="raise_support_ticket"),
+    path("all_support_tickets/", views.all_support_tickets, name="all_support_tickets"),
 ]

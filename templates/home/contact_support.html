@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% comment %}
+  Contact Support — raise a support request. /raise_support_ticket/
+  (home:raise_support_ticket). Candidates and examiners only — admins answer
+  requests (Support Tickets), they don't raise them.
+
+  Context from apps.home.views.raise_support_ticket:
+    form – ContactSupportForm: subject (max 150) and description (20–2,000
+           characters). Bound after a POST, so an invalid send comes back with
+           the errors and what was typed.
+
+  A request is one subject and one message — no threads. The team replies by
+  email to the address on the account, which the page shows. A successful send
+  redirects to the dashboard with a message, shown by base.html.
+
+  Inputs are written by hand rather than {{ form.field }} so they take the
+  site's styling; name, id and the kept value match what Django would render.
+{% endcomment %}
+
+{% block title %}Contact Support · TestMu AI Certifications{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-3xl px-4 py-8">
+  <header class="mb-6">
+    <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">Contact Support</h1>
+    <p class="mt-1.5 text-[14.5px] text-muted">
+      Tell us what's wrong — mention the exam and booking if it's about one. We'll reply by email to
+      <span class="font-semibold text-ink">{{ request.user.email|default:"the email on your account" }}</span>.
+    </p>
+  </header>
+
+  <form method="post" action="{% url 'home:raise_support_ticket' %}" novalidate
+        class="rounded-2xl border border-line bg-white p-6">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="mb-4 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-[14px] text-danger" role="alert">
+        {{ form.non_field_errors.0 }}
+      </div>
+    {% endif %}
+
+    <div class="grid gap-5">
+      {% with f=form.subject %}
+        <div>
+          <label for="{{ f.id_for_label }}" class="block text-[14px] font-semibold text-ink">
+            {{ f.label }} <span class="text-danger" aria-hidden="true">*</span>
+          </label>
+          <input type="text" id="{{ f.id_for_label }}" name="{{ f.html_name }}" value="{{ f.value|default:'' }}"
+                 maxlength="150" required placeholder="e.g. My exam closed before I could submit"
+                 {% if f.errors %}aria-invalid="true"{% endif %}
+                 class="mt-1.5 h-11 w-full rounded-lg border {% if f.errors %}border-danger{% else %}border-line{% endif %} bg-white px-3.5 text-[14.5px] text-ink placeholder:text-faint focus:border-brand focus:outline-none">
+          {% if f.errors %}<p class="mt-1.5 text-[13px] text-danger">{{ f.errors.0 }}</p>{% endif %}
+        </div>
+      {% endwith %}
+
+      {% with f=form.description %}
+        <div x-data="{ n: $refs.box.value.trim().length }">
+          <label for="{{ f.id_for_label }}" class="block text-[14px] font-semibold text-ink">
+            {{ f.label }} <span class="text-danger" aria-hidden="true">*</span>
+          </label>
+          <p class="mt-0.5 text-[13px] text-muted">What happened, when, and what you expected. Between 20 and 2,000 characters.</p>
+          <textarea id="{{ f.id_for_label }}" name="{{ f.html_name }}" rows="7" maxlength="2000" required
+                    x-ref="box" @input="n = $el.value.trim().length"
+                    {% if f.errors %}aria-invalid="true"{% endif %}
+                    class="mt-1.5 w-full rounded-lg border {% if f.errors %}border-danger{% else %}border-line{% endif %} bg-white px-3.5 py-3 text-[14.5px] leading-[1.55] text-ink placeholder:text-faint focus:border-brand focus:outline-none">{{ f.value|default:'' }}</textarea>
+          <div class="mt-1.5 flex justify-between gap-3 text-[13px]">
+            <span class="text-danger">{% if f.errors %}{{ f.errors.0 }}{% endif %}</span>
+            <span :class="n && n < 20 ? 'text-warn' : 'text-faint'" x-text="n + ' / 2,000'"></span>
+          </div>
+        </div>
+      {% endwith %}
+    </div>
+
+    <div class="mt-6 flex flex-wrap items-center gap-3">
+      <button type="submit"
+              class="inline-flex h-11 items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31]">
+        Send request
+      </button>
+      <a href="{% url 'home:dashboard' %}" class="text-[14px] font-semibold text-muted hover:text-ink">Back to dashboard</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

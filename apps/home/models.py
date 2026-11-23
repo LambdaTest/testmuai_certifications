@@ -101,3 +101,19 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.display_name or self.email or self.external_id
+
+
+class ContactSupport(models.Model):
+    raised_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='raised_support_requests')
+    subject = models.CharField(max_length = 150)
+    description = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved = models.BooleanField(default=False)
+    assigned_to = models.ForeignKey(User, null=True, blank = True, on_delete=models.SET_NULL, related_name='assigned_support_requests')
+
+    class Meta:
+          db_table = "support_requests"
+          ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"#{self.pk} {self.subject}"

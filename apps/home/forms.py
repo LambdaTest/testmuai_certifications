@@ -5,7 +5,7 @@ from django import forms
 from apps.exam.models import Exam
 
 from .exports import BOOKING_COLUMNS, CANDIDATE_COLUMNS
-from .models import User
+from .models import User, ContactSupport
 
 
 def _choices(columns):
@@ -196,3 +196,32 @@ class ProfileLinksForm(ProfileLinksMixin, forms.ModelForm):
         if commit:
             user.save(update_fields=[*self.fields, *(["github_username"] if "github_link" in self.fields else []), "updated_at"])
         return user
+
+
+class ContactSupportForm(forms.ModelForm):
+    """
+    Contact Support — a subject and a message, raised by the logged-in user.
+    The view passes the user: ContactSupportForm(request.POST or None, user=request.user).
+    """
+
+    class Meta:
+        model = ContactSupport
+        fields = ["subject", "description"]
+        widgets = {"description": forms.Textarea(attrs={"rows": 6})}
+
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+
+    def clean_description(self):
+        description = self.cleaned_data["description"].strip()
+        if not 20 <= len(description) <= 2000:
+            raise forms.ValidationError("Please write between 20 and 2,000 characters.")
+        return description
+
+    def save(self, commit=True):
+        support_request = super().save(commit=False)
+        support_request.raised_by = self.user
+        if commit:
+            support_request.save()
+        return support_request

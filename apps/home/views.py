@@ -19,8 +19,8 @@ from apps.exam.calendar import google_calendar_url
 from apps.exam.models import Certificate, Exam, ExamBooking, ExamSheet, Subject
 
 from . import exports
-from .forms import ExportCandidatesForm, ProfileForm, ProfileLinksForm
-from .models import User
+from .forms import ExportCandidatesForm, ProfileForm, ProfileLinksForm, ContactSupportForm
+from .models import User, ContactSupport
 from .decorators import role_required
 from django.shortcuts import get_object_or_404
 
@@ -361,3 +361,26 @@ def save_profile_links(request):
         form.save()
         messages.success(request, "Thanks — your profile links have been saved.")
     return redirect("home:dashboard")
+
+
+@role_required(User.Role.CANDIDATE, User.Role.EXAMINER)
+def raise_support_ticket(request):
+    """
+    Contact Support: a candidate or examiner raises a support request.
+    Admins answer requests rather than raise them, so they get a 404.
+    """
+    form = ContactSupportForm(request.POST or None, user=request.user)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Thanks — your request has been sent. We'll reply by email.")
+        return redirect("home:dashboard")
+    return render(request, "home/contact_support.html", {"form": form})
+
+
+@role_required(User.Role.ADMIN)
+def all_support_tickets(request):
+    """
+    Shows all the support tickets, either open or closed.
+    """
+    tickets = ContactSupport.objects.all().order_by("-created_at")
+    return render(request, "home/all_support_tickets.html", {"tickets": tickets})

@@ -135,9 +135,15 @@
       <a href="https://www.testmuai.com/legal/terms-of-service/" target="_blank" rel="noreferrer" class="text-muted hover:text-ink">Terms</a>
       <a href="https://www.testmuai.com/legal/privacy/" target="_blank" rel="noreferrer" class="text-muted hover:text-ink">Privacy</a>
       <a href="https://www.testmuai.com/trust/" target="_blank" rel="noreferrer" class="text-muted hover:text-ink">Trust</a>
-      {# Opens an email until Support Tickets is built; then point it at that page. #}
-      <a href="mailto:certifications@testmuai.com?subject=Certifications%20support"
-         class="inline-flex h-8 items-center rounded-lg border border-line bg-white px-3 font-semibold text-ink hover:border-brand hover:text-brand">Contact Support</a>
+      {% comment %}
+        Contact Support — for candidates and examiners: the form. Signed out
+        there is no account to reply to, so it opens an email. Admins answer
+        requests (Support Tickets), they don't raise them, so they don't see it.
+      {% endcomment %}
+      {% if user.role != "admin" %}
+        <a href="{% if user.is_authenticated %}{% url 'home:raise_support_ticket' %}{% else %}mailto:certifications@testmuai.com?subject=Certifications%20support{% endif %}"
+           class="inline-flex h-8 items-center rounded-lg border border-line bg-white px-3 font-semibold text-ink hover:border-brand hover:text-brand">Contact Support</a>
+      {% endif %}
     </div>
   </footer>
 

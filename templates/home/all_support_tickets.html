@@ -1,0 +1,81 @@
+{% extends "base_staff.html" %}
+{% load tz %}
+
+{% comment %}
+  Support Tickets — the admin's inbox of Contact Support requests.
+  /all_support_tickets/ (home:all_support_tickets). Admin-only; candidates and
+  examiners raise requests from Contact Support, admins read them here.
+
+  Context from apps.home.views.all_support_tickets:
+    tickets – ContactSupport rows, newest first. A queryset today; a Paginator
+              page works too — the paging links below appear only when it is
+              one (`tickets.has_other_pages`).
+
+  No threads: the admin answers by email. "Reply by email" opens a message to
+  the person who raised it, the subject prefilled with the ticket number.
+  Times are shown in IST, the admins' zone.
+{% endcomment %}
+
+{% block title %}Support Tickets · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<header class="mb-5">
+  <h1 class="text-2xl font-bold tracking-tight">Support Tickets</h1>
+  <p class="mt-1.5 text-[14.5px] text-muted">Requests raised through Contact Support, newest first. Reply by email. Times are India time (IST).</p>
+</header>
+
+{% if tickets %}
+  <div class="grid gap-3">
+    {% for t in tickets %}
+      <article class="rounded-2xl border border-line bg-white p-5">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-mono text-[13px] text-faint">#{{ t.pk }}</span>
+              <h2 class="text-[16px] font-bold text-ink">{{ t.subject }}</h2>
+              {% if t.resolved %}
+                <span class="rounded-full bg-ok-tint px-2.5 py-0.5 text-[11.5px] font-bold text-ok">Resolved</span>
+              {% else %}
+                <span class="rounded-full bg-warn-tint px-2.5 py-0.5 text-[11.5px] font-bold text-warn">Open</span>
+              {% endif %}
+            </div>
+            <p class="mt-1 text-[13px] text-muted">
+              {{ t.raised_by.display_name|default:t.raised_by.external_id }}
+              · {{ t.raised_by.email|default:"no email" }}
+              · {{ t.raised_by.get_role_display }}
+              · {{ t.created_at|timezone:"Asia/Kolkata"|date:"j M Y, g:i A" }}
+              {% if t.assigned_to %} · assigned to {{ t.assigned_to.display_name|default:t.assigned_to.external_id }}{% endif %}
+            </p>
+          </div>
+          <div class="flex flex-none items-center gap-3 text-[13px] font-semibold">
+            {% if t.raised_by.role == "candidate" %}
+              <a href="{% url 'home:candidate_detail' t.raised_by.id %}" class="text-brand hover:underline">Candidate</a>
+            {% endif %}
+            {% if t.raised_by.email %}
+              <a href="mailto:{{ t.raised_by.email }}?subject={{ 'Re: [Support #'|urlencode }}{{ t.pk }}{{ '] '|urlencode }}{{ t.subject|urlencode }}"
+                 class="inline-flex h-8 items-center rounded-lg border border-line bg-white px-3 text-ink hover:border-brand hover:text-brand">Reply by email</a>
+            {% endif %}
+          </div>
+        </div>
+        <p class="mt-3 text-[14.5px] leading-[1.6] whitespace-pre-line text-body">{{ t.description }}</p>
+      </article>
+    {% endfor %}
+  </div>
+
+  {% if tickets.has_other_pages %}
+    <nav class="mt-5 flex items-center justify-between text-[14px]" aria-label="Pages">
+      {% if tickets.has_previous %}
+        <a href="?page={{ tickets.previous_page_number }}" class="font-semibold text-brand hover:underline">← Previous</a>
+      {% else %}<span></span>{% endif %}
+      <span class="text-muted">Page {{ tickets.number }} of {{ tickets.paginator.num_pages }}</span>
+      {% if tickets.has_next %}
+        <a href="?page={{ tickets.next_page_number }}" class="font-semibold text-brand hover:underline">Next →</a>
+      {% else %}<span></span>{% endif %}
+    </nav>
+  {% endif %}
+{% else %}
+  <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
+    No support requests yet.
+  </p>
+{% endif %}
+{% endblock %}
