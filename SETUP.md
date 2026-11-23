@@ -118,6 +118,7 @@ This checklist is for **you, the tester** — please go through it yourself in t
 - [ ] **Two rounds** (Alpha Full Certification): after round 1 the subjective round opens **30 minutes later**; submit a repo link, a PR link in that repo, and test IDs
 - [ ] **My Assessments**: Upcoming / Attended / Missed / Cancelled; **Show Results** on a finished exam
 - [ ] **Get Certificate** on a passed exam: refused while your profile is incomplete; once complete, the certificate PDF arrives in Mailpit
+- [ ] **Contact Support** (button at the bottom of every page): send a request with a subject and message; try an empty subject and a very short message
 
 ### As the admin
 - [ ] **Dashboard** tiles: Exams underway, Awaiting grading, Upcoming exams (each opens its page), quick actions
@@ -125,11 +126,13 @@ This checklist is for **you, the tester** — please go through it yourself in t
 - [ ] **Assign Grading**: assign a submitted subjective paper to the examiner (or yourself)
 - [ ] **Candidate Center**: Candidate Info (search, a candidate's page), **Book Exam** for a candidate, **Cancel Exam** with a reason, **Export Candidates** (CSV)
 - [ ] **Certificates** (sidebar): list, search, paging
+- [ ] **Support Tickets** (sidebar): requests raised by candidates and examiners — open ones on top; **Reply by email**; **Mark resolved** (shows who resolved it and when). Admins can't raise requests themselves
 - [ ] **Bookings** (from the dashboard tiles): Upcoming (next 5 days) and Underway
 
 ### As the examiner
 - [ ] **My Tasks**: papers assigned to you — open one, see the repo/PR/test IDs (never the candidate's name)
 - [ ] **Grade** it (marks + feedback) → it moves to **Grading History**; the candidate's exam becomes graded (pass/fail decided on both rounds together)
+- [ ] **Contact Support** (sidebar, or the button at the bottom of every page): send a request
 
 ## 6. Known limitations (not bugs)
 
@@ -147,7 +150,6 @@ with Harish Rajora.
 | Module | Who sees it | What it will do |
 |---|---|---|
 | **Login with TestMu AI** | everyone | sign in with your TestMu AI account, replacing the Django admin login |
-| **Support Tickets** | admin, candidate | candidates raise a query about an exam or booking; admins answer it |
 | **Results** | admin | the admin dashboard's Results action: exam outcomes across candidates |
 | **Analytics** | admin | pass rates, bookings and attempts over time, per exam and subject |
 | **Settings → Manage Roles** | admin | make a user an admin, examiner or candidate from the app |

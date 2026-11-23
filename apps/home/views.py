@@ -380,10 +380,12 @@ def raise_support_ticket(request):
 @role_required(User.Role.ADMIN)
 def all_support_tickets(request):
     """
-    Shows all the support tickets, either open or closed.
+    Shows all the support tickets, 25 to a page: open ones first, then
+    resolved, each newest first. ("resolved" sorts False before True.)
     """
-    tickets = ContactSupport.objects.all().order_by("-created_at")
-    return render(request, "home/all_support_tickets.html", {"tickets": tickets})
+    tickets = ContactSupport.objects.select_related("raised_by", "assigned_to", "resolved_by").order_by("resolved", "-created_at")
+    page = Paginator(tickets, 25).get_page(request.GET.get("page"))
+    return render(request, "home/all_support_tickets.html", {"tickets": page, "open_count": tickets.filter(resolved=False).count()})
 
 @role_required(User.Role.ADMIN)
 @require_POST
