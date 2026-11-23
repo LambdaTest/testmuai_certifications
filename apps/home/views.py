@@ -384,3 +384,20 @@ def all_support_tickets(request):
     """
     tickets = ContactSupport.objects.all().order_by("-created_at")
     return render(request, "home/all_support_tickets.html", {"tickets": tickets})
+
+@role_required(User.Role.ADMIN)
+@require_POST
+def resolve_support_ticket(request, ticket_id):
+    """
+    Marks a support ticket as resolved.
+    """
+    ticket = get_object_or_404(ContactSupport, id=ticket_id)
+    if not ticket.resolved:
+        ticket.resolved_at = timezone.now()
+        ticket.resolved_by = request.user
+        ticket.resolved = True
+        ticket.save()
+        messages.success(request, "The support ticket has been marked as resolved.")
+    else:
+        messages.info(request, "The support ticket was already marked as resolved.")
+    return redirect("home:all_support_tickets")

@@ -46,6 +46,11 @@
               · {{ t.created_at|timezone:"Asia/Kolkata"|date:"j M Y, g:i A" }}
               {% if t.assigned_to %} · assigned to {{ t.assigned_to.display_name|default:t.assigned_to.external_id }}{% endif %}
             </p>
+            {% if t.resolved and t.resolved_by %}
+              <p class="mt-0.5 text-[13px] font-medium text-ok">
+                Resolved by {{ t.resolved_by.display_name|default:t.resolved_by.external_id }}{% if t.resolved_at %} · {{ t.resolved_at|timezone:"Asia/Kolkata"|date:"j M Y, g:i A" }}{% endif %}
+              </p>
+            {% endif %}
           </div>
           <div class="flex flex-none items-center gap-3 text-[13px] font-semibold">
             {% if t.raised_by.role == "candidate" %}
@@ -54,6 +59,19 @@
             {% if t.raised_by.email %}
               <a href="mailto:{{ t.raised_by.email }}?subject={{ 'Re: [Support #'|urlencode }}{{ t.pk }}{{ '] '|urlencode }}{{ t.subject|urlencode }}"
                  class="inline-flex h-8 items-center rounded-lg border border-line bg-white px-3 text-ink hover:border-brand hover:text-brand">Reply by email</a>
+            {% endif %}
+            {% comment %}
+              Mark resolved — a POST, since it changes data; the view records who
+              and when. Shown on open tickets only. "url … as" yields an empty
+              string instead of an error if the URL is ever missing.
+            {% endcomment %}
+            {% url 'home:resolve_support_ticket' t.pk as resolve_url %}
+            {% if resolve_url and not t.resolved %}
+              <form method="post" action="{{ resolve_url }}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="inline-flex h-8 items-center rounded-lg bg-[#111] px-3 font-semibold text-white hover:bg-[#2A2B31]">Mark resolved</button>
+              </form>
             {% endif %}
           </div>
         </div>

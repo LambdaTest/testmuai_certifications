@@ -16,4 +16,5 @@ urlpatterns = [
     path("profile/links/", views.save_profile_links, name="save_profile_links"),
     path("raise_support_ticket/", views.raise_support_ticket, name="raise_support_ticket"),
     path("all_support_tickets/", views.all_support_tickets, name="all_support_tickets"),
+    path("resolve_support_ticket/<int:ticket_id>/", views.resolve_support_ticket, name="resolve_support_ticket"),
 ]

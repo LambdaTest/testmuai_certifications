@@ -109,6 +109,8 @@ class ContactSupport(models.Model):
     description = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     resolved = models.BooleanField(default=False)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(User, null=True, blank = True, on_delete=models.PROTECT, related_name='resolved_support_requests')
     assigned_to = models.ForeignKey(User, null=True, blank = True, on_delete=models.SET_NULL, related_name='assigned_support_requests')
 
     class Meta:
