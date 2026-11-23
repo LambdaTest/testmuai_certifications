@@ -32,15 +32,15 @@
   {# Stats — every one is a link to the work behind it #}
   <div class="mt-4 grid gap-4 sm:grid-cols-3">
     {# exams_underway — attempts in progress right now #}
-    <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
+    <a href="{% url 'exam:bookings_overview' %}?tab=underway" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
       <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Exams underway</div>
       <div class="mt-1.5">
         <span class="text-3xl font-extrabold tracking-tight">{{exams_underway}}</span>
       </div>
     </a>
 
-    {# awaiting_grading — subjective attempts not yet evaluated #}
-    <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
+    {# awaiting_grading — subjective attempts not yet evaluated; opens Assign Grading, which lists them #}
+    <a href="{% url 'exam:assign_grading_template' %}" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
       <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Awaiting grading</div>
       <div class="mt-1.5">
         <span class="text-3xl font-extrabold tracking-tight">{{awaiting_grading}}</span>
@@ -48,7 +48,7 @@
     </a>
 
     {# upcoming_exams — bookings ahead of now #}
-    <a href="#" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
+    <a href="{% url 'exam:bookings_overview' %}?tab=upcoming" class="rounded-2xl border border-line bg-white p-5 hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.08)]">
       <div class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Upcoming exams</div>
       <div class="mt-1.5">
         <span class="text-3xl font-extrabold tracking-tight">{{upcoming_exams}}</span>
@@ -60,7 +60,7 @@
   <h2 class="mt-8 mb-3 text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Quick actions</h2>
   <div class="grid gap-4 sm:grid-cols-2">
 
-    <a href="#" class="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-[18px] hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.10)]">
+    <a href="{% url 'exam:add_question' %}" class="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-[18px] hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.10)]">
       <span class="grid size-11 flex-none place-items-center rounded-[11px] bg-brand-tint">
         <svg width="20" height="20" fill="none" stroke="#1A6FD4" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12"/><path d="M4 10h12"/></svg>
       </span>
@@ -74,7 +74,7 @@
       Highest-value admin action: a credible exam needs 150–300 questions
       for randomisation to mean anything, and nobody types those in a form.
     {% endcomment %}
-    <a href="#" class="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-[18px] hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.10)]">
+    <a href="{% url 'exam:import_questions' %}" class="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-[18px] hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.10)]">
       <span class="grid size-11 flex-none place-items-center rounded-[11px] bg-[#E7F6F4]">
         <svg width="20" height="20" fill="none" stroke="#0B8D7B" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v9"/><path d="M6.5 9.5 10 13l3.5-3.5"/><path d="M4 15.5h12"/></svg>
       </span>
@@ -84,7 +84,7 @@
       <span class="ml-auto text-[17px] text-[#B9BFC9]">→</span>
     </a>
 
-    <a href="#" class="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-[18px] hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.10)]">
+    <a href="{% url 'exam:add_exam' %}" class="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-[18px] hover:border-brand hover:shadow-[0_10px_26px_rgba(16,42,90,.10)]">
       <span class="grid size-11 flex-none place-items-center rounded-[11px] bg-warn-tint">
         <svg width="20" height="20" fill="none" stroke="#B97F10" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="12" height="14" rx="2"/><path d="M10 7.5v5"/><path d="M7.5 10h5"/></svg>
       </span>

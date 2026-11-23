@@ -31,6 +31,10 @@ build; every one that used `{% url %}` survived the move untouched.
 | `/bookings/<uuid>/cancelpage/` | `exam:cancel_booking_page` | Cancellation confirmation |
 | `/bookings/<uuid>/cancel/` | `exam:cancel_booking` | **POST** cancels |
 | `/bookings/<uuid>/calendar.ics` | `exam:booking_ics` | Calendar invite download, at the booking's current sequence |
+| `/get_certificate/<uuid>/` | `exam:get_certificate` | **POST**, from the booking page: issues the certificate (once) and emails the PDF, or re-sends it. Refused until graded, passed and the profile is complete |
+| `/profile/` | `home:profile` | The user's own profile — account details read-only, name, phone, LinkedIn and GitHub editable. GET shows, POST saves |
+| `/profile/links/` | `home:save_profile_links` | **POST**, from the completion page: saves only the missing LinkedIn or GitHub link |
+| `/raise_support_ticket/` | `home:raise_support_ticket` | Contact Support — candidates and examiners only (admins get 404). GET shows, POST saves and redirects to the dashboard |
 
 ### Exam player
 
@@ -79,7 +83,7 @@ sidebar. Grouped by "center" to match the sidebar, which is why the paths carry 
 | `/question_center/question_bank/` | `exam:question_bank` | Read-only bank; cards expand |
 | `/question_center/add_question/` | `exam:add_question` | Question + answer options + media, one POST |
 | `/question_center/import_questions/` | `exam:import_questions` | CSV import. Upload previews; a second POST with `action=import` commits. |
-| `/question_center/delete_question/<int>/` | `exam:delete_question` | **Routed, stubbed.** See `TRACKER.md` for the gated-delete design. |
+| `/question_center/delete_question/<int>/` | `exam:delete_question` | GET confirms, POST acts: deletes a question never served on a paper, retires one that has been |
 
 **One URL, two phases, on the importer.** Uploading a file and confirming the import are both
 POSTs to the same path; `action=import` distinguishes them, and the parsed rows wait in the
@@ -99,6 +103,15 @@ what keeps grading blind.
 | `/cancel_exam_admin/<uuid>/` | `exam:cancel_exam_admin_confirm` | Confirm with a reason. GET shows, POST cancels |
 | `/export_candidates/` | `home:export_candidates` | CSV export. GET shows; `?download=…` sends the file |
 
+### Admin overview
+
+| URL | Name | View |
+|---|---|---|
+| `/bookings/` | `exam:bookings_overview` | `?tab=upcoming` (next `ADMIN_UPCOMING_DAYS` days, grouped by day) or `?tab=underway` (papers in progress). The admin dashboard's tiles open each tab |
+| `/showcertificates/` | `exam:show_certificates` | Every certificate; search by name, email or certificate ID, 25 per page |
+| `/all_support_tickets/` | `home:all_support_tickets` | Support Tickets: open first, then resolved, newest first, 25 per page |
+| `/resolve_support_ticket/<int>/` | `home:resolve_support_ticket` | **POST** marks a ticket resolved, recording who and when |
+
 **Integer ids in admin routes, UUIDs in candidate-facing ones.** Admin routes sit behind a role
 check, so enumeration buys nothing — a subject or user id is not a secret the way a booking
 reference is.
@@ -116,11 +129,12 @@ the OIDC integration lands.
 
 ## Not built
 
-**Results** — release of graded and combined results, and the score report; the "Show Results"
-button on a booking still has no route.
+**Results** — release of graded and combined results. A booking's own marks are shown in a
+modal by its Show Results button — deliberately not a page of its own.
 
-**Unlinked admin destinations** — the dashboard tiles, Certificates, Analytics, Manage Roles and
-Email Templates are still `href="#"` in `base_staff.html`.
+**Unlinked admin destinations** — the admin dashboard's Results action, and Analytics, Manage
+Roles and Email Templates in `base_staff.html`, are still `href="#"`; so is the examiner's
+Settings in `base_examiner.html`. The dashboard tiles, Certificates and Support Tickets are linked.
 
 **Public credential verification** — `/verify/<credential-id>`. Anonymous, indexable, and the
 canonical credential rather than a PDF. Must show revoked and expired states unmistakably, and

@@ -1,0 +1,110 @@
+{% extends layout|default:"base_staff.html" %}
+
+{% comment %}
+  Certificates — every certificate issued, newest first. Sidebar →
+  Certificates. Admin-only.
+
+  Context from apps.exam.views.show_certificates:
+    certificates – a Paginator page (25 per page), newest issued first;
+                   certificates.paginator.count is the total matched
+    q            – the search as typed, or ""
+    now          – for marking certificates that have expired
+
+  Search is a plain GET form run on the server across every certificate:
+  holder's name or email, or any part of the certificate ID. Page links carry
+  ?q= so paging stays inside the results.
+
+  Dates are shown in the zone the candidate booked in, as on every page about
+  a booking — the same dates their certificate prints.
+{% endcomment %}
+
+{% load tz %}
+
+{% block title %}Certificates · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<header class="mb-6">
+  <h1 class="text-2xl font-bold tracking-tight">Certificates</h1>
+  <p class="mt-1.5 text-[14.5px] text-muted">
+    {% with total=certificates.paginator.count %}
+      {% if q %}
+        {{ total }} certificate{{ total|pluralize }} matching “{{ q }}”.
+        <a href="{% url 'exam:show_certificates' %}" class="font-semibold text-brand hover:underline">Clear search</a>
+      {% else %}
+        {{ total }} certificate{{ total|pluralize }} issued, newest first. Search by name, email or certificate ID.
+      {% endif %}
+    {% endwith %}
+  </p>
+</header>
+
+<form method="get" action="{% url 'exam:show_certificates' %}" class="relative mb-6" role="search">
+  <input type="search" name="q" value="{{ q }}"
+         placeholder="Name, email or certificate ID (any part) — press Enter"
+         aria-label="Search certificates" spellcheck="false"
+         class="h-11 w-full rounded-lg border border-zinc-300 bg-white pr-3 pl-10 text-sm outline-none focus-visible:border-brand focus-visible:ring-3 focus-visible:ring-brand/30">
+  <svg class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-zinc-400"
+       viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"
+       stroke-linecap="round" aria-hidden="true">
+    <circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/>
+  </svg>
+</form>
+
+{% if certificates %}
+  <div class="grid gap-3">
+    {% for c in certificates %}
+      {% with b=c.booking person=c.booking.candidate %}
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-white px-5 py-4">
+
+          {# ---- Who ---- #}
+          <div class="min-w-0 sm:w-60">
+            {% if person %}
+              <a href="{% url 'home:candidate_detail' person.id %}"
+                 class="block truncate font-semibold text-ink hover:text-brand hover:underline">{{ person.display_name|default:"(no name)" }}</a>
+              <p class="truncate text-[13px] text-muted">{{ person.email|default:"(no email)" }}</p>
+            {% else %}
+              <p class="font-semibold text-faint">(no candidate)</p>
+            {% endif %}
+          </div>
+
+          {# ---- What, and the ID ---- #}
+          <div class="min-w-0 flex-1">
+            <p class="truncate font-semibold text-ink">{{ b.exam.exam_name }}</p>
+            <p class="mt-0.5 font-mono text-[12.5px] text-muted" title="Certificate ID">{{ c.certificate_id }}</p>
+          </div>
+
+          {# ---- When ---- #}
+          <div class="text-[13px] sm:text-right">
+            {% timezone b.booked_timezone %}
+              <p><span class="text-faint">Issued</span> <span class="text-ink">{{ c.issued_at|date:"j M Y" }}</span></p>
+              <p><span class="text-faint">Valid until</span> <span class="text-ink">{{ c.expires_at|date:"j M Y" }}</span></p>
+            {% endtimezone %}
+          </div>
+
+          {% if c.expires_at <= now %}
+            <span class="rounded-full bg-warn-tint px-3 py-1 text-xs font-bold text-warn">Expired</span>
+          {% else %}
+            <span class="rounded-full bg-ok-tint px-3 py-1 text-xs font-bold text-ok">Valid</span>
+          {% endif %}
+        </div>
+      {% endwith %}
+    {% endfor %}
+  </div>
+
+  {% if certificates.has_other_pages %}
+    {% comment %}urlencode keeps a search with spaces or symbols intact across pages.{% endcomment %}
+    <nav class="mt-4 flex items-center justify-between text-[14px]" aria-label="Pages">
+      {% if certificates.has_previous %}
+        <a href="?{% if q %}q={{ q|urlencode }}&amp;{% endif %}page={{ certificates.previous_page_number }}" class="font-semibold text-brand hover:underline">← Previous</a>
+      {% else %}<span></span>{% endif %}
+      <span class="text-muted">Page {{ certificates.number }} of {{ certificates.paginator.num_pages }}</span>
+      {% if certificates.has_next %}
+        <a href="?{% if q %}q={{ q|urlencode }}&amp;{% endif %}page={{ certificates.next_page_number }}" class="font-semibold text-brand hover:underline">Next →</a>
+      {% else %}<span></span>{% endif %}
+    </nav>
+  {% endif %}
+{% else %}
+  <p class="rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-muted">
+    {% if q %}No certificates match “{{ q }}”.{% else %}No certificates have been issued yet.{% endif %}
+  </p>
+{% endif %}
+{% endblock %}

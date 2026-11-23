@@ -12,4 +12,9 @@ urlpatterns = [
     path("candidates/", views.candidate_info, name="candidate_info"),
     path("candidate_detail/<int:candidate_id>/", views.candidate_detail, name="candidate_detail"),
     path("export_candidates/", views.export_candidates, name="export_candidates"),
+    path("profile/", views.profile, name="profile"),
+    path("profile/links/", views.save_profile_links, name="save_profile_links"),
+    path("raise_support_ticket/", views.raise_support_ticket, name="raise_support_ticket"),
+    path("all_support_tickets/", views.all_support_tickets, name="all_support_tickets"),
+    path("resolve_support_ticket/<int:ticket_id>/", views.resolve_support_ticket, name="resolve_support_ticket"),
 ]

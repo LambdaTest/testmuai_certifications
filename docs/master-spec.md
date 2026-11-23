@@ -85,7 +85,8 @@ Main TestMu AI site  →  existing company login  →  /book
         objective-only:  score shown on submit; exam graded
         two rounds:      objective round, then the subjective round opens 30 min later for 36 h
                          →  [examiner grades, blind]  →  exam graded
-   →  [result release and credential — not built]
+   →  Get Certificate  →  certificate issued once, emailed as a PDF
+   →  [result release and public verification — not built]
 ```
 
 Properties of this flow that drive much of the design:
@@ -219,7 +220,7 @@ Unresolved. Each blocks specific work; owner is the project lead unless stated.
 
 | # | Decision | Blocks | Priority |
 |---|---|---|---|
-| 1 | **Combined results and release** — pass is 70% of both rounds together; how and when graded and combined results are released, and what the candidate sees | Results, credentials | High |
+| 1 | **Result release** — pass is decided on both rounds together (built); how and when results are released, and what the candidate sees beyond the Show Results modal | Results | High |
 | 2 | **Code-execution question types** — do candidates write and run code? | Question model, grading, sandbox | High |
 | 3 | **Instant exams: scope** — which exams allow Start Instant Exam (all published, today), and is the integrity risk of starting minutes after someone shares the questions acceptable until question pools are large? | Booking | High |
 | 4 | **Payment** — is there a paid step? Booking is enrolment, so it happens here — and it must come before an instant start | Booking flow | Medium |
@@ -275,16 +276,19 @@ keep this row current.
 | Calendar invites | `.ics` generation (with sequence for updates) and Google links | `apps/exam/calendar.py` | Built |
 | Subject Center | Create, edit and browse subjects | `apps/exam/views.py` | Built |
 | Exam Center | Create and edit exams, derived marks and duration, draft/publish | `apps/exam/views.py`, `forms.py` | Built |
-| Question Center | Bank, authoring with answer options and media, CSV import | `apps/exam/views.py`, `forms.py`, `imports.py` | Built — delete is routed but stubbed |
-| Candidate dashboard | Next exam, My Assessments by bucket | `apps/home/views.py`, `templates/home/` | Built — badges and profile still static |
-| Admin dashboard | Counts and the accordion sidebar | `templates/home/dashboard_admin.html`, `base_staff.html` | Partly — tiles and some sidebar items still unlinked |
+| Question Center | Bank, authoring with answer options and media, CSV import, gated delete (delete if never served, otherwise retire) | `apps/exam/views.py`, `forms.py`, `imports.py` | Built |
+| Candidate dashboard | Next exam, profile completeness, certificates, Explore Subjects, My Assessments by bucket | `apps/home/views.py`, `templates/home/` | Built |
+| Profile | Account details, editable name, phone, LinkedIn, GitHub | `apps/home/views.py`, `forms.py` | Built |
+| Admin dashboard | Counts linked to their pages; Bookings (upcoming 5 days, underway) | `apps/home/views.py`, `apps/exam/views.py`, `base_staff.html` | Built — Results, Analytics and Settings still unlinked |
 | Exam player | T&C, timed objective player with autosave and resume, subjective round, submit, completion page | `apps/exam/views.py`, `templates/exam/` | Built |
 | Grading | Assign, My Tasks, blind grading page, Grading History | `apps/exam/views.py`, `templates/exam/` | Built — regrade and result release not started |
 | Examiner area | Own layout and dashboard (pending preview), My Tasks, Grading History | `templates/base_examiner.html`, `home/dashboard_examiner.html` | Built |
 | Candidate Center | Candidate Info, Book Exam, Cancel Exam, Export Candidates | `apps/home/` and `apps/exam/views.py` | Built |
 | Email | Outbox, nine email types, reminders, retries, Mailpit locally | `apps/exam/emails/`, `templates/emails/` | Built — production sending waits on IT |
-| Scheduled work | Reminders, missed bookings, sending, cleanup | `apps/exam/management/commands/run_scheduled_jobs.py`, `sweeps.py` | Built — closing abandoned papers is next |
-| Credentials | Issuance, verification, revocation | — | Not started |
+| Scheduled work | Reminders, missed bookings, abandoned papers, sending, cleanup | `apps/exam/management/commands/run_scheduled_jobs.py`, `sweeps.py`, `papers.py` | Built |
+| Certificates | Whole-exam pass rule, issuance, PDF by email, admin list | `apps/exam/views.py`, `certificates.py` | Built — public verification and revocation not started |
+| Support | Contact Support (candidates, examiners); Support Tickets inbox with resolve (admins) | `apps/home/models.py`, `views.py`, `forms.py` | Built — no threads; replies by email |
+| Alpha testing | Local setup guide and test data | [`SETUP.md`](../SETUP.md), `seed_alpha` | Built |
 
 ## 10. Glossary
 

@@ -1,0 +1,72 @@
+{% extends layout|default:"base_staff.html" %}
+
+{% comment %}
+  Confirm before removing a question — Question Bank → DELETE.
+
+  Context from apps.exam.views.delete_question (GET shows this, POST acts):
+    question      – the Question, with its subject
+    times_served  – how many papers it has been on
+    option_count  – its answer options, deleted with it if it is deleted
+
+  The gated delete: a question that has never been on a paper is deleted for
+  good; one that has is retired instead — kept as the record of what
+  candidates were asked, but gone from the bank and from new exams. This page
+  says which will happen before the admin presses anything.
+{% endcomment %}
+
+{% block title %}Remove question · Question Center · TestMu AI Certifications{% endblock %}
+
+{% block staff_content %}
+<a href="{% url 'exam:question_bank' %}" class="text-[13.5px] font-semibold text-muted hover:text-ink">← Question Bank</a>
+
+<header class="mt-3 mb-6">
+  <h1 class="text-2xl font-bold tracking-tight">
+    {% if times_served %}Retire this question?{% else %}Delete this question?{% endif %}
+  </h1>
+</header>
+
+{# ---- The question ---- #}
+<section class="rounded-2xl border border-line bg-white p-6">
+  <p class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">{{ question.question_subject.name }}</p>
+  <p class="mt-2 text-[15px] leading-[1.55] text-ink">{{ question.question_text|linebreaksbr }}</p>
+  <p class="mt-3 text-[13px] text-muted">
+    {{ option_count }} answer option{{ option_count|pluralize }}
+    · {% if times_served %}on {{ times_served }} candidate paper{{ times_served|pluralize }}{% else %}never on a candidate's paper{% endif %}
+  </p>
+</section>
+
+{# ---- What will happen ---- #}
+<form method="post" action="{% url 'exam:delete_question' question.pk %}"
+      class="mt-4 rounded-2xl border border-line bg-white p-6">
+  {% csrf_token %}
+  {% if times_served %}
+    <p class="text-[14.5px] text-body">
+      Candidates have been given this question, so it <strong>can't be deleted</strong>: it is the record of
+      what they were asked, which a disputed result or certificate depends on.
+    </p>
+    <p class="mt-2 text-[14.5px] text-body">
+      <strong>Retiring</strong> it removes it from the Question Bank and from every exam drawn from now on.
+      Past papers keep it.
+    </p>
+    <div class="mt-5 flex flex-wrap items-center gap-3">
+      <button type="submit"
+              class="inline-flex h-11 items-center rounded-lg bg-warn px-6 text-sm font-bold text-white hover:opacity-90">
+        Retire question
+      </button>
+      <a href="{% url 'exam:question_bank' %}" class="text-[14px] font-semibold text-muted hover:text-ink">Keep it</a>
+    </div>
+  {% else %}
+    <p class="text-[14.5px] text-body">
+      No candidate has been given this question, so it can be <strong>deleted for good</strong>, together with its
+      {{ option_count }} answer option{{ option_count|pluralize }}. This can't be undone.
+    </p>
+    <div class="mt-5 flex flex-wrap items-center gap-3">
+      <button type="submit"
+              class="inline-flex h-11 items-center rounded-lg bg-danger px-6 text-sm font-bold text-white hover:opacity-90">
+        Delete question
+      </button>
+      <a href="{% url 'exam:question_bank' %}" class="text-[14px] font-semibold text-muted hover:text-ink">Keep it</a>
+    </div>
+  {% endif %}
+</form>
+{% endblock %}

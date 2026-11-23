@@ -1,10 +1,11 @@
 {% extends "base_staff.html" %}
 
 {% comment %}
-  Question Bank — TEMPLATE ONLY. No url, view or delete route yet.
+  Question Bank — every ACTIVE question. Retired ones are not listed: they
+  stay in the database as the record of past papers (see DELETE below).
 
-  Context it will need from a future apps.exam.views.question_bank:
-    questions – Question rows, unpaginated for now
+  Context from apps.exam.views.question_bank:
+    questions – active Question rows, unpaginated for now
 
   and the view must fetch them as:
 
@@ -20,13 +21,10 @@
   history that grading and appeals depend on. The card is read-only; the only
   action is removal.
 
-  DELETE is unwired — both buttons are href="#". When it is built it must be a
-  POST, not a link: a GET that destroys a row is one crawler or one prefetching
-  browser away from clearing the bank. The shape to copy is
-  cancel_booking_page / cancel_booking in views.py — a confirm page, then a
-  POST. And per the design we settled on, it should be a *gated* delete:
-  destroy only a question no candidate has answered, and retire the rest by
-  flipping status to RETIRED.
+  DELETE opens a confirm page (exam:delete_question — GET shows it, POST acts),
+  never a link that deletes. It is the gated delete settled on 27 Aug: a
+  question no candidate was ever given is deleted with its options; one that
+  was is retired instead, and drops out of this list and of future draws.
 
   Search runs in the browser, as on Explore Exams and Explore Subjects: the
   rows are all on the page already. It matches question text, subject and tags,

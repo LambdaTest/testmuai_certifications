@@ -3,10 +3,11 @@
 In-house platform for delivering TestMu AI professional certifications — booking, exam delivery,
 grading, and credential issuance. Replaces our current external vendor.
 
-> **Status:** eight journeys work end to end.
+> **Status:** ten journeys work end to end. Internal alpha testing runs from [`SETUP.md`](SETUP.md).
 >
 > - **Candidate** — book, or start an exam instantly; reschedule and cancel (until 10 minutes before), calendar invites,
->   dashboard, and My Assessments lists that follow the clock, not only the stored status.
+>   My Assessments lists that follow the clock, not only the stored status, a profile page, and a
+>   dashboard with the next exam, profile completeness, certificates and subjects to explore.
 > - **Admin authoring** — Subject Center and Exam Center: create and edit subjects and exams
 >   (objective, subjective, or both rounds), with derived slugs, derived marks, and draft/publish.
 > - **Question Center** — write questions with answer options and media, browse the bank, or
@@ -22,14 +23,20 @@ grading, and credential issuance. Replaces our current external vendor.
 >   Examiners have their own simpler layout and dashboard.
 > - **Candidate Center** (admins) — Candidate Info (search, a page per candidate with every
 >   booking), Book Exam on a candidate's behalf, Cancel Exam with a reason, and Export Candidates
->   to CSV.
+>   to CSV. The admin dashboard's tiles open their pages, including **Bookings** (upcoming in the
+>   next 5 days, and exams underway now).
+> - **Certificates** — pass or fail on the whole exam; Get Certificate issues one and emails it as
+>   a PDF; admins list and search them.
+> - **Support** — candidates and examiners raise requests through Contact Support; admins read
+>   them in Support Tickets, reply by email and mark them resolved.
 >
 > - **Email** — booking, reschedule, cancellation, reminder, second-round and expiry emails with
 >   calendar invites, through an outbox with retries; a scheduled job sends reminders and closes
 >   missed bookings. Tested against Mailpit; production sending waits on IT's Gmail App Password.
 >
-> Not started: combined two-round results against the pass percentage, result release, and
-> credentials. See [`docs/master-spec.md`](docs/master-spec.md).
+> Not built: result release, the public certificate verification page, Analytics, Settings
+> (Manage Roles, Email Templates), regrading, and login with TestMu AI. See
+> [Not yet built](#not-yet-built) and [`docs/master-spec.md`](docs/master-spec.md).
 
 ## Stack
 
@@ -74,8 +81,13 @@ that's our `USERNAME_FIELD`:
 .venv/bin/python manage.py createsuperuser --external_id admin
 ```
 
-A fresh database has no exams. Add them through **Exam Center → Add Exam** — the
-`seed_certifications` command is currently broken, see [below](#seed_certifications).
+A fresh database has no exams. For a local database to test on, run
+`.venv/bin/python manage.py seed_alpha` — test accounts for every role, a subject, questions and
+three published exams; see [below](#seed_alpha). Otherwise add them through **Exam Center → Add
+Exam** — the `seed_certifications` command is currently broken, see [below](#seed_certifications).
+
+**Testers** follow [`SETUP.md`](SETUP.md): the same steps, the logins, a checklist per role, and
+where to report bugs. It is written so a coding agent can run the setup for them.
 
 **Database: Postgres everywhere, including local development.** There is deliberately no SQLite
 fallback. SQLite differs on partial unique indexes (`one_open_booking_per_exam`), on
@@ -103,23 +115,28 @@ user-facing may depend on it for correctness — see [rule 2](#three-rules-to-kn
 ```
 config/         settings, root URLconf, wsgi/asgi
 apps/
-  home/         accounts and cross-cutting — User model, roles, dashboards, decorators, and
-                the admin Candidate Center pages that are about people (Candidate Info,
-                Export Candidates)
+  home/         accounts and cross-cutting — User model, roles, dashboards, profile,
+                decorators, the admin Candidate Center pages that are about people
+                (Candidate Info, Export Candidates), and support (Contact Support, Support
+                Tickets)
     exports.py  Export Candidates: the fixed column lists and the CSV writer
   exam/         the assessment domain — subjects, exams, questions, bookings, exam sheets,
                 grading, and to come: credentials
     emails/     outbound email: queue_email(), the event registry, the sender, the job steps
-    sweeps.py   booking housekeeping for the scheduled job (missed bookings)
+    sweeps.py   housekeeping for the scheduled job (missed bookings, abandoned papers)
+    papers.py   finishing a submitted paper — shared by Submit and the scheduled job
+    certificates.py the certificate PDF (ReportLab)
     imports.py  CSV parsing for the question importer — plain functions, no request, no forms
     calendar.py .ics generation
     timezones.py the one place a wall-clock time becomes a UTC instant
 templates/      base.html (public) + base_staff.html (admin shell) + base_examiner.html
-                (examiner shell) + per-app templates
+                (examiner shell) + per-app templates; 404.html and 500.html (500 is
+                self-contained — no template tags, since it renders when things are broken)
 static/         css/input.css, js/booking.js, imports/questions-template.csv
 media/          runtime uploads — question images, audio, video. Gitignored.
 docs/           specs — see below
 archived/       the previous Next.js implementation, kept as UX reference
+SETUP.md        alpha testing: local setup, test logins, what to try, where to report bugs
 TRACKER.md      deferred work. Gitignored on purpose — it never ships.
 ```
 
@@ -127,8 +144,11 @@ TRACKER.md      deferred work. Gitignored on purpose — it never ships.
 exam sheets, grading, and credentials all constrain one another. `home` holds what isn't part of
 that — accounts, roles, and the dashboards.
 
-**Dependencies point one way.** `exam` reaches the user only through `settings.AUTH_USER_MODEL`
-(a string, so no import); `home` may import from `exam`, never the reverse.
+**Dependencies are layered, not one-way.** `home` imports `exam`'s models and plain modules
+(the dashboards show bookings and certificates); `exam` imports only `home`'s foundation — the
+`User` model and `role_required`. Models refer to the user through `settings.AUTH_USER_MODEL`.
+What keeps this free of circular imports is the rule in [`docs/conventions.md`](docs/conventions.md):
+**nothing imports from a `views.py`**.
 
 When `exam/models.py` outgrows a single file, split it into a `models/` package — not into
 another app. App boundaries are baked into migrations and are expensive to move.
@@ -149,7 +169,7 @@ returning 403 — an admin URL shouldn't confirm it exists to someone who may no
 `/dashboard/` branches on role and renders one of `dashboard_candidate.html`,
 `dashboard_examiner.html`, or `dashboard_admin.html`. Admin pages extend `base_staff.html`,
 which carries the accordion sidebar; examiner pages extend `base_examiner.html`, a shorter
-sidebar (Dashboard, My Tasks, Grading History); candidate pages extend `base.html`. A page both
+sidebar (Dashboard, My Tasks, Grading History, Contact Support); candidate pages extend `base.html`. A page both
 roles use (My Tasks, the grading page, Grading History) takes the layout from its view —
 `{% extends layout|default:"base_staff.html" %}` — so each role keeps its own sidebar.
 
@@ -219,8 +239,11 @@ appeals depend on. There is no edit page and no plan for one. That immutability 
 `ExamSheetQuestion` reference a question by foreign key instead of snapshotting its text.
 
 **Retiring, not deleting.** `Question.status` is `active` or `retired`. Retiring drops a question
-out of the bank listing and out of random draws without losing the row. Both DELETE buttons are
-still `href="#"` and `delete_question` is a stub — see `TRACKER.md` for the gated-delete design.
+out of the bank listing and out of random draws without losing the row. DELETE in the bank opens
+`delete_question`, a confirm page that says which will happen: a question **never served** on a
+paper is deleted for good with its answer options (`AnswerOptions.question` is `CASCADE`); one
+that **has been** served is retired instead, since it is the record of what candidates were
+asked (`ExamSheetQuestion.question` is `PROTECT`).
 
 **Answer options are an inline formset.** `AnswerOptionFormSet` renders six slots and shows four;
 blank ones are skipped rather than saved as empty rows. The rules that span rows — at least two
@@ -524,7 +547,10 @@ stored: it is generated from the row and the template whenever it is needed.
   the combined total, and a perfect one can still fail.
 - **Get Certificate** (on the booking page) posts to `get_certificate`: not graded yet, not
   passed, or passed — then it issues the certificate once and emails it (`certificate_generated`,
-  Results mailer), or re-sends it if asked again.
+  Results mailer), or re-sends it if asked again. The profile must be complete first — name,
+  phone, LinkedIn and GitHub — since the name is what the certificate prints.
+- **Admins** list every certificate at **Certificates** (`show_certificates`): search by name,
+  email or certificate ID, 25 per page, newest first.
 - **The PDF** is drawn by `apps/exam/certificates.py` with **ReportLab** (+ `svglib` for the vector
   logo and signature) — pure Python, no system libraries, the same on every OS — and attached to
   the `certificate_generated` email as `TestMu-AI-certificate-<id>.pdf`. Generated every time it
@@ -535,6 +561,55 @@ stored: it is generated from the row and the template whenever it is needed.
   change one and you must change the other. The logo, seal and signature are the Figma originals
   in `static/certificates/`. It prints the full UUID and "Valid until".
   Not yet built: the public verification page.
+
+## Dashboards, profile and Bookings
+
+**Candidate dashboard** — the next exam (the soonest `upcoming()` booking), a profile card with
+how complete the profile is and what is missing, the candidate's certificates ("No Certificates
+Earned" until there are some), and Explore Subjects: up to six subjects with published exams, and
+"View All Subjects" to the main site's catalogue.
+
+**Profile** (`/profile/`, in the account menu) — the account details from the login, read-only,
+and the editable name, phone, LinkedIn and GitHub (`ProfileForm`). The completion page after an
+exam also asks for any missing LinkedIn or GitHub link (`ProfileLinksForm`, posting to
+`save_profile_links`).
+
+**Admin dashboard** — three counts, each a link to the work behind it:
+
+| Tile | Counts | Opens |
+|---|---|---|
+| Exams underway | papers begun, not submitted, with time left (`ExamSheet.expires_at` ahead) | Bookings → Underway |
+| Awaiting grading | subjective papers `under_review` | Assign Grading |
+| Upcoming exams | every `booked` exam with its start ahead | Bookings → Upcoming |
+
+**Bookings** (`bookings_overview`, `/bookings/?tab=upcoming|underway`) — one admin page, two tabs,
+25 per page, times in IST:
+
+- **Upcoming** — bookings starting in the next `ADMIN_UPCOMING_DAYS` (5) days, soonest first,
+  grouped by day ("Today", "Tomorrow", then dates), with the candidate's own local time when they
+  booked in another zone, and Cancel while an admin still can. The tile counts *every* upcoming
+  exam, so the page says "Next 5 days · 6 of 9 upcoming exams".
+- **Underway** — the tile's rule, ending soonest first, with time left as a bar that turns amber
+  near the end.
+
+## Support
+
+**One request is a subject and a message — no threads.** `ContactSupport` (`home`, table
+`support_requests`): `raised_by`, `subject` (150), `description` (20–2,000 characters, checked in
+`ContactSupportForm`), `created_at`, and `resolved` with `resolved_by` and `resolved_at`.
+`assigned_to` exists but nothing sets it yet.
+
+- **Contact Support** (`raise_support_ticket`) — candidates and examiners only: the footer button
+  on every page, and the examiner sidebar. Signed out, the footer button opens an email to
+  certifications@testmuai.com instead, since there is no account to reply to. Admins don't see it
+  and get a 404 — they answer requests, they don't raise them.
+- **Support Tickets** (`all_support_tickets`) — the admin's inbox, from the sidebar: open requests
+  first, then resolved, each newest first, 25 per page, with the count still open. **Reply by
+  email** opens a message to the person with "Re: [Support #n]" as the subject — the conversation
+  happens by email, not in the app.
+- **Mark resolved** (`resolve_support_ticket`, POST) records who and when. Resolving twice keeps the
+  first. `raised_by` and `resolved_by` are `PROTECT`, so a ticket always shows both names; staff
+  who leave are deactivated, not deleted.
 
 ## Email
 
@@ -682,15 +757,35 @@ so they stay cheap however large the table grows.
 > papers begun but abandoned once their time is up.
 
 **My Assessments** labels each booking with its round — Objective in blue, Subjective in amber —
-read from `round_type` rather than the exam's type, which says "both" for both rounds. An attended
-booking shows Show Results (still pointing at a placeholder route; results are not in scope yet)
-and a disabled Get Certificate.
+read from `round_type` rather than the exam's type, which says "both" for both rounds. An attended or
+graded booking shows Show Results — a small modal with the marks scored (never the answers) — and
+Get Certificate (see Certificates).
 
 ## Management commands
 
 Custom `manage.py` subcommands live in `apps/<app>/management/commands/`. Any file there with a
 `Command` class becomes a subcommand named after the file — both `__init__.py` files are required
 or Django silently won't find it.
+
+### `seed_alpha`
+
+A fresh **local** database ready for testing, in one command:
+
+```bash
+.venv/bin/python manage.py seed_alpha
+```
+
+- Four accounts with fixed passwords — `alpha_admin`, `alpha_examiner`, `alpha_candidate`,
+  `alpha_candidate2` (passwords in [`SETUP.md`](SETUP.md)). They are staff, because the Django
+  admin login is the only login until the TestMu AI login is built.
+- The subject *Alpha Testing*, 15 multiple-choice questions and 2 practical tasks.
+- Three published exams: **Alpha Objective Exam** (10 questions), **Alpha Subjective Exam** (one
+  task) and **Alpha Full Certification** (both rounds).
+
+**Safe to run again** — everything is `get_or_create`, existing rows (and passwords) are left as
+they are, and it runs in one transaction. **Local only**: the passwords are published, so never
+run it against a shared or production database. The account table lives in both the command and
+`SETUP.md` — change them together.
 
 ### `seed_certifications`
 
@@ -760,18 +855,19 @@ Specs live in [`docs/`](docs/), all rewritten for Django:
 | [`docs/auth.md`](docs/auth.md) | The OIDC handoff from TestMu AI's login |
 | [`docs/conventions.md`](docs/conventions.md) | Where rules live, timezones, naming |
 | [`docs/routes.md`](docs/routes.md) | URL map and where new routes belong |
+| [`SETUP.md`](SETUP.md) | Alpha testing: local setup, test logins, what to try, bug reporting |
 
 `scripts/build-spec.py` regenerates `master-spec.docx` from the markdown.
 
 ## Not yet built
 
-Combined two-round results against the pass percentage ·
-saving the completion page's profile links and feedback · result release and Show Results ·
-credentials and public verification · results and
-staff emails · the public certificate verification page · recording lockdown events · `delete_question` (routed
-but stubbed) · regrading · authentication (the OIDC integration with the TestMu AI login is
+Result release (a booking's marks show only in its Show Results modal) · the public certificate
+verification page · Analytics · Settings: Manage Roles and Email Templates · examiner Settings
+(absence dates) · regrading · saving the completion page's feedback · recording lockdown events ·
+assigning support tickets · authentication (the OIDC integration with the TestMu AI login is
 deferred, which is why `ExamBooking.candidate` is nullable) · automated tests · the Tailwind
-production build.
+production build. The admin dashboard's Results action and the sidebar's Analytics, Manage Roles
+and Email Templates are still `href="#"`.
 
 One smaller gap worth knowing: **media rows are mutable** — replacing the file on an `Image` row
 would change what a past paper appears to have shown.

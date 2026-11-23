@@ -206,16 +206,41 @@
     </div>
 
   {% elif booking.status == 'attended' or booking.status == 'graded' %}
-    <div class="mt-6 flex flex-wrap items-center gap-3">
+    <div class="mt-6 flex flex-wrap items-center gap-3" x-data="{ results: false }"
+         @keydown.escape.window="results = false">
       {% comment %}
-        NEEDS A ROUTE. This points at reschedule, which is wrong — there is no
-        results view yet. Rescheduling an attended booking is not a thing.
+        Show Results opens a small modal on this page — the marks only, never
+        which answers were right. Both numbers are already on the booking
+        (marks_obtained, maximum_marks), so no page or view of its own. A
+        round still waiting for an examiner has no marks yet and says so.
       {% endcomment %}
-      <a href="{% url 'exam:reschedule' booking.booking_id %}"
-         class="inline-flex h-11 items-center rounded-lg border border-line px-5 text-sm font-semibold text-body hover:border-[#B9BFC9]">
+      <button type="button" @click="results = true"
+              class="inline-flex h-11 items-center rounded-lg border border-line px-5 text-sm font-semibold text-body hover:border-[#B9BFC9]">
         Show Results
-      </a>
+      </button>
 
+      <div x-show="results" x-cloak x-transition.opacity
+           class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+           @click.self="results = false" role="dialog" aria-modal="true" aria-labelledby="results-title">
+        <div class="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-[0_24px_60px_rgba(14,15,19,.25)]">
+          <h2 id="results-title" class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">
+            {{ booking.exam.exam_name }} · {{ booking.get_round_type_display }} round
+          </h2>
+          {% if booking.marks_obtained is not None %}
+            <p class="mt-4 text-[15px] text-muted">You scored</p>
+            <p class="mt-1 text-4xl font-bold tracking-tight text-ink">
+              {{ booking.marks_obtained }}<span class="text-xl font-semibold text-faint">{% if booking.maximum_marks %} / {{ booking.maximum_marks }}{% endif %}</span>
+            </p>
+            <p class="mt-1 text-[14px] text-muted">marks</p>
+          {% else %}
+            <p class="mt-4 text-[15px] text-body">Your marks will appear here once this round has been graded.</p>
+          {% endif %}
+          <button type="button" @click="results = false"
+                  class="mt-6 inline-flex h-10 items-center rounded-lg bg-[#111] px-6 text-sm font-bold text-white hover:bg-[#2A2B31]">
+            Close
+          </button>
+        </div>
+      </div>
       {% comment %}
         Get Certificate posts to exam:get_certificate, which decides
         everything: not graded yet, not passed, or passed — then it issues the

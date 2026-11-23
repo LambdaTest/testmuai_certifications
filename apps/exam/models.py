@@ -69,7 +69,12 @@ class AnswerOptions(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="answers")
-    question = models.ForeignKey(Question, on_delete=models.PROTECT, related_name="answers")
+    #: CASCADE: an option means nothing without its question, so deleting a
+    #: question deletes its options. That is what lets a question nobody was
+    #: ever given be deleted at all (with PROTECT here, every delete failed).
+    #: The protection that matters is elsewhere — ExamSheetQuestion.question
+    #: is PROTECT, so a question any candidate was given can only be retired.
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name="answers")
     associated_image = models.ForeignKey("Image", on_delete=models.PROTECT, related_name="answers", blank=True, null=True)
     associated_audio = models.ForeignKey("Audio", on_delete=models.PROTECT, related_name="answers", blank=True, null=True)
 

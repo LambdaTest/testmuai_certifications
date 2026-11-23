@@ -146,6 +146,9 @@ BOOKING_CHANGE_CUTOFF_MINUTES = 10
 #: candidates, for the emergency a candidate reports at the last minute.
 #: Still before the start, so a paper can never be cancelled once begun.
 ADMIN_CANCEL_CUTOFF_MINUTES = 5
+#: How far ahead the admin's Bookings page lists upcoming exams. The dashboard
+#: tile still counts every upcoming exam; the page shows the next few days.
+ADMIN_UPCOMING_DAYS = 5
 
 #: How long a certificate is valid. Copied onto each certificate as
 #: expires_at when it is issued, so changing this affects only certificates

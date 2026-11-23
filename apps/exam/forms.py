@@ -171,7 +171,12 @@ class ScheduleForm(forms.Form):
 
     def _check_clash(self, scheduled_at):
         """The clash rule — see check_clash — for this form's exam and candidate."""
-        check_clash(self.candidate, self.new_exam(), scheduled_at, self.exclude_booking)
+        exam = self.new_exam()
+        if exam is None:
+            # The exam field already failed (unknown, unpublished or tampered)
+            # and carries its own error; there is nothing to check a clash for.
+            return
+        check_clash(self.candidate, exam, scheduled_at, self.exclude_booking)
 
     def clean_timezone(self):
         return clean_timezone_name(self.cleaned_data["timezone"])
@@ -216,7 +221,9 @@ class BookingForm(ScheduleForm):
     )
 
     def new_exam(self):
-        return self.cleaned_data["exam"]
+        # .get: None when the exam field failed, rather than a KeyError —
+        # clean() runs even after a field's own check has refused it.
+        return self.cleaned_data.get("exam")
 
     def clean(self):
         """

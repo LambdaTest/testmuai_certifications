@@ -8,17 +8,17 @@
   Context it will need from apps.exam.views.exam_completed:
     booking – the ExamBooking, with exam and subject already selected
 
-  NOT WIRED YET. Nothing on this page is saved. Close submits the form only so
-  the browser checks the required fields; the handler then just navigates to
-  the dashboard. The input
-  names (linkedin_url, github_url, rating_*, suggestions) are chosen to become
-  the field names of a Django Form when this is wired, so the template will not
-  need renaming then.
+  Close posts the form to home:save_profile_links, which saves LinkedIn and
+  GitHub onto the user (ProfileLinksForm) and goes to the dashboard. It is in
+  the home app because the links are the user's — exam may not import home.
 
-  When it is wired, Close saves the answers and then redirects. LinkedIn and
-  GitHub are mandatory; the ratings and Suggestions are not. The `required` attributes below are only the
-  browser's check and can be bypassed, so the Django Form must mark the same
-  fields required=True — that is the check that actually holds.
+  Only missing links are asked for: one the account already has is not shown
+  (and the form there never clears or overwrites it). Asked-for links are
+  required — the `required` attributes are the browser's check; the form's is
+  the one that holds. An invalid link comes back here as a message.
+
+  FEEDBACK IS NOT SAVED YET (the ratings and suggestions): it needs its own
+  model, planned for later. It is posted along with the links and ignored.
 {% endcomment %}
 
 {% block title %}Exam submitted · {{ booking.exam.exam_name|default:"TestMu AI Certifications" }}{% endblock %}
@@ -67,40 +67,41 @@
     {% endif %}
   </header>
 
-  {% comment %}
-    The browser runs its required check before the submit event fires, so this
-    handler only runs once LinkedIn and GitHub are filled. Until the view saves
-    anything it just navigates; when wired, drop the handler and give the form
-    method="post" and an action instead.
-  {% endcomment %}
-  <form class="mt-9 grid gap-4"
-        onsubmit="window.location.href = '{% url 'home:dashboard' %}'; return false">
+  <form method="post" action="{% url 'home:save_profile_links' %}" class="mt-9 grid gap-4">
     {% csrf_token %}
+    {# Where an invalid link sends them back to: this page. #}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
 
-    {# ---------- Profiles ---------- #}
+    {# ---------- Profiles: only the links the account doesn't have yet ---------- #}
+    {% if not request.user.linkedin_link or not request.user.github_link %}
     <section class="rounded-2xl border border-line bg-white p-6">
       <h2 class="text-[11.5px] font-bold tracking-[1.4px] text-faint uppercase">Your profiles</h2>
 
       <div class="mt-4 grid gap-4">
+        {% if not request.user.linkedin_link %}
         <div>
           <label for="linkedin_url" class="text-[14px] font-semibold text-ink">LinkedIn</label>
           {% comment %}
             type="url" gets the right keyboard on a phone and a free browser
-            check that it is a URL. The real check belongs in the form's clean
-            method when this is wired, since the browser one can be skipped.
+            check that it is a URL. The check that holds is ProfileLinksForm's
+            (a linkedin.com/in/… link), since the browser one can be skipped.
           {% endcomment %}
-          <input type="url" id="linkedin_url" name="linkedin_url" required
+          <input type="url" id="linkedin_url" name="linkedin_link" required
                  placeholder="https://www.linkedin.com/in/your-name"
                  class="mt-1.5 h-11 w-full rounded-lg border border-line bg-white px-3.5 text-[14.5px] text-ink placeholder:text-faint focus:border-brand focus:outline-none">
         </div>
+        {% endif %}
+        {% if not request.user.github_link %}
         <div>
           <label for="github_url" class="text-[14px] font-semibold text-ink">GitHub</label>
-          <input type="url" id="github_url" name="github_url" required
+          <input type="url" id="github_url" name="github_link" required
                  placeholder="https://github.com/your-username"
                  class="mt-1.5 h-11 w-full rounded-lg border border-line bg-white px-3.5 text-[14.5px] text-ink placeholder:text-faint focus:border-brand focus:outline-none">
         </div>
+        {% endif %}
       </div>
     </section>
+    {% endif %}
 
     {# ---------- Feedback ---------- #}
     <section class="rounded-2xl border border-line bg-white p-6">

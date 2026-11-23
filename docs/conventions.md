@@ -27,6 +27,14 @@ about its siblings — and cannot be a `CheckConstraint`, because Postgres check
 itself, not against a set. `BaseAnswerOptionFormSet.clean()` is the only place it can live.
 Raising there produces a non-form error, rendered through `formset.non_form_errors`.
 
+**Nothing imports from `views.py`.** Views sit on top: they import models, forms, emails and
+helpers, never the other way round. Logic that something else needs — the scheduled job, another
+module — lives in a plain module (`papers.py`, `timezones.py`, `calendar.py`, `imports.py`,
+`certificates.py`, `emails/`) that imports only downwards (models, other plain modules). A view
+importing a module that imports back from views is a circular import, and it crashes the app at
+startup. `papers.py` exists for exactly this: the Submit button and the scheduled job both finish
+papers through it.
+
 **Forms validate; views orchestrate.** The test: *could this rule be checked without an HTTP
 request?* If yes it belongs in the form. If a form rule needs something request-derived, pass it
 in rather than moving the rule to the view — `BookingForm(request.POST, candidate=request.user)`.
